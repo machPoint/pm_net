@@ -1,0 +1,1080 @@
+# Product Requirements Document: DeltaReq
+## AI-Powered Requirements Change Management System
+
+---
+
+## 1. PRODUCT OVERVIEW
+
+### 1.1 Product Name
+**DeltaReq** - Delta Requirements: AI-Powered Change Impact Analysis
+
+### 1.2 Product Vision
+Transform requirements change management from a manual, time-consuming bureaucratic process into an intelligent, automated system that predicts impacts, maintains traceability, and enables confident decision-making in aerospace systems engineering.
+
+### 1.3 Target Users
+- **Primary**: Systems Engineers managing requirements baselines
+- **Secondary**: Program Managers tracking change impacts on schedule/cost
+- **Tertiary**: Chief Engineers approving major changes, Design Engineers implementing changes
+
+### 1.4 Strategic Context at Paragon
+- **Phase 1 Proof-of-Concept** following n8n BD intelligence system success
+- Demonstrates AI can **eliminate entire manual processes**, not just optimize them
+- Addresses CEO's efficiency concerns (Lean Six Sigma mindset) through transformational approach
+- Internal demonstration tool for AI transformation value proposition
+- Published research foundation (ICES paper) provides technical credibility
+
+---
+
+## 2. PROBLEM STATEMENT
+
+### 2.1 Current State Pain Points
+
+**For Systems Engineers:**
+- Manual requirements traceability matrix updates take hours per change
+- Impact analysis relies on institutional knowledge and hope
+- Missed dependencies cause costly downstream rework
+- Requirements documents become stale immediately after CCB approval
+- Traceability is bureaucratic overhead, not value-add
+
+**For Program Managers:**
+- Requirements changes trigger planning chaos
+- Difficult to estimate true cost/schedule impact of changes
+- Ripple effects emerge late in development cycle
+- Change Control Board meetings lack data-driven impact analysis
+
+**For Engineering Teams:**
+- Rework from missed requirement dependencies
+- Uncertainty about which designs/tests/analyses need updates
+- Time wasted chasing down "what changed and why"
+- Requirements churn disrupts focused engineering work
+
+### 2.2 Quantified Impact (Aerospace Industry)
+- Requirements changes account for 30-50% of development rework
+- Manual traceability consumes 15-25% of SE time
+- Missed dependencies caught late cost 10-100x more to fix
+- Change impact analysis takes 4-8 hours per significant change
+
+### 2.3 Why This Problem Exists
+- Requirements databases aren't designed for change management
+- Manual traceability doesn't scale with system complexity
+- Human cognitive limits on tracking dependencies
+- Tribal knowledge concentrated in senior engineers
+- Tools focus on storage, not analysis
+
+---
+
+## 3. SOLUTION OVERVIEW
+
+### 3.1 Core Concept
+DeltaReq uses AI to automatically:
+1. Analyze proposed requirements changes
+2. Map all affected requirements, designs, tests, and documents
+3. Predict downstream impacts (technical, schedule, cost)
+4. Generate traceability documentation automatically
+5. Provide confidence scoring on impact predictions
+
+### 3.2 Key Differentiators
+- **AI-native**: Built for intelligence, not just storage
+- **Proactive**: Predicts impacts before changes are approved
+- **Automated traceability**: Eliminates manual matrix maintenance
+- **Natural language interface**: Engineers describe changes conversationally
+- **Aerospace-aware**: Understands safety-critical implications
+
+### 3.3 Value Proposition
+
+**For Systems Engineers:**
+"Analyze a requirements change and its full system impact in 30 seconds instead of 3 hours, with AI-generated traceability documentation."
+
+**For Program Managers:**
+"Make data-driven Change Control Board decisions with confidence, knowing all downstream impacts before approving changes."
+
+**For Paragon Leadership:**
+"Eliminate 60-80% of manual requirements management overhead while reducing costly late-stage rework."
+
+---
+
+## 4. USER PERSONAS
+
+### 4.1 Primary Persona: Systems Engineer (Sarah)
+- **Role**: Lead SE on ECLSS subsystem
+- **Experience**: 8 years aerospace, familiar with DOORS/Jama
+- **Pain Points**: 
+  - Spends 6-8 hours/week on traceability matrices
+  - Dreads Change Control Board prep (manual impact analysis)
+  - Knows dependencies exist but can't track them all
+- **Success Criteria**: 
+  - Can analyze change impact in <5 minutes
+  - Confidence that AI found all major dependencies
+  - Auto-generated traceability matrices pass audit
+- **Tech Savviness**: Moderate - uses Excel, DOORS, but not a programmer
+
+### 4.2 Secondary Persona: Program Manager (Mike)
+- **Role**: PM for $50M spacecraft subsystem development
+- **Experience**: 15 years, former engineer turned PM
+- **Pain Points**:
+  - Requirements changes blow up schedules unexpectedly
+  - Difficult to prioritize change requests by true impact
+  - CCB meetings lack quantitative decision support
+- **Success Criteria**:
+  - Clear impact summary (schedule, cost, technical risk)
+  - Ability to compare multiple change scenarios
+  - Historical data on change impact accuracy
+- **Tech Savviness**: Low - needs executive dashboard, not detailed analysis
+
+### 4.3 Tertiary Persona: Chief Engineer (Dr. Martinez)
+- **Role**: Technical authority, CCB chair
+- **Experience**: 25+ years, deep system knowledge
+- **Pain Points**:
+  - Relies on engineers to surface all impacts (often incomplete)
+  - Wants to challenge assumptions but lacks visibility
+  - Concerned about unintended consequences of changes
+- **Success Criteria**:
+  - Trust in AI's technical analysis
+  - Ability to drill down into reasoning
+  - Override or augment AI recommendations
+- **Tech Savviness**: High technical, moderate software
+
+---
+
+## 5. FUNCTIONAL REQUIREMENTS
+
+### 5.1 Core Capabilities
+
+#### 5.1.1 Requirements Change Analysis
+**User Story**: As a Systems Engineer, I want to describe a proposed requirements change in natural language and get an instant impact analysis.
+
+**Acceptance Criteria**:
+- [ ] User can input change via text (natural language)
+- [ ] System identifies which baseline requirement(s) are affected
+- [ ] AI generates list of impacted downstream requirements
+- [ ] AI identifies affected design elements, tests, analyses
+- [ ] Results displayed within 30 seconds for typical change
+- [ ] Confidence score provided for each predicted impact (0-100%)
+
+**Example Input**:
+```
+"We need to increase HALO cabin pressure from 8.2 to 10.2 psi 
+to support EVA operations"
+```
+
+**Example Output**:
+```
+IMPACT ANALYSIS: HALO Cabin Pressure Requirement Change
+
+Primary Requirement Affected:
+- REQ-HALO-ENV-001: Cabin nominal pressure (8.2 ± 0.3 psi)
+
+Downstream Requirements Impacted (Confidence):
+- REQ-HALO-STRUCT-015: Pressure vessel design load (95%)
+- REQ-HALO-ECLSS-042: O2/N2 gas storage capacity (92%)
+- REQ-HALO-ECLSS-038: Pressure regulator range (88%)
+- REQ-HALO-SAFE-019: Emergency depressurization rate (85%)
+- REQ-HALO-POWER-023: Gas pressurization power budget (78%)
+
+Design Elements Affected:
+- Pressure shell thickness analysis
+- Pressure regulator sizing
+- Gas tank sizing and mass
+- Structural load cases for analysis
+
+Tests Requiring Updates:
+- Pressure vessel proof test (burst pressure)
+- ECLSS integrated pressure control test
+- Emergency depress procedure validation
+
+Documents Requiring Updates:
+- Structural Analysis Report (Section 4.2)
+- ECLSS Sizing Calculations (Appendix B)
+- Test Plan Rev C (Test Cases 3.4, 3.7)
+
+Schedule Impact: 6-8 weeks (structural reanalysis critical path)
+Cost Impact: $180K-$250K (analysis + hardware redesign)
+Technical Risk: MEDIUM (well-understood physics, heritage design)
+```
+
+#### 5.1.2 Requirements Traceability Mapping
+**User Story**: As a Systems Engineer, I want DeltaReq to automatically maintain requirements traceability matrices without manual updates.
+
+**Acceptance Criteria**:
+- [ ] AI automatically maps parent-child requirement relationships
+- [ ] AI identifies requirement-to-design traceability
+- [ ] AI links requirements to verification methods (test, analysis, inspection)
+- [ ] Traceability updates automatically when requirements change
+- [ ] Export to standard formats (Excel, CSV, DOORS import)
+- [ ] Visual traceability graph showing dependency network
+- [ ] Orphaned requirements highlighted automatically
+- [ ] Traceability completeness scoring (% fully traced)
+
+**Visual Output**: Interactive dependency graph (like core_se UI)
+
+#### 5.1.3 Change Impact Scoring
+**User Story**: As a Program Manager, I want to quickly understand the magnitude of a proposed change (low/medium/high impact).
+
+**Acceptance Criteria**:
+- [ ] Overall impact score (1-10 scale or Low/Med/High)
+- [ ] Breakdown by dimension:
+  - Technical complexity
+  - Schedule impact (days/weeks)
+  - Cost impact ($)
+  - Downstream requirement count
+  - Safety criticality level
+- [ ] Comparison to historical changes (similar/larger/smaller)
+- [ ] Risk flags (e.g., affects safety-critical requirement)
+- [ ] Justification/reasoning for score provided
+
+**Dashboard Display**:
+```
+┌─────────────────────────────────────────┐
+│ CHANGE IMPACT SUMMARY                    │
+├─────────────────────────────────────────┤
+│ Overall Impact: ████████░░ MEDIUM-HIGH  │
+│                                          │
+│ Technical Complexity:  ███████░░░ 7/10  │
+│ Schedule Impact:       ████████░░ 8/10  │
+│ Cost Impact:           █████░░░░░ 5/10  │
+│ Requirements Affected: 12 downstream     │
+│ Safety Criticality:    ⚠️ MEDIUM         │
+│                                          │
+│ Similar past changes took 4-9 weeks     │
+└─────────────────────────────────────────┘
+```
+
+#### 5.1.4 Change Scenario Comparison
+**User Story**: As a Chief Engineer, I want to compare multiple approaches to solving a problem to understand which has least system impact.
+
+**Acceptance Criteria**:
+- [ ] User can define multiple change scenarios (A vs B vs C)
+- [ ] AI analyzes each scenario independently
+- [ ] Side-by-side comparison view
+- [ ] Relative scoring (which is "better" on each dimension)
+- [ ] Export comparison for CCB presentation
+- [ ] "What if" mode to test hypothetical changes
+
+**Example Use Case**:
+```
+Scenario A: Increase cabin pressure to 10.2 psi
+Scenario B: Use pre-breathe protocol (keep 8.2 psi)
+Scenario C: Hybrid approach (temporary pressure increase)
+
+Compare impacts across all three approaches
+```
+
+#### 5.1.5 Change History & Learning
+**User Story**: As a Systems Engineer, I want DeltaReq to learn from past changes to improve its predictions over time.
+
+**Acceptance Criteria**:
+- [ ] System logs all predicted impacts vs. actual impacts
+- [ ] Users can mark predictions as correct/incorrect/incomplete
+- [ ] AI model improves based on feedback
+- [ ] Historical change database searchable
+- [ ] "Similar changes" suggestions when analyzing new change
+- [ ] Accuracy metrics reported (% of impacts correctly predicted)
+
+#### 5.1.6 Automated Documentation Generation
+**User Story**: As a Systems Engineer, I want DeltaReq to generate the Change Request documentation automatically.
+
+**Acceptance Criteria**:
+- [ ] Generate Change Request form pre-filled with impact analysis
+- [ ] Generate updated traceability matrix (before/after)
+- [ ] Generate CCB presentation slides automatically
+- [ ] Generate updated requirements specification excerpt
+- [ ] Templates customizable for Paragon formats
+- [ ] Export to Word, PDF, PowerPoint
+
+### 5.2 Data Integration Requirements
+
+#### 5.2.1 Requirements Import
+**Acceptance Criteria**:
+- [ ] Import from Excel/CSV (common format)
+- [ ] Import from DOORS (IBM Rational DOORS .dxl export)
+- [ ] Import from Jama Connect (REST API or export)
+- [ ] Import from plain text requirements documents (PDF, Word)
+- [ ] Parse requirement IDs, text, relationships, verification methods
+- [ ] Handle requirement hierarchies (system → subsystem → component)
+
+#### 5.2.2 Design/Analysis Document Linking
+**Acceptance Criteria**:
+- [ ] Link requirements to design documents (CAD, drawings, specs)
+- [ ] Link requirements to analysis reports (FEA, CFD, thermal)
+- [ ] Link requirements to test procedures and results
+- [ ] OCR/parse documents to extract relevant sections
+- [ ] Monitor documents for changes (trigger re-analysis)
+
+### 5.3 User Interface Requirements
+
+#### 5.3.1 Core UI Components (Adapt from core_se)
+**Main Views**:
+1. **Dashboard**: Active changes, pending analysis, recent activity
+2. **Change Analysis View**: Input change, see results, drill down
+3. **Traceability Explorer**: Interactive dependency graph
+4. **Comparison View**: Side-by-side scenario comparison
+5. **History/Search**: Past changes, lessons learned
+6. **Admin/Settings**: System configuration, model training
+
+**UI Principles** (inherited from core_se):
+- Clean, professional aerospace aesthetic (not consumer app)
+- Information-dense but scannable
+- Interactive visualizations (hover, zoom, filter)
+- Keyboard shortcuts for power users
+- Export/print friendly
+- Mobile-responsive (for exec dashboards, not data entry)
+
+#### 5.3.2 Visualization Requirements
+**Acceptance Criteria**:
+- [ ] Interactive requirements dependency graph (nodes = requirements, edges = relationships)
+- [ ] Impact "heat map" showing affected areas of system
+- [ ] Timeline visualization of change propagation
+- [ ] Confidence score indicators (color-coded)
+- [ ] Change history timeline
+- [ ] Comparison matrices (scenario A vs B)
+
+**Example Graph** (adapt core_se network viz):
+```
+[REQ-001] ──impacts──> [REQ-005]
+    │                       │
+    └──impacts──> [REQ-003] ┴──impacts──> [REQ-012]
+    
+Color coding:
+  Blue = Original changed requirement
+  Orange = Direct impact (high confidence)
+  Yellow = Indirect impact (medium confidence)
+  Gray = Potential impact (low confidence)
+```
+
+---
+
+## 6. NON-FUNCTIONAL REQUIREMENTS
+
+### 6.1 Performance
+- [ ] Change analysis completes in <30 seconds for typical change (affecting <50 requirements)
+- [ ] Large change analysis (<200 requirements) completes in <2 minutes
+- [ ] Traceability graph renders instantly for <500 requirements
+- [ ] System supports 10,000+ requirements in database
+- [ ] Concurrent users: 5-10 engineers simultaneously (Paragon scale)
+
+### 6.2 Accuracy & Reliability
+- [ ] **Target**: 90%+ precision on direct impact predictions (what AI flags is truly impacted)
+- [ ] **Target**: 85%+ recall on direct impacts (AI finds 85%+ of actual impacts)
+- [ ] Confidence scores calibrated (70% confidence = 70% historical accuracy)
+- [ ] Zero false negatives on safety-critical impacts (flag everything possible, even if low confidence)
+- [ ] Graceful degradation (partial results if AI uncertain, rather than failure)
+
+### 6.3 Usability
+- [ ] Systems engineers can use without training (intuitive)
+- [ ] <5 minute onboarding for new user
+- [ ] Tooltips/help text for AI reasoning
+- [ ] Undo/redo for change scenarios
+- [ ] Responsive feedback (loading indicators, progress bars)
+
+### 6.4 Security & Compliance
+- [ ] ITAR-compliant deployment (on-prem or FedRAMP cloud)
+- [ ] Export controls for technical data
+- [ ] User authentication (SSO integration)
+- [ ] Audit logging (who analyzed what, when)
+- [ ] Data encryption at rest and in transit
+- [ ] No external AI API calls with sensitive requirements text (use local models or sanitized inputs)
+
+### 6.5 Maintainability
+- [ ] AI model retraining with new data (monthly/quarterly)
+- [ ] Model versioning and rollback capability
+- [ ] Explainability/debugging tools for AI predictions
+- [ ] Automated testing of core analysis functions
+- [ ] Documentation for administrators
+
+---
+
+## 7. TECHNICAL ARCHITECTURE
+
+### 7.1 High-Level Architecture (adapt from core_se)
+
+```
+┌─────────────────────────────────────────────────┐
+│              USER INTERFACE (Web)               │
+│  React/Next.js + Visualization Library          │
+└────────────┬────────────────────────────────────┘
+             │
+┌────────────▼────────────────────────────────────┐
+│           BACKEND API (Node.js/Python)          │
+│  - Change analysis orchestration                │
+│  - Requirements database management             │
+│  - User/session management                      │
+└────────────┬───────────┬────────────────────────┘
+             │           │
+   ┌─────────▼──┐   ┌────▼─────────────────┐
+   │ Requirements│   │   AI/ML Engine       │
+   │  Database   │   │ - Impact prediction  │
+   │  (Postgres/ │   │ - NLP on requirements│
+   │   Vector DB)│   │ - Graph analysis     │
+   └─────────────┘   └──────────────────────┘
+```
+
+### 7.2 Core Technologies (reuse from core_se where possible)
+
+**Frontend** (inherit from core_se):
+- React/Next.js for UI
+- D3.js or Cytoscape.js for graph visualization
+- Tailwind CSS for styling
+- React Query for data fetching
+
+**Backend**:
+- Node.js/Express OR Python/FastAPI (choose based on core_se stack)
+- PostgreSQL for requirements database
+- Vector database for semantic search (Pinecone, Weaviate, or pgvector)
+
+**AI/ML Stack**:
+- **LLM**: OpenAI GPT-4 or Claude API for requirements analysis (primary)
+- **Embedding Model**: sentence-transformers for semantic similarity
+- **Graph Algorithms**: NetworkX (Python) for dependency analysis
+- **Confidence Scoring**: Ensemble methods + historical calibration
+
+**Deployment**:
+- Docker containers
+- Deploy on Paragon infrastructure OR Hetzner (like n8n system)
+- Consider on-prem for ITAR compliance
+
+### 7.3 AI/ML Components
+
+#### 7.3.1 Requirements Understanding (NLP)
+- Parse requirement text to extract:
+  - Subject (what component/system)
+  - Verb (shall, should, will)
+  - Object (performance parameter, function)
+  - Conditions (operational modes, environments)
+- Example: "The cabin pressure regulator **shall maintain** 8.2 psi ± 0.3 psi during nominal operations"
+  - Subject: cabin pressure regulator
+  - Verb: shall maintain
+  - Object: pressure (8.2 psi)
+  - Condition: nominal operations
+
+#### 7.3.2 Dependency Prediction Model
+**Input Features**:
+- Semantic similarity between requirements (embeddings)
+- Explicit traceability links (parent-child)
+- Co-occurrence in design documents
+- Shared technical keywords (pressure, thermal, power, etc.)
+- System hierarchy (subsystem relationships)
+
+**Output**:
+- Probability that Requirement B is impacted by change to Requirement A
+- Confidence score (0-100%)
+
+**Training Approach**:
+1. **Supervised Learning**: Historical change data (if available)
+   - Input: Changed requirement + candidate downstream requirement
+   - Label: Was it actually impacted? (yes/no)
+2. **Similarity-Based**: Semantic similarity + graph analysis
+3. **Hybrid**: Combine both approaches
+
+#### 7.3.3 Impact Scoring Model
+**Inputs**:
+- Number of downstream requirements affected
+- Criticality of affected requirements (safety-critical, performance-critical)
+- Type of change (value change, addition, deletion, flow-down)
+- Historical similar changes (if available)
+
+**Outputs**:
+- Schedule impact estimate (days/weeks)
+- Cost impact estimate ($K)
+- Technical risk score (low/med/high)
+- Overall impact score (1-10)
+
+**Method**: Regression models trained on historical data, with fallback heuristics
+
+---
+
+## 8. DATA MODEL
+
+### 8.1 Core Entities
+
+#### Requirement
+```typescript
+interface Requirement {
+  id: string;                    // REQ-HALO-ENV-001
+  text: string;                  // Full requirement text
+  parent_id?: string;            // Hierarchical relationship
+  system: string;                // HALO, xEVAS, etc.
+  subsystem: string;             // ECLSS, Thermal, Structure
+  type: 'functional' | 'performance' | 'constraint' | 'interface';
+  criticality: 'safety-critical' | 'performance-critical' | 'normal';
+  verification_method: 'test' | 'analysis' | 'inspection' | 'demonstration';
+  
+  // Embeddings for semantic search
+  embedding: number[];           // 768-dim vector
+  
+  // Metadata
+  created_date: Date;
+  modified_date: Date;
+  status: 'draft' | 'approved' | 'changed' | 'obsolete';
+}
+```
+
+#### Traceability Link
+```typescript
+interface TraceabilityLink {
+  id: string;
+  source_req_id: string;
+  target_req_id: string;
+  relationship_type: 'parent-child' | 'derived-from' | 'verified-by' | 'impacts';
+  confidence: number;            // 0-1 (AI-generated links)
+  source: 'manual' | 'ai' | 'import';
+  rationale?: string;            // Why this link exists
+}
+```
+
+#### Change Request
+```typescript
+interface ChangeRequest {
+  id: string;
+  title: string;
+  description: string;           // Natural language change description
+  affected_req_ids: string[];    // Primary requirements being changed
+  
+  // AI Analysis Results
+  impact_analysis: {
+    downstream_reqs: {
+      req_id: string;
+      confidence: number;
+      impact_type: 'direct' | 'indirect';
+    }[];
+    schedule_impact_days: number;
+    cost_impact_usd: number;
+    technical_risk: 'low' | 'medium' | 'high';
+    overall_score: number;       // 1-10
+  };
+  
+  // CCB Tracking
+  status: 'proposed' | 'under-review' | 'approved' | 'rejected' | 'implemented';
+  submitted_by: string;
+  submitted_date: Date;
+  ccb_decision?: string;
+  actual_impact?: {              // Post-implementation feedback
+    actual_schedule_days: number;
+    actual_cost_usd: number;
+    missed_impacts: string[];    // Requirements that were impacted but AI didn't predict
+  };
+}
+```
+
+#### Design Artifact
+```typescript
+interface DesignArtifact {
+  id: string;
+  type: 'cad' | 'analysis' | 'test-procedure' | 'specification';
+  title: string;
+  file_path: string;
+  linked_req_ids: string[];      // Requirements this artifact addresses
+  content_summary?: string;      // AI-extracted summary
+  last_modified: Date;
+}
+```
+
+### 8.2 Database Schema (PostgreSQL)
+```sql
+-- Core tables
+CREATE TABLE requirements (...);
+CREATE TABLE traceability_links (...);
+CREATE TABLE change_requests (...);
+CREATE TABLE design_artifacts (...);
+
+-- Vector search extension for semantic similarity
+CREATE EXTENSION vector;
+ALTER TABLE requirements ADD COLUMN embedding vector(768);
+CREATE INDEX ON requirements USING ivfflat (embedding vector_cosine_ops);
+```
+
+---
+
+## 9. USER WORKFLOWS
+
+### 9.1 Workflow 1: Analyze Proposed Change
+
+**Actor**: Systems Engineer (Sarah)
+
+**Steps**:
+1. Sarah opens DeltaReq and clicks "New Change Analysis"
+2. She types/pastes change description:
+   ```
+   "Increase HALO cabin pressure from 8.2 to 10.2 psi to enable 
+   EVA operations without pre-breathe protocol"
+   ```
+3. DeltaReq AI:
+   - Identifies affected baseline requirement(s)
+   - Searches for semantically similar requirements
+   - Analyzes dependency graph for downstream impacts
+   - Predicts schedule/cost/risk
+4. Results displayed in <30 seconds:
+   - List of impacted requirements (with confidence scores)
+   - Visual dependency graph
+   - Impact summary dashboard
+   - Suggested mitigation strategies
+5. Sarah reviews results:
+   - Clicks on specific impacted requirement to see rationale
+   - Adds manual traceability link AI missed
+   - Marks some AI predictions as incorrect (training data)
+6. Sarah exports:
+   - Change Request form (pre-filled Word doc)
+   - Traceability matrix (Excel)
+   - CCB presentation (PowerPoint)
+7. Sarah submits Change Request to CCB with AI-generated documentation
+
+**Time Saved**: 3 hours → 15 minutes (92% reduction)
+
+### 9.2 Workflow 2: Change Control Board Review
+
+**Actor**: Program Manager (Mike), Chief Engineer (Dr. Martinez)
+
+**Steps**:
+1. Mike receives Change Request with DeltaReq impact analysis
+2. He opens DeltaReq dashboard to review:
+   - Overall impact score (7/10 - Medium-High)
+   - Schedule impact (6-8 weeks)
+   - Cost impact ($180K-$250K)
+   - 12 downstream requirements affected
+3. Mike compares to similar past changes (DeltaReq shows historical data)
+4. During CCB meeting:
+   - Dr. Martinez questions confidence on structural impact (95%)
+   - DeltaReq shows reasoning: "Pressure vessel design directly driven by cabin pressure requirement (REQ-HALO-ENV-001 → REQ-HALO-STRUCT-015)"
+   - Dr. Martinez accepts rationale
+5. CCB approves change with understanding of full impact
+6. Post-implementation: Sarah logs actual impact for AI learning
+
+### 9.3 Workflow 3: Maintain Traceability Matrix
+
+**Actor**: Systems Engineer (Sarah)
+
+**Steps**:
+1. **Old way** (manual): 
+   - Open Excel traceability matrix
+   - Add new requirement
+   - Manually identify parent/child relationships
+   - Update verification cross-reference matrix
+   - Time: 30-60 minutes per requirement
+2. **DeltaReq way**:
+   - Import new requirement from DOORS
+   - DeltaReq AI automatically:
+     - Suggests parent requirements (semantic similarity)
+     - Proposes child requirements (derived needs)
+     - Links to relevant design artifacts
+     - Identifies verification method
+   - Sarah reviews and approves suggestions (2 minutes)
+   - Export updated matrix for audit
+   - Time: 2-5 minutes per requirement
+
+**Time Saved**: 90-95% reduction in traceability maintenance
+
+---
+
+## 10. SUCCESS METRICS
+
+### 10.1 User Adoption Metrics
+- **Target**: 80% of systems engineers use DeltaReq for change analysis within 3 months
+- **Target**: 100% of Change Requests include DeltaReq impact analysis within 6 months
+- Active users per week
+- Changes analyzed per month
+- User satisfaction score (survey)
+
+### 10.2 Efficiency Metrics
+- **Target**: 80% time reduction in change impact analysis (3 hours → 30 min)
+- **Target**: 90% time reduction in traceability maintenance
+- Time per change analysis (before/after)
+- Manual traceability hours per month (before/after)
+- Change Request cycle time (submission → CCB decision)
+
+### 10.3 Quality Metrics
+- **Target**: 90% precision, 85% recall on impact predictions
+- **Target**: 95% of AI-predicted impacts confirmed as real
+- **Target**: <5% missed impacts (false negatives) on safety-critical changes
+- Precision: (True Positives) / (True Positives + False Positives)
+- Recall: (True Positives) / (True Positives + False Negatives)
+- User corrections per analysis (lower is better)
+- Traceability completeness score
+
+### 10.4 Business Impact Metrics
+- **Target**: 30% reduction in late-stage rework from missed requirements changes
+- **Target**: 20% reduction in Change Control Board meeting time
+- Rework hours saved (estimated)
+- Schedule delays prevented (estimated)
+- Cost of late-stage changes avoided
+- CCB meeting duration (before/after)
+
+### 10.5 AI Model Performance Metrics
+- Prediction accuracy over time (improving?)
+- Confidence score calibration (70% confidence = 70% accuracy?)
+- Model inference time (latency)
+- User feedback incorporation rate
+
+---
+
+## 11. DEVELOPMENT PHASES
+
+### 11.1 Phase 1: MVP (Weeks 1-4)
+**Goal**: Working demo for Paragon leadership presentation
+
+**Features**:
+- [ ] Basic requirements import (CSV/Excel)
+- [ ] Change description input (text box)
+- [ ] AI impact analysis (using GPT-4 API)
+  - Semantic similarity search for affected requirements
+  - Simple dependency graph analysis
+  - Impact list with confidence scores
+- [ ] Visual dependency graph (adapt core_se visualization)
+- [ ] Export to PDF report
+- [ ] Deploy on Hetzner (like n8n)
+
+**Success Criteria**:
+- Demo-able for C-suite
+- Analyze realistic Paragon change in <1 minute
+- Generates impressive visual output
+
+### 11.2 Phase 2: Pilot (Weeks 5-12)
+**Goal**: Real usage by 2-3 Paragon systems engineers on real programs
+
+**Features**:
+- [ ] DOORS import integration
+- [ ] Traceability matrix auto-generation
+- [ ] Historical change tracking (database)
+- [ ] User feedback mechanism (thumbs up/down on predictions)
+- [ ] Improved AI model (fine-tuned on Paragon data)
+- [ ] Change scenario comparison
+- [ ] Export to Word/Excel/PowerPoint templates
+
+**Success Criteria**:
+- 3 engineers using weekly
+- 10+ real changes analyzed
+- Positive user feedback
+- Measurable time savings
+
+### 11.3 Phase 3: Production (Weeks 13-24)
+**Goal**: Production-ready tool for all Paragon systems engineering
+
+**Features**:
+- [ ] Multi-program support (HALO, xEVAS, etc.)
+- [ ] SSO authentication
+- [ ] Audit logging and compliance features
+- [ ] Advanced AI (learn from historical data)
+- [ ] Integration with Paragon's existing requirements tools
+- [ ] Mobile-responsive dashboard for executives
+- [ ] Automated traceability monitoring (alerts when requirements change)
+- [ ] ITAR-compliant deployment
+
+**Success Criteria**:
+- All systems engineers onboarded
+- Embedded in Change Control Board process
+- Documented ROI (time/cost savings)
+- Production SLA (99% uptime)
+
+---
+
+## 12. TECHNICAL RISKS & MITIGATIONS
+
+### 12.1 AI Accuracy Risk
+**Risk**: AI predictions are inaccurate, causing engineers to lose trust
+
+**Mitigations**:
+- Start with high confidence threshold (only show 80%+ confidence predictions)
+- Always show confidence scores prominently
+- Allow users to provide feedback (improve over time)
+- Human-in-the-loop: Engineer reviews all predictions before acting
+- Conservative bias: Flag possible impacts even if uncertain (false positives better than false negatives for safety)
+
+### 12.2 Data Quality Risk
+**Risk**: Paragon's requirements data is inconsistent/incomplete, AI can't learn
+
+**Mitigations**:
+- Start with cleanest dataset available (e.g., HALO program)
+- Data cleaning phase before AI training
+- Graceful degradation (work with imperfect data)
+- Manual traceability fallback if AI uncertain
+
+### 12.3 Integration Risk
+**Risk**: Can't integrate with Paragon's existing requirements tools (DOORS, Jama)
+
+**Mitigations**:
+- Phase 1: Manual export/import (CSV) - MVP doesn't require integration
+- Phase 2: One-way sync (import from DOORS)
+- Phase 3: Two-way sync if needed
+- API-based integration where possible
+
+### 12.4 ITAR/Security Risk
+**Risk**: Requirements data is export-controlled, can't use external AI APIs
+
+**Mitigations**:
+- On-premises deployment option
+- Sanitize requirements text before sending to AI (remove specific technical details)
+- Use local LLM models (e.g., Llama 2) instead of API
+- Get ITAR review before deployment
+
+### 12.5 User Adoption Risk
+**Risk**: Engineers resist using AI tool, prefer manual methods
+
+**Mitigations**:
+- Start with volunteers (early adopters)
+- Demonstrate clear time savings (80%+ reduction)
+- Don't force usage initially (opt-in pilot)
+- Address concerns transparently
+- Celebrate successes publicly
+
+---
+
+## 13. DEPENDENCIES & ASSUMPTIONS
+
+### 13.1 Dependencies
+- **core_se codebase**: Reusing UI framework, visualization components
+- **Paragon requirements data**: Access to DOORS/Jama exports for training
+- **AI API access**: OpenAI GPT-4 or Claude (or approval for on-prem models)
+- **IT infrastructure**: Server/cloud for deployment
+- **User availability**: 2-3 systems engineers for pilot testing
+
+### 13.2 Assumptions
+- Paragon has structured requirements database (DOORS or similar) - **Verify this**
+- Historical change request data exists (for training) - **Verify availability**
+- Systems engineers have time to participate in pilot (3-5 hours/week) - **Get commitment**
+- Leadership will support Change Control Board process integration - **Secure executive sponsor**
+- ITAR restrictions allow AI usage with mitigations - **Get legal review**
+
+---
+
+## 14. FUTURE ENHANCEMENTS (Post-V1)
+
+### 14.1 Advanced AI Features
+- **Generative design suggestions**: AI proposes alternative designs to minimize change impact
+- **Predictive maintenance**: Monitor requirements for conflicts/inconsistencies proactively
+- **Automated test case generation**: Generate test procedures from changed requirements
+- **Natural language requirements authoring**: AI helps write better requirements
+
+### 14.2 Expanded Integrations
+- CAD integration (SolidWorks, CATIA) - link requirements to 3D models
+- PLM integration (Windchill, Teamcenter)
+- Project management tools (MS Project, Jira)
+- Automated document parsing (extract requirements from PDFs)
+
+### 14.3 Collaboration Features
+- Real-time collaborative change analysis (multiple engineers)
+- Commenting/discussion threads on predicted impacts
+- Change request workflow (routing, approvals)
+- Notifications/alerts for affected engineers
+
+### 14.4 Advanced Analytics
+- Churn prediction: Which requirements are likely to change?
+- Requirements quality scoring: Identify poorly-written requirements
+- Program health dashboard: Requirements metrics over time
+- Benchmarking: Compare to industry standards
+
+---
+
+## 15. PARAGON-SPECIFIC CONSIDERATIONS
+
+### 15.1 Initial Target Programs
+**Recommended Start**: HALO ECLSS (Best fit)
+- Well-defined requirements baseline
+- Active program with ongoing changes
+- Medium complexity (not too simple, not overwhelming)
+- Safety-critical (high value if AI reduces risk)
+
+**Alternative**: Starlab AUP
+- Smaller scope, faster validation
+- Newer program, may have cleaner requirements
+
+**Avoid for MVP**: xEVAS
+- Too large and complex for initial demo
+- Requirements may still be in flux
+
+### 15.2 Stakeholder Alignment
+**Critical Champions**:
+- VP of Engineering (must approve pilot)
+- Lead Systems Engineer on target program (primary user)
+- Program Manager (sees value in schedule/cost impact)
+
+**Potential Skeptics**:
+- Senior engineers with tribal knowledge ("AI can't replace my expertise")
+- IT (integration concerns)
+- Quality (compliance with AS9100)
+
+**Engagement Strategy**:
+- Demo to VP of Engineering first (get technical buy-in)
+- Co-design pilot with lead SE (they're a partner, not a subject)
+- Present to Chief Engineer early (leverage their influence)
+
+### 15.3 Compliance Considerations
+**AS9100 Requirements Management**:
+- Traceability must be auditable (AI must explain reasoning)
+- Human approval required for all changes (AI is decision support, not decision maker)
+- Document retention (save all AI analysis results)
+- Configuration management (baseline requirements versions)
+
+**Human-Rating Requirements**:
+- Safety-critical changes require extra scrutiny
+- AI can flag safety impacts but not approve them
+- Chief Engineer must review AI analysis for safety-critical changes
+
+---
+
+## 16. GO-TO-MARKET STRATEGY (Internal)
+
+### 16.1 Positioning for C-Suite Presentation
+**Narrative Arc**:
+1. **Problem**: Requirements changes cause 30-50% of development rework, waste hundreds of engineering hours
+2. **Current State**: Manual traceability, tribal knowledge, hope-based impact analysis
+3. **Solution**: AI that predicts impacts in seconds, not hours
+4. **Proof**: Demo on realistic Paragon example (e.g., HALO cabin pressure change)
+5. **Value**: 80% time savings, reduced rework, better CCB decisions
+6. **Risk**: Mitigated (human-in-the-loop, pilot approach)
+7. **Investment**: Low (leverage core_se code, Hetzner infrastructure)
+8. **Timeline**: Demo ready (now), Pilot in Q2, Production in Q3/Q4
+9. **Strategic**: Positions Paragon as AI leader, competitive advantage
+
+**Key Messages**:
+- "Transform requirements management from bureaucratic overhead to strategic advantage"
+- "Eliminate 80% of manual traceability work while improving quality"
+- "Make data-driven Change Control Board decisions with confidence"
+- "This is what AI transformation looks like in practice"
+
+### 16.2 Pilot Recruitment Strategy
+**Identify Early Adopters**:
+- Respected senior engineer who's tech-savvy
+- Systems engineer who openly complains about traceability matrices
+- Program manager who's frustrated with change-driven replanning
+
+**Pitch to Pilot Users**:
+- "I'll save you 3 hours per week on traceability - interested?"
+- "You still make all decisions, AI just does the tedious analysis"
+- "Help me build this tool - your feedback shapes it"
+- "If it doesn't work, we stop - no commitment beyond pilot"
+
+**Pilot Success Factors**:
+- Weekly 1:1 check-ins for support and feedback
+- Quick bug fixes (< 24 hour turnaround)
+- Celebrate their successes publicly
+- Make them look good to their management
+
+---
+
+## 17. OPEN QUESTIONS (To Resolve)
+
+### 17.1 Technical Questions
+- [ ] What requirements management tool does Paragon use? (DOORS, Jama, Excel, other?)
+- [ ] Can we get export data for training? What format?
+- [ ] Does Paragon have historical Change Request data? How much?
+- [ ] What's Paragon's IT approval process for new tools?
+- [ ] On-prem or cloud deployment preferred? ITAR restrictions?
+
+### 17.2 Business Questions
+- [ ] Who is the executive sponsor for this project?
+- [ ] What's the budget for AI transformation Phase 1? (DeltaReq is one initiative)
+- [ ] When is the C-suite presentation scheduled?
+- [ ] Which program is best target for pilot? (HALO, Starlab, other?)
+- [ ] Can we get 2-3 volunteer systems engineers for pilot? Who?
+
+### 17.3 Product Questions
+- [ ] Should DeltaReq integrate with n8n BD system? (e.g., requirements changes trigger BD intelligence search?)
+- [ ] Does Paragon want to publish/patent this? (Or keep internal only?)
+- [ ] Should we plan external licensing/sales eventually? (Or purely internal tool?)
+
+---
+
+## 18. APPENDIX: COMPETITIVE LANDSCAPE
+
+### 18.1 Existing Requirements Management Tools
+**IBM Rational DOORS**:
+- Industry standard for aerospace
+- Strengths: Traceability, compliance, baselining
+- Weaknesses: No AI, manual everything, clunky UI, expensive
+
+**Jama Connect**:
+- Modern alternative to DOORS
+- Strengths: Better UX, collaboration, API
+- Weaknesses: Still no AI, manual traceability
+
+**Visure Requirements**:
+- European alternative
+- Similar to DOORS/Jama
+
+### 18.2 Emerging AI Solutions
+**None specifically for requirements change management in aerospace**
+
+Some startups doing adjacent things:
+- Requirements authoring assistants (writing better requirements)
+- Test case generation from requirements
+- Requirements quality checking
+
+**DeltaReq Differentiation**:
+- **First-to-market** for AI-powered change impact analysis in aerospace
+- Aerospace-specific (understands safety-critical, human-rating)
+- Change-focused (not just requirements storage)
+- Proactive (predict impacts before changes approved)
+
+### 18.3 Patent Potential
+Possible claims:
+- "AI-powered requirements change impact prediction system for safety-critical systems"
+- "Automated traceability maintenance using semantic analysis and graph algorithms"
+- "Confidence-scored requirements dependency prediction with human-in-the-loop validation"
+
+**Recommendation**: File provisional patent after pilot demonstrates value (establishes prior art, protects Paragon IP)
+
+---
+
+## 19. DELIVERABLES CHECKLIST
+
+### 19.1 Phase 1 Deliverables (Week 4)
+- [ ] Working demo application (deployed)
+- [ ] Demo video (3-5 minutes)
+- [ ] C-suite presentation deck (15-20 slides)
+- [ ] Technical architecture document
+- [ ] Sample analysis on Paragon requirement change
+- [ ] ROI calculation spreadsheet
+
+### 19.2 Phase 2 Deliverables (Week 12)
+- [ ] Pilot-ready application with all core features
+- [ ] User documentation (quick start guide, video tutorials)
+- [ ] Pilot charter document (scope, success criteria, timeline)
+- [ ] Pilot results report (quantitative + qualitative)
+- [ ] Go/no-go recommendation for production
+
+### 19.3 Phase 3 Deliverables (Week 24)
+- [ ] Production-ready application (tested, secure, scalable)
+- [ ] Administrator documentation
+- [ ] User training materials (recorded sessions)
+- [ ] Integration documentation (DOORS, Jama, etc.)
+- [ ] Success metrics dashboard
+- [ ] Lessons learned report
+- [ ] ICES conference paper update (post-implementation results)
+
+---
+
+## SUMMARY: QUICK REFERENCE
+
+**Product**: DeltaReq - AI-Powered Requirements Change Management
+
+**Core Value Prop**: Analyze requirements changes and predict full system impact in 30 seconds instead of 3 hours, with automated traceability and data-driven CCB decisions.
+
+**Primary User**: Systems Engineers managing requirements baselines on aerospace programs
+
+**Key Features**:
+1. Natural language change analysis
+2. AI-powered impact prediction
+3. Automated traceability maintenance
+4. Change scenario comparison
+5. CCB-ready documentation generation
+
+**Success Metrics**:
+- 80% time savings in change analysis
+- 90% accuracy on impact predictions
+- 100% Change Requests include AI analysis within 6 months
+
+**Technical Approach**:
+- Reuse core_se UI framework and visualization
+- LLM (GPT-4/Claude) for requirements understanding
+- Semantic search + graph analysis for dependency mapping
+- PostgreSQL + vector database for storage
+
+**Development Timeline**:
+- Week 4: Demo ready for C-suite
+- Week 12: Pilot complete with 3 engineers
+- Week 24: Production deployment across Paragon SE teams
+
+**Strategic Context**:
+- Phase 1 proof-of-concept #2 (after n8n BD system)
+- Demonstrates AI eliminating manual processes systematically
+- Leverage for formalizing AI transformation role at Paragon
+- Internal tool, not external product (for now)
+

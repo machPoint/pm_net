@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OPAL Admin Panel</title>
+  <link rel="stylesheet" href="css/admin.css">
+</head>
+<body>
+  <div id="app">
+    <!-- Login Form (shown if not authenticated) -->
+    <div id="login-container" class="login-form">
+      <h2>OPAL Admin Login</h2>
+      <div class="form-group">
+        <label for="username">Username</label>
+        <input type="text" id="username" placeholder="Enter username">
+      </div>
+      <div class="form-group">
+        <label for="password">Password</label>
+        <input type="password" id="password" placeholder="Enter password">
+      </div>
+      <button id="login-button">Login</button>
+      <div id="login-error" class="error-message"></div>
+    </div>
+
+    <!-- Main Admin Panel (shown after authentication) -->
+    <div id="admin-panel" style="display: none;">
+      <header>
+        <h1>OPAL Admin Panel</h1>
+        <div>
+          <span id="user-info"></span>
+          <button id="logout-button">Logout</button>
+        </div>
+      </header>
+      
+      <div class="container">
+        <div class="nav-tabs">
+          <div class="nav-tab active" data-tab="memories">Memories</div>
+          <div class="nav-tab" data-tab="tool-runs">Tool Runs</div>
+          <div class="nav-tab" data-tab="api-tokens">API Tokens</div>
+          <div class="nav-tab" data-tab="backups">Backups</div>
+        </div>
+        
+        <!-- Memories Tab -->
+        <div id="memories-tab" class="tab-content active">
+          <h2>Memory Management</h2>
+          <div class="search-form mb-20">
+            <input type="text" id="memory-search" placeholder="Search memories...">
+            <button id="search-memory-button">Search</button>
+          </div>
+          <button id="create-memory-button" class="success">Create Memory</button>
+          <table id="memories-table">
+            <thead>
+              <tr>
+                <th>Title</th>
+                <th>Content</th>
+                <th>Created</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="memories-list">
+              <!-- Memory items will be inserted here -->
+            </tbody>
+          </table>
+        </div>
+        
+        <!-- Tool Runs Tab -->
+        <div id="tool-runs-tab" class="tab-content">
+          <h2>Tool Run Audit Log</h2>
+          
+          <!-- Stats section -->
+          <div class="stats-container mb-20">
+            <div class="stat-box">
+              <h3>Total Runs</h3>
+              <div id="total-runs" class="stat-value">0</div>
+            </div>
+            <div class="stat-box">
+              <h3>Average Duration</h3>
+              <div id="avg-duration" class="stat-value">0ms</div>
+            </div>
+            <div class="stat-box wide">
+              <h3>Most Used Tools</h3>
+              <div id="top-tools" class="stat-list"></div>
+            </div>
+          </div>
+          
+          <!-- Filters -->
+          <div class="filter-container mb-20">
+            <h3>Filter Tool Runs</h3>
+            <div class="filter-form">
+              <div class="filter-group">
+                <label for="filter-tool-name">Tool Name</label>
+                <input type="text" id="filter-tool-name">
+              </div>
+              <div class="filter-group">
+                <label for="filter-status">Status</label>
+                <select id="filter-status">
+                  <option value="">All</option>
+                  <option value="completed">Completed</option>
+                  <option value="failed">Failed</option>
+                </select>
+              </div>
+              <div class="filter-group">
+                <label for="filter-date">Date Range</label>
+                <input type="date" id="filter-date">
+              </div>
+              <div class="filter-buttons">
+                <button id="filter-tool-runs-button">Apply Filters</button>
+                <button id="reset-tool-runs-button">Reset</button>
+              </div>
+            </div>
+          </div>
+          
+          <table id="tool-runs-table">
+            <thead>
+              <tr>
+                <th>Tool</th>
+                <th>Parameters</th>
+                <th>Status</th>
+                <th>Duration</th>
+                <th>Executed At</th>
+              </tr>
+            </thead>
+            <tbody id="tool-runs-list">
+              <!-- Tool run items will be inserted here -->
+            </tbody>
+          </table>
+        </div>
+        
+        <!-- API Tokens Tab -->
+        <div id="api-tokens-tab" class="tab-content">
+          <h2>API Token Management</h2>
+          <div class="flex space-between align-center mb-20">
+            <p>Create and manage API tokens for accessing the OPAL API.</p>
+            <button id="create-token-button" class="success">Create Token</button>
+          </div>
+          <table id="tokens-table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Token</th>
+                <th>Permissions</th>
+                <th>Expires</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="tokens-list">
+              <!-- Token items will be inserted here -->
+            </tbody>
+          </table>
+        </div>
+        
+        <!-- Backups Tab -->
+        <div id="backups-tab" class="tab-content">
+          <h2>Database Backup & Restore</h2>
+          <button id="create-backup-button">Create Backup</button>
+          <table id="backups-table">
+            <thead>
+              <tr>
+                <th>Filename</th>
+                <th>Created</th>
+                <th>Size</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="backups-list">
+              <!-- Backup items will be inserted here -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Memory Modal -->
+  <div id="memory-modal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 id="memory-form-title">Create New Memory</h3>
+        <span class="close-modal close-memory-modal">&times;</span>
+      </div>
+      <form id="memory-form">
+        <input type="hidden" id="memory-id">
+        <div class="form-group">
+          <label for="memory-title">Title</label>
+          <input type="text" id="memory-title" placeholder="Memory title" required>
+        </div>
+        <div class="form-group">
+          <label for="memory-content">Content</label>
+          <textarea id="memory-content" rows="6" placeholder="Memory content" required></textarea>
+        </div>
+        <div class="form-group">
+          <label for="memory-metadata">Metadata (JSON)</label>
+          <textarea id="memory-metadata" rows="4" placeholder="{}"></textarea>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="close-memory-modal">Cancel</button>
+          <button type="submit" class="success">Save Memory</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Token Modal -->
+  <div id="token-modal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Create API Token</h3>
+        <span class="close-modal close-token-modal">&times;</span>
+      </div>
+      <form id="token-form">
+        <div class="form-group">
+          <label for="token-name">Name</label>
+          <input type="text" id="token-name" placeholder="Token name" required>
+        </div>
+        <div class="form-group">
+          <label>Permissions</label>
+          <div class="checkbox-group">
+            <label>
+              <input type="checkbox" id="perm-read" checked> Read
+            </label>
+            <label>
+              <input type="checkbox" id="perm-write"> Write
+            </label>
+            <label>
+              <input type="checkbox" id="perm-admin"> Admin
+            </label>
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="token-expiry">Expires In (days)</label>
+          <input type="number" id="token-expiry" value="30" min="1" max="365">
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="close-token-modal">Cancel</button>
+          <button type="submit" class="success">Create Token</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Load JavaScript files -->
+  <script src="js/admin.js"></script>
+  <script src="js/memory-manager.js"></script>
+  <script src="js/token-manager.js"></script>
+  <script src="js/backup-manager.js"></script>
+  <script src="js/audit-manager.js"></script>
+</body>
+</html>

@@ -1,0 +1,219 @@
+/* MCP Inspector Styles */
+body {
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  height: 100vh;
+  background-color: #1e1e1e;
+  color: #d4d4d4;
+}
+
+#app {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100vh;
+}
+
+header {
+  background-color: #252526;
+  padding: 10px 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid #333;
+}
+
+header h1 {
+  margin: 0;
+  color: #9cdcfe;
+}
+
+.container {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+#controls {
+  flex: 0 0 500px;
+  padding: 10px;
+  overflow-y: auto;
+  border-right: 1px solid #333;
+  background-color: #252526;
+}
+
+#log-area {
+  flex: 1;
+  padding: 10px;
+  overflow-y: auto;
+  background-color: #1e1e1e;
+}
+
+h1 {
+  margin-top: 0;
+  color: #9cdcfe;
+}
+
+h2 {
+  color: #ce9178;
+  border-bottom: 1px solid #333;
+  padding-bottom: 5px;
+  margin-top: 20px;
+}
+
+label {
+  color: #d4d4d4;
+  display: inline-block;
+  margin-bottom: 5px;
+}
+
+input, select, textarea, button {
+  background-color: #3c3c3c;
+  color: #d4d4d4;
+  border: 1px solid #555;
+  padding: 5px;
+  margin: 5px 0;
+  border-radius: 3px;
+}
+
+input:focus, select:focus, textarea:focus {
+  outline: 2px solid #0e639c;
+  outline-offset: -1px;
+}
+
+button {
+  cursor: pointer;
+  background-color: #0e639c;
+  border-color: #0e639c;
+  color: white;
+  padding: 5px 10px;
+  margin-right: 5px;
+}
+
+button:hover:not(:disabled) {
+  background-color: #1177bb;
+}
+
+button:disabled {
+  background-color: #555;
+  border-color: #555;
+  color: #888;
+  cursor: not-allowed;
+}
+
+.log-entry {
+  margin-bottom: 10px;
+  white-space: pre-wrap;
+  font-family: 'Consolas', monospace;
+  font-size: 14px;
+}
+
+.timestamp {
+  color: #569cd6;
+  font-size: 0.8em;
+}
+
+.info {
+  color: #9cdcfe;
+}
+
+.error {
+  color: #f44747;
+}
+
+.success {
+  color: #6a9955;
+}
+
+.sent {
+  color: #ce9178;
+}
+
+.received {
+  color: #b5cea8;
+}
+
+.session-info {
+  background-color: #2d2d2d;
+  padding: 10px;
+  border-radius: 3px;
+  margin: 10px 0;
+}
+
+.status-initialized {
+  color: #6a9955;
+}
+
+.api-test-panel {
+  background-color: #2d2d2d;
+  padding: 15px;
+  border-radius: 5px;
+  margin-top: 10px;
+  border-left: 4px solid #ce9178;
+}
+
+.api-test-panel label {
+  display: inline-block;
+  width: 100px;
+  margin-bottom: 8px;
+}
+
+.api-test-panel input, .api-test-panel select {
+  width: 300px;
+}
+
+.api-test-panel textarea {
+  width: 100%;
+  margin-top: 5px;
+}
+
+.api-test-panel button {
+  margin-top: 10px;
+  background-color: #ce9178;
+  border-color: #ce9178;
+}
+
+.api-test-panel button:hover:not(:disabled) {
+  background-color: #d7a790;
+}
+
+.endpoint-note {
+  font-size: 0.8em;
+  color: #888;
+  margin: 5px 0 10px 100px;
+  padding: 8px;
+  background-color: #333;
+  border-radius: 3px;
+  border-left: 2px solid #888;
+}
+
+.endpoint-note ul {
+  margin: 5px 0 0 0;
+  padding-left: 20px;
+}
+
+.endpoint-note li {
+  margin-bottom: 3px;
+}
+
+.log-info {
+  color: #9cdcfe;
+}
+
+.log-error {
+  color: #f44747;
+}
+
+.log-success {
+  color: #6a9955;
+}
+
+.log-sent {
+  color: #ce9178;
+}
+
+.log-received {
+  color: #b5cea8;
+}

@@ -1,0 +1,33 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "API Integration",
+  "type": "object",
+  "required": ["name", "baseUrl", "resourcesPath", "resourceIdPath", "endpoints"],
+  "properties": {
+    "name": { "type": "string" },
+    "baseUrl": { "type": "string" },
+    "resourcesPath": { "type": "string" },
+    "resourceIdPath": { "type": "string" },
+    "endpoints": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["method", "path"],
+        "properties": {
+          "method": { "type": "string" },
+          "path": { "type": "string" },
+          "description": { "type": "string" }
+        }
+      }
+    },
+    "auth": {
+      "type": ["object", "null"],
+      "properties": {
+        "type": { "type": "string" },
+        "token": { "type": "string" }
+      },
+      "required": ["type"]
+    }
+  },
+  "additionalProperties": false
+}

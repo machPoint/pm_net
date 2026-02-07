@@ -1,0 +1,211 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: 0 0% 100%;
+  --foreground: 0 0% 9%;
+  --card: 0 0% 100%;
+  --card-foreground: 0 0% 9%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 0 0% 9%;
+  --primary: 0 0% 20%;
+  --primary-foreground: 0 0% 98%;
+  --secondary: 0 0% 96%;
+  --secondary-foreground: 0 0% 9%;
+  --muted: 0 0% 96%;
+  --muted-foreground: 0 0% 45%;
+  --accent: 0 0% 96%;
+  --accent-foreground: 0 0% 9%;
+  --destructive: 0 84.2% 60.2%;
+  --destructive-foreground: 0 0% 98%;
+  --border: 0 0% 89%;
+  --input: 0 0% 89%;
+  --ring: 0 0% 20%;
+  --radius: 0.5rem;
+  --sidebar-background: 0 0% 98%;
+  --sidebar-foreground: 0 0% 9%;
+  --sidebar-primary: 0 0% 20%;
+  --sidebar-primary-foreground: 0 0% 98%;
+  --sidebar-accent: 0 0% 94%;
+  --sidebar-accent-foreground: 0 0% 9%;
+  --sidebar-border: 0 0% 89%;
+  --sidebar-ring: 0 0% 20%;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+}
+
+.dark {
+  --background: 0 0% 9%;
+  --foreground: 0 0% 98%;
+  --card: 0 0% 9%;
+  --card-foreground: 0 0% 98%;
+  --popover: 0 0% 9%;
+  --popover-foreground: 0 0% 98%;
+  --primary: 0 0% 98%;
+  --primary-foreground: 0 0% 9%;
+  --secondary: 0 0% 15%;
+  --secondary-foreground: 0 0% 98%;
+  --muted: 0 0% 15%;
+  --muted-foreground: 0 0% 65%;
+  --accent: 0 0% 15%;
+  --accent-foreground: 0 0% 98%;
+  --destructive: 0 62.8% 30.6%;
+  --destructive-foreground: 0 0% 98%;
+  --border: 0 0% 15%;
+  --input: 0 0% 15%;
+  --ring: 0 0% 83%;
+  --sidebar-background: 0 0% 9%;
+  --sidebar-foreground: 0 0% 98%;
+  --sidebar-primary: 0 0% 98%;
+  --sidebar-primary-foreground: 0 0% 9%;
+  --sidebar-accent: 0 0% 15%;
+  --sidebar-accent-foreground: 0 0% 98%;
+  --sidebar-border: 0 0% 15%;
+  --sidebar-ring: 0 0% 83%;
+  --thumb-bg: #666666;
+}
+
+/* Force dark scrollbar styling for Radix ScrollArea */
+.dark [data-radix-scroll-area-thumb] {
+  background-color: #666666 !important;
+}
+
+.dark [data-radix-scroll-area-thumb]:hover {
+  background-color: #777777 !important;
+}
+
+.dark [data-slot="scroll-area-thumb"] {
+  background-color: #666666 !important;
+}
+
+.dark [data-slot="scroll-area-thumb"]:hover {
+  background-color: #777777 !important;
+}
+
+/* Additional targeting for any scrollbar thumb elements */
+.dark .scroll-area-thumb,
+.dark [role="scrollbar"] > div {
+  background-color: #666666 !important;
+}
+
+.dark .scroll-area-thumb:hover,
+.dark [role="scrollbar"] > div:hover {
+  background-color: #777777 !important;
+}
+
+/* Native scrollbar styling for dark mode */
+.dark .dark-scrollbar-native::-webkit-scrollbar {
+  width: 8px;
+}
+
+.dark .dark-scrollbar-native::-webkit-scrollbar-track {
+  background: #1a1a1a;
+  border-radius: 4px;
+}
+
+.dark .dark-scrollbar-native::-webkit-scrollbar-thumb {
+  background: #666666;
+  border-radius: 4px;
+  border: 1px solid #333333;
+}
+
+.dark .dark-scrollbar-native::-webkit-scrollbar-thumb:hover {
+  background: #777777;
+}
+
+/* Custom scrollbar styling for dark mode */
+.dark-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: hsl(0 0% 25%) hsl(0 0% 9%);
+}
+
+.dark-scrollbar::-webkit-scrollbar {
+  width: 8px;
+}
+
+.dark-scrollbar::-webkit-scrollbar-track {
+  background: hsl(0 0% 9%);
+  border-radius: 4px;
+}
+
+.dark-scrollbar::-webkit-scrollbar-thumb {
+  background: hsl(0 0% 25%);
+  border-radius: 4px;
+  border: 1px solid hsl(0 0% 15%);
+}
+
+.dark-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: hsl(0 0% 35%);
+}
+
+/* Light mode scrollbar styling */
+.light-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: hsl(0 0% 75%) hsl(0 0% 96%);
+}
+
+.light-scrollbar::-webkit-scrollbar {
+  width: 8px;
+}
+
+.light-scrollbar::-webkit-scrollbar-track {
+  background: hsl(0 0% 96%);
+  border-radius: 4px;
+}
+
+.light-scrollbar::-webkit-scrollbar-thumb {
+  background: hsl(0 0% 75%);
+  border-radius: 4px;
+  border: 1px solid hsl(0 0% 89%);
+}
+
+.light-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: hsl(0 0% 65%);
+}
+
+/* Resizable panel handle styles */
+.resize-handle {
+  position: relative;
+  transition: all 0.2s ease;
+}
+
+.resize-handle:hover {
+  background-color: hsl(var(--border));
+}
+
+.resize-handle::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 4px;
+  height: 40px;
+  background-color: hsl(var(--border));
+  border-radius: 2px;
+  transform: translate(-50%, -50%);
+  transition: all 0.2s ease;
+  opacity: 0.6;
+}
+
+.resize-handle:hover::before {
+  background-color: hsl(var(--primary));
+  opacity: 1;
+}
+
+.dark .resize-handle::before {
+  background-color: hsl(var(--border));
+}
+
+.dark .resize-handle:hover::before {
+  background-color: hsl(var(--primary));
+}

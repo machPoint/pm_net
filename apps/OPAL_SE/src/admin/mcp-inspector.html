@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OPAL MCP Inspector</title>
+  <link rel="stylesheet" href="css/admin.css">
+  <link rel="stylesheet" href="css/mcp-inspector.css">
+</head>
+<body>
+  <div id="app">
+    <header>
+      <h1>OPAL MCP Inspector</h1>
+      <div>
+        <a href="/admin" class="button">Back to Admin Panel</a>
+      </div>
+    </header>
+    
+    <div class="container">
+      <div id="controls">
+        <h2>Server Connection</h2>
+        <label for="mcp-url">MCP Endpoint URL:</label>
+        <input type="text" id="mcp-url" size="60" value="http://localhost:7788/mcp" />
+        <br>
+        <label for="api-token">API Token:</label>
+        <input type="text" id="api-token" size="60" placeholder="Enter your OPAL API token here" />
+        <br>
+        <button id="init-button" onclick="initializeSession()">1. Initialize Session (POST)</button>
+
+        <div class="session-info">
+          Session ID: <span id="session-id">N/A</span><br>
+          Status: <span id="session-status">Not Initialized</span>
+        </div>
+
+        <button id="start-sse-button" onclick="startSseStream()" disabled>2a. Start SSE Stream (GET)</button>
+        <button id="start-ws-button" onclick="startWebSocket()" disabled>2b. Start WebSocket</button>
+        <br>
+        <button id="terminate-button" onclick="terminateSession()" disabled>Terminate Session (DELETE)</button>
+        <button id="disconnect-button" onclick="disconnectStreams()">Disconnect Streams</button>
+        
+        <h2>MCP Request</h2>
+        <label for="request-payload">Request Payload:</label>
+        <select id="payload-select" onchange="setPayload(this.value)">
+          <optgroup label="Session Lifecycle">
+            <option value='{"jsonrpc":"2.0","id":"init-{{id}}","method":"initialize","params":{"protocolVersion":"2024-11-05","clientInfo":{"name":"OPAL Inspector","version":"1.0.0"},"capabilities":{}}}'>initialize</option>
+            <option value='{"jsonrpc":"2.0","method":"ping","id":"ping-{{id}}"}'>ping</option>
+            <option value='{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}'>notifications/initialized (Notification)</option>
+            <option value='{"jsonrpc":"2.0","method":"notifications/cancelled","params":{"requestId":"REPLACE_ME"}}'>notifications/cancelled (Notification)</option>
+          </optgroup>
+          <optgroup label="Resource/Tool Discovery">
+            <option value='{"jsonrpc":"2.0","method":"getTools","params":{},"id":"getTools-{{id}}"}'>getTools</option>
+            <option value='{"jsonrpc":"2.0","method":"getResources","params":{},"id":"getResources-{{id}}"}'>getResources</option>
+            <option value='{"jsonrpc":"2.0","method":"getPrompts","params":{},"id":"getPrompts-{{id}}"}'>getPrompts</option>
+          </optgroup>
+          <optgroup label="Example (Replace Tool/Params)">
+            <option value='{"jsonrpc":"2.0","method":"runTool","params":{"toolName":"fakestore_get_resources","params":{}},"id":"runTool-{{id}}"}'>runTool (get all resources)</option>
+          </optgroup>
+        </select>
+        <br>
+        <textarea id="request-payload" rows="8" cols="60"></textarea>
+        <br>
+        <button id="send-button" onclick="sendRequest()" disabled>3. Send Request</button>
+        <button onclick="clearLog()">Clear Log</button>
+
+        <h2>API Integration Test</h2>
+        <div class="api-test-panel">
+          <label for="api-name">API Name:</label>
+          <input type="text" id="api-name" value="fakestore" placeholder="e.g., fakestore" />
+          <br>
+          <label for="api-method">Method:</label>
+          <select id="api-method">
+            <option value="GET">GET</option>
+            <option value="POST">POST</option>
+            <option value="PUT">PUT</option>
+            <option value="DELETE">DELETE</option>
+          </select>
+          <br>
+          <label for="api-endpoint">Endpoint:</label>
+          <input type="text" id="api-endpoint" value="products" placeholder="e.g., products" />
+          <div class="endpoint-note">
+            Note: The server uses generic endpoint patterns internally:
+            <ul>
+              <li>Enter the <strong>actual API endpoint</strong> you want to test (e.g., "products" or "products/1")</li>
+              <li>The tool will automatically handle mapping between the server's generic endpoints and the actual API endpoints</li>
+              <li>For specific resources, use the format "products/1" to test a single resource by ID</li>
+              <li>You can customize the resource paths using the fields below for different API structures</li>
+            </ul>
+          </div>
+          <br>
+          <label for="api-resources-path">Resources Path (for mapping):</label>
+          <input type="text" id="api-resources-path" placeholder="e.g., /products" value="/products" />
+          <br>
+          <label for="api-resource-id-path">Resource ID Path (for mapping):</label>
+          <input type="text" id="api-resource-id-path" placeholder="e.g., /products/:id" value="/products/:id" />
+          <br>
+          <label for="api-params">Parameters (JSON):</label>
+          <textarea id="api-params" rows="4" cols="60" placeholder='{"id": "1"}'></textarea>
+          <br>
+          <button id="test-api-button" onclick="testApiIntegration()" disabled>Test API Integration</button>
+        </div>
+      </div>
+
+      <div id="log-area">
+        <h2>Log</h2>
+        <button id="clear-log-button" onclick="clearLog()">Clear Log</button>
+        <button id="copy-log-button" onclick="copyLog()">Copy Log</button>
+        <div id="log-container"></div>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/mcp-inspector.js"></script>
+</body>
+</html>

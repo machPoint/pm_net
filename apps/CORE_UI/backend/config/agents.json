@@ -1,0 +1,81 @@
+{
+  "provider": "openclaw",
+  "config": {
+    "description": "Agent orchestration configuration",
+    "notes": [
+      "Change 'provider' to switch between agent frameworks:",
+      "  - 'mock': In-memory testing provider",
+      "  - 'openclaw': OpenClaw multi-agent gateway (ACTIVE)",
+      "  - 'langgraph': LangGraph orchestration",
+      "  - 'crewai': CrewAI multi-agent framework",
+      "  - 'autogen': Microsoft AutoGen"
+    ]
+  },
+  "providers": {
+    "mock": {
+      "enabled": false,
+      "description": "Mock provider for testing and development"
+    },
+    "openclaw": {
+      "enabled": true,
+      "gateway_url": "http://localhost:18789",
+      "api_key": null,
+      "default_model": "claude-3-5-sonnet-20241022",
+      "workspace_path": "~/.openclaw/workspace",
+      "channels": ["whatsapp", "telegram", "discord"]
+    },
+    "langgraph": {
+      "enabled": false,
+      "api_url": "http://localhost:8123",
+      "api_key": null,
+      "graph_config": {
+        "checkpointer": "memory",
+        "max_iterations": 100
+      }
+    },
+    "crewai": {
+      "enabled": false,
+      "api_url": null,
+      "model": "gpt-4",
+      "verbose": true,
+      "memory": true
+    },
+    "autogen": {
+      "enabled": false,
+      "config_list": [],
+      "cache_seed": 42
+    }
+  },
+  "default_agents": [
+    {
+      "agent_id": "agent-planning",
+      "name": "Planning Agent",
+      "description": "Handles task planning and decomposition",
+      "tools": ["task_breakdown", "dependency_analysis"],
+      "config": {
+        "role": "planner",
+        "temperature": 0.7
+      }
+    },
+    {
+      "agent_id": "agent-execution",
+      "name": "Execution Agent",
+      "description": "Executes approved tasks and reports progress",
+      "tools": ["code_execution", "file_operations"],
+      "config": {
+        "role": "executor",
+        "temperature": 0.5
+      }
+    },
+    {
+      "agent_id": "agent-verification",
+      "name": "Verification Agent",
+      "description": "Verifies task completion and quality",
+      "tools": ["test_runner", "quality_check"],
+      "config": {
+        "role": "verifier",
+        "temperature": 0.3
+      }
+    }
+  ]
+}

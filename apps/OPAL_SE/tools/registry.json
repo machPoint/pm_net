@@ -1,0 +1,152 @@
+{
+  "version": "0.1",
+  "tools": [
+    {
+      "name": "getSystemSlice",
+      "folder": "system-model/get-system-slice",
+      "category": "system-model",
+      "type": "core",
+      "sidecars": []
+    },
+    {
+      "name": "querySystemModel",
+      "folder": "system-model/query-system-model",
+      "category": "system-model",
+      "type": "core",
+      "sidecars": []
+    },
+    {
+      "name": "traceDownstreamImpact",
+      "folder": "system-model/trace-downstream-impact",
+      "category": "system-model",
+      "type": "core",
+      "sidecars": []
+    },
+    {
+      "name": "traceUpstreamRationale",
+      "folder": "system-model/trace-upstream-rationale",
+      "category": "system-model",
+      "type": "core",
+      "sidecars": []
+    },
+    {
+      "name": "getVerificationCoverageMetrics",
+      "folder": "system-model/get-verification-coverage-metrics",
+      "category": "system-model",
+      "type": "core",
+      "sidecars": []
+    },
+    {
+      "name": "findVerificationGaps",
+      "folder": "system-model/find-verification-gaps",
+      "category": "system-model",
+      "type": "core",
+      "sidecars": []
+    },
+    {
+      "name": "checkAllocationConsistency",
+      "folder": "system-model/check-allocation-consistency",
+      "category": "system-model",
+      "type": "core",
+      "sidecars": []
+    },
+    {
+      "name": "runConsistencyChecks",
+      "folder": "system-model/run-consistency-checks",
+      "category": "system-model",
+      "type": "core",
+      "sidecars": ["stem-python-sidecar"]
+    },
+    {
+      "name": "getEntityHistory",
+      "folder": "system-model/get-entity-history",
+      "category": "system-model",
+      "type": "core",
+      "sidecars": []
+    },
+    {
+      "name": "findSimilarPastChanges",
+      "folder": "system-model/find-similar-past-changes",
+      "category": "system-model",
+      "type": "core",
+      "sidecars": []
+    },
+    {
+      "name": "triageActivity",
+      "folder": "triage-and-pulse/triage-activity",
+      "category": "triage-and-pulse",
+      "type": "macro",
+      "sidecars": ["jira-connector", "outlook-connector", "ms-tasks-connector", "workload-service"]
+    },
+    {
+      "name": "confirmTriageDecision",
+      "folder": "triage-and-pulse/confirm-triage-decision",
+      "category": "triage-and-pulse",
+      "type": "macro",
+      "sidecars": ["jira-connector"]
+    },
+    {
+      "name": "bulkTriage",
+      "folder": "triage-and-pulse/bulk-triage",
+      "category": "triage-and-pulse",
+      "type": "macro",
+      "sidecars": ["jira-connector", "outlook-connector", "ms-tasks-connector", "workload-service"]
+    },
+    {
+      "name": "explainPulseItem",
+      "folder": "triage-and-pulse/explain-pulse-item",
+      "category": "triage-and-pulse",
+      "type": "macro",
+      "sidecars": ["jira-connector", "outlook-connector", "lessons-service", "workload-service"]
+    },
+    {
+      "name": "getUserCalendar",
+      "folder": "calendar-and-workload/get-user-calendar",
+      "category": "calendar-and-workload",
+      "type": "proxy",
+      "sidecars": ["outlook-connector"]
+    },
+    {
+      "name": "workloadDaySummary",
+      "folder": "calendar-and-workload/workload-day-summary",
+      "category": "calendar-and-workload",
+      "type": "proxy",
+      "sidecars": ["workload-service"]
+    },
+    {
+      "name": "workloadRangeSummary",
+      "folder": "calendar-and-workload/workload-range-summary",
+      "category": "calendar-and-workload",
+      "type": "proxy",
+      "sidecars": ["workload-service"]
+    },
+    {
+      "name": "workloadDayDetail",
+      "folder": "calendar-and-workload/workload-day-detail",
+      "category": "calendar-and-workload",
+      "type": "proxy",
+      "sidecars": ["workload-service", "outlook-connector"]
+    },
+    {
+      "name": "searchLessons",
+      "folder": "lessons-learned/search-lessons",
+      "category": "lessons-learned",
+      "type": "proxy",
+      "sidecars": ["lessons-service"]
+    },
+    {
+      "name": "getLessonDetail",
+      "folder": "lessons-learned/get-lesson-detail",
+      "category": "lessons-learned",
+      "type": "proxy",
+      "sidecars": ["lessons-service"]
+    },
+    {
+      "name": "suggestLessonsForActivity",
+      "folder": "lessons-learned/suggest-lessons-for-activity",
+      "category": "lessons-learned",
+      "type": "macro",
+      "sidecars": ["lessons-service"]
+    }
+  ]
+}

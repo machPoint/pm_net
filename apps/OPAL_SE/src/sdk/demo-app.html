@@ -1,0 +1,1183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OPAL Demo App</title>
+  <style>
+    :root {
+      --primary-color: #4a6fa5;
+      --secondary-color: #166088;
+      --accent-color: #4cb5ae;
+      --light-color: #e9f1f7;
+      --dark-color: #333;
+      --error-color: #e74c3c;
+      --success-color: #2ecc71;
+    }
+    
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      line-height: 1.6;
+      color: var(--dark-color);
+      background-color: var(--light-color);
+      padding: 20px;
+    }
+    
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px;
+      background-color: white;
+      border-radius: 8px;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    }
+    
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 30px;
+      padding-bottom: 20px;
+      border-bottom: 1px solid #eee;
+    }
+    
+    h1, h2, h3 {
+      color: var(--primary-color);
+    }
+    
+    .connection-status {
+      display: flex;
+      align-items: center;
+    }
+    
+    .status-indicator {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      display: inline-block;
+      margin-right: 8px;
+      transition: background-color 0.3s ease;
+    }
+    
+    .status-indicator.connected {
+      background-color: var(--success-color);
+      box-shadow: 0 0 5px var(--success-color);
+    }
+    
+    .status-indicator.disconnected {
+      background-color: var(--error-color);
+      box-shadow: 0 0 5px var(--error-color);
+    }
+    
+    .notification {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      padding: 15px 20px;
+      background-color: white;
+      border-radius: 8px;
+      box-shadow: 0 2px 15px rgba(0, 0, 0, 0.2);
+      z-index: 1000;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      max-width: 400px;
+      animation: slideIn 0.3s ease;
+    }
+    
+    .notification.error {
+      border-left: 4px solid var(--error-color);
+    }
+    
+    .notification.success {
+      border-left: 4px solid var(--success-color);
+    }
+    
+    .notification button {
+      margin-left: 10px;
+      white-space: nowrap;
+    }
+    
+    @keyframes slideIn {
+      from { transform: translateX(100%); opacity: 0; }
+      to { transform: translateX(0); opacity: 1; }
+    }
+    
+    .spinner {
+      display: inline-block;
+      width: 16px;
+      height: 16px;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-radius: 50%;
+      border-top-color: #fff;
+      animation: spin 1s ease-in-out infinite;
+      margin-right: 8px;
+      vertical-align: middle;
+    }
+    
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    
+    .tabs {
+      display: flex;
+      margin-bottom: 20px;
+      border-bottom: 1px solid #eee;
+    }
+    
+    .tab {
+      padding: 10px 20px;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+    }
+    
+    .tab.active {
+      border-bottom: 2px solid var(--accent-color);
+      font-weight: bold;
+      color: var(--secondary-color);
+    }
+    
+    .tab-content {
+      display: none;
+    }
+    
+    .tab-content.active {
+      display: block;
+    }
+    
+    .login-form {
+      max-width: 400px;
+      margin: 0 auto;
+      padding: 20px;
+      background-color: #f9f9f9;
+      border-radius: 8px;
+    }
+    
+    .form-group {
+      margin-bottom: 15px;
+    }
+    
+    label {
+      display: block;
+      margin-bottom: 5px;
+      font-weight: bold;
+    }
+    
+    input, textarea, button {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-family: inherit;
+      font-size: 16px;
+    }
+    
+    button {
+      background-color: var(--primary-color);
+      color: white;
+      border: none;
+      cursor: pointer;
+      transition: background-color 0.3s;
+    }
+    
+    button:hover {
+      background-color: var(--secondary-color);
+    }
+    
+    button.secondary {
+      background-color: #ccc;
+      color: var(--dark-color);
+    }
+    
+    button.secondary:hover {
+      background-color: #bbb;
+    }
+    
+    .memory-list {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: 20px;
+      margin-top: 20px;
+    }
+    
+    .memory-card {
+      padding: 15px;
+      background-color: white;
+      border-radius: 8px;
+      box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+      transition: transform 0.3s;
+    }
+    
+    .memory-card:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+    }
+    
+    .memory-title {
+      font-weight: bold;
+      margin-bottom: 10px;
+      color: var(--secondary-color);
+    }
+    
+    .memory-content {
+      color: var(--dark-color);
+      margin-bottom: 10px;
+    }
+    
+    .memory-meta {
+      display: flex;
+      justify-content: space-between;
+      font-size: 12px;
+      color: #888;
+    }
+    
+    .tool-stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 20px;
+      margin-bottom: 30px;
+    }
+    
+    .stat-card {
+      padding: 15px;
+      background-color: white;
+      border-radius: 8px;
+      box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+      text-align: center;
+    }
+    
+    .stat-value {
+      font-size: 28px;
+      font-weight: bold;
+      color: var(--accent-color);
+      margin: 10px 0;
+    }
+    
+    .tool-runs-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    
+    .tool-runs-table th, .tool-runs-table td {
+      padding: 10px;
+      text-align: left;
+      border-bottom: 1px solid #eee;
+    }
+    
+    .tool-runs-table th {
+      background-color: #f5f5f5;
+      font-weight: bold;
+    }
+    
+    .pagination {
+      display: flex;
+      justify-content: center;
+      margin-top: 20px;
+    }
+    
+    .pagination button {
+      width: auto;
+      margin: 0 5px;
+      padding: 5px 10px;
+    }
+    
+    .summary-result {
+      margin-top: 20px;
+      padding: 15px;
+      background-color: #f9f9f9;
+      border-radius: 8px;
+      border-left: 4px solid var(--accent-color);
+    }
+    
+    .error-message {
+      color: var(--error-color);
+      margin-top: 10px;
+    }
+    
+    .success-message {
+      color: var(--success-color);
+      margin-top: 10px;
+    }
+    
+    .loading {
+      text-align: center;
+      padding: 20px;
+      color: #888;
+    }
+    
+    .hidden {
+      display: none;
+    }
+    
+    /* API Token field highlight */
+    #api-token {
+      border: 2px solid var(--accent-color);
+      background-color: #f8fff8;
+    }
+    
+    .token-hint {
+      color: #666;
+      font-size: 0.85em;
+      margin-top: 5px;
+      display: block;
+    }
+    
+    .token-hint a {
+      color: var(--secondary-color);
+      text-decoration: none;
+      font-weight: bold;
+    }
+    
+    .token-hint a:hover {
+      text-decoration: underline;
+    }
+    
+    .api-token-group {
+      border: 2px solid var(--accent-color);
+      padding: 15px;
+      border-radius: 6px;
+      background-color: rgba(76, 181, 174, 0.05);
+      margin-bottom: 20px;
+    }
+    
+    .api-token-group label {
+      color: var(--secondary-color);
+      font-size: 1.1em;
+    }
+    
+    .api-token-group input {
+      border-color: var(--accent-color);
+    }
+    
+    .important-note {
+      color: var(--error-color);
+      font-weight: bold;
+    }
+    
+    /* User info styles */
+    .user-info-container {
+      display: flex;
+      align-items: center;
+      gap: 15px;
+    }
+    
+    .user-info {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      text-align: right;
+    }
+    
+    #user-info-details {
+      font-size: 0.9rem;
+      color: var(--secondary-color);
+      font-weight: 500;
+    }
+    
+    #disconnect-button {
+      padding: 6px 12px;
+      background-color: var(--error-color);
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 0.9rem;
+    }
+    
+    #disconnect-button:hover {
+      background-color: #c0392b;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>OPAL Demo App</h1>
+      <div class="connection-status">
+        <div id="status-indicator" class="status-indicator disconnected"></div>
+        <span id="connection-status">Disconnected</span>
+      </div>
+    </header>
+    
+    <!-- Login Form (shown if not authenticated) -->
+    <div id="login-container" class="login-form">
+      <h2>Connect to OPAL Server</h2>
+      <div class="form-group">
+        <label for="server-url">Server URL</label>
+        <input type="text" id="server-url" value="http://localhost:3000" placeholder="http://localhost:3000">
+      </div>
+      <div class="form-group">
+        <label for="ws-endpoint">WebSocket Endpoint</label>
+        <input type="text" id="ws-endpoint" value="ws://localhost:3000/mcp" placeholder="ws://localhost:3000/mcp">
+      </div>
+      <div class="form-group api-token-group">
+        <label for="api-token"><strong>API Token (REQUIRED)</strong></label>
+        <input type="text" id="api-token" placeholder="Paste token from OPAL Admin Panel → API Tokens" required>
+        <small class="token-hint">
+          <span class="important-note">⚠️ Important:</span> You must create an API token with read permissions in the 
+          <a href="/admin" target="_blank">OPAL Admin Panel</a> before connecting.
+        </small>
+      </div>
+      <button id="connect-button">Connect</button>
+      <div id="login-error" class="error-message"></div>
+    </div>
+    
+    <!-- Main App (shown after authentication) -->
+    <div id="app-container" class="hidden">
+      <header>
+        <h2>OPAL Client SDK Demo</h2>
+        <div class="user-info-container">
+          <div class="user-info">
+            <div id="user-info-details">Authenticated with API token</div>
+            <div class="connection-status">
+              <div id="app-status-indicator" class="status-indicator connected"></div>
+              <span id="app-connection-status">Connected</span>
+            </div>
+          </div>
+          <button id="disconnect-button" class="danger small">Disconnect</button>
+        </div>
+      </header>
+      
+      <div class="tabs">
+        <div class="tab active" data-tab="memories">Memories</div>
+        <div class="tab" data-tab="tool-runs">Tool Runs</div>
+        <div class="tab" data-tab="summarizer">Summarizer</div>
+      </div>
+      
+      <!-- Memories Tab -->
+      <div id="memories-tab" class="tab-content active">
+        <h2>Memory Management</h2>
+        <div class="form-group">
+          <label for="memory-search">Search Memories</label>
+          <input type="text" id="memory-search" placeholder="Enter search query">
+          <button id="search-memory-button">Search</button>
+        </div>
+        
+        <div id="memories-loading" class="loading">Loading memories...</div>
+        <div id="memories-error" class="error-message hidden"></div>
+        
+        <div id="memory-list" class="memory-list"></div>
+        
+        <div id="memories-pagination" class="pagination">
+          <button id="prev-memories-page" class="secondary">Previous</button>
+          <span id="memories-page-info">Page 1 of 1</span>
+          <button id="next-memories-page" class="secondary">Next</button>
+        </div>
+      </div>
+      
+      <!-- Tool Runs Tab -->
+      <div id="tool-runs-tab" class="tab-content">
+        <h2>Tool Run Statistics</h2>
+        
+        <div id="tool-stats-loading" class="loading">Loading statistics...</div>
+        <div id="tool-stats-error" class="error-message hidden"></div>
+        
+        <div id="tool-stats" class="tool-stats"></div>
+        
+        <h3>Recent Tool Runs</h3>
+        <div id="tool-runs-loading" class="loading">Loading tool runs...</div>
+        <div id="tool-runs-error" class="error-message hidden"></div>
+        
+        <table id="tool-runs-table" class="tool-runs-table">
+          <thead>
+            <tr>
+              <th>Tool</th>
+              <th>Status</th>
+              <th>Duration</th>
+              <th>Executed At</th>
+            </tr>
+          </thead>
+          <tbody id="tool-runs-list"></tbody>
+        </table>
+        
+        <div id="tool-runs-pagination" class="pagination">
+          <button id="prev-tool-runs-page" class="secondary">Previous</button>
+          <span id="tool-runs-page-info">Page 1 of 1</span>
+          <button id="next-tool-runs-page" class="secondary">Next</button>
+        </div>
+      </div>
+      
+      <!-- Summarizer Tab -->
+      <div id="summarizer-tab" class="tab-content">
+        <h2>Content Summarizer</h2>
+        <div class="form-group">
+          <label for="summary-content">Content to Summarize</label>
+          <textarea id="summary-content" rows="8" placeholder="Enter content to summarize"></textarea>
+        </div>
+        <div class="form-group">
+          <label for="summary-type">Summary Type</label>
+          <select id="summary-type">
+            <option value="headline">Headline</option>
+            <option value="paragraph" selected>Paragraph</option>
+            <option value="full">Full</option>
+          </select>
+        </div>
+        <button id="generate-summary-button">Generate Summary</button>
+        
+        <div id="summary-loading" class="loading hidden">Generating summary...</div>
+        <div id="summary-error" class="error-message hidden"></div>
+        
+        <div id="summary-result" class="summary-result hidden"></div>
+      </div>
+    </div>
+  </div>
+  
+  <!-- Load the OPAL Client SDK -->
+  <script src="/admin/sdk/opal-client.js"></script>
+  
+  <script>
+    // App state
+    let client = null;
+    let memoriesPage = 1;
+    let memoriesLimit = 6;
+    let toolRunsPage = 1;
+    let toolRunsLimit = 10;
+    
+    // DOM Elements
+    const loginContainer = document.getElementById('login-container');
+    const appContainer = document.getElementById('app-container');
+    const statusIndicator = document.getElementById('status-indicator');
+    const connectionStatus = document.getElementById('connection-status');
+    const loginError = document.getElementById('login-error');
+    
+    // Tabs
+    const tabs = document.querySelectorAll('.tab');
+    const tabContents = document.querySelectorAll('.tab-content');
+    
+    // Connect to OPAL server
+    document.getElementById('connect-button').addEventListener('click', async () => {
+      const serverUrl = document.getElementById('server-url').value;
+      const wsEndpoint = document.getElementById('ws-endpoint').value;
+      const apiToken = document.getElementById('api-token').value;
+      const connectButton = document.getElementById('connect-button');
+      
+      if (!serverUrl || !wsEndpoint) {
+        loginError.textContent = 'Server URL and WebSocket Endpoint are required';
+        return;
+      }
+      
+      try {
+        // Validate API token
+        if (!apiToken) {
+          loginError.innerHTML = 'API Token is required. Please generate one from the <a href="/admin" target="_blank">OPAL Admin Panel</a>.';
+          return;
+        }
+        
+        // Show loading state
+        connectButton.disabled = true;
+        connectButton.innerHTML = '<span class="spinner"></span> Connecting...';
+        loginError.textContent = 'Connecting to OPAL server...';
+        
+        // Create client
+        client = new OpalClient({
+          serverUrl,
+          wsEndpoint,
+          apiToken
+        });
+        
+        // Register event handlers
+        client.onOpen(handleConnectionOpen);
+        client.onClose(handleConnectionClose);
+        client.onError(handleConnectionError);
+        
+        // Connect to server with retry options
+        await client.connect({
+          retry: true,
+          maxRetries: 3
+        });
+        
+        // Connection successful
+        loginError.textContent = '';
+        statusIndicator.classList.remove('disconnected');
+        statusIndicator.classList.add('connected');
+        connectionStatus.textContent = 'Connected';
+        loginContainer.classList.add('hidden');
+        appContainer.classList.remove('hidden');
+        
+        // Update app status indicators
+        const appStatusIndicator = document.getElementById('app-status-indicator');
+        const appConnectionStatus = document.getElementById('app-connection-status');
+        if (appStatusIndicator) {
+          appStatusIndicator.classList.remove('disconnected');
+          appStatusIndicator.classList.add('connected');
+        }
+        if (appConnectionStatus) {
+          appConnectionStatus.textContent = 'Connected';
+        }
+        
+        // Update user info with token details
+        const userInfoDetails = document.getElementById('user-info-details');
+        if (userInfoDetails) {
+          // Get token info from the input field
+          const tokenInput = document.getElementById('api-token');
+          const token = tokenInput.value;
+          
+          // Display a masked version of the token for security
+          const maskedToken = token.length > 8 ? 
+            `${token.substring(0, 4)}...${token.substring(token.length - 4)}` : 
+            '****';
+          
+          userInfoDetails.innerHTML = `
+            <div>Authenticated with API token</div>
+            <div style="color: #666; font-size: 0.8rem;">${maskedToken}</div>
+          `;
+        }
+        
+        // Show a success notification
+        const successNotification = document.createElement('div');
+        successNotification.className = 'notification success';
+        successNotification.innerHTML = `
+          <div>
+            <strong>Successfully authenticated!</strong>
+            <p>Your API token is valid and working correctly.</p>
+          </div>
+          <button class="small" onclick="this.parentElement.remove()">Dismiss</button>
+        `;
+        document.body.appendChild(successNotification);
+        
+        // Auto-remove after 8 seconds
+        setTimeout(() => {
+          if (document.body.contains(successNotification)) {
+            successNotification.remove();
+          }
+        }, 8000);
+        
+        // Load initial data
+        loadMemories();
+        loadToolRunStats();
+        loadToolRuns();
+      } catch (error) {
+        console.error('Connection error:', error);
+        
+        // Reset button state
+        connectButton.disabled = false;
+        connectButton.textContent = 'Connect';
+        
+        // Provide more specific error messages for common issues
+        if (error.message.includes('Authentication') || error.message.includes('auth')) {
+          loginError.innerHTML = `Authentication Error: Please make sure you've provided a valid API token from the <a href="/admin" target="_blank">OPAL Admin Panel</a>. The token should have read permissions.`;
+        } else if (error.message.includes('WebSocket')) {
+          loginError.textContent = `WebSocket connection error: ${error.message}. Please check that the OPAL server is running and the WebSocket endpoint is correct.`;
+        } else if (error.message.includes('attempts')) {
+          loginError.textContent = `Failed to establish a stable connection: ${error.message}. Please try again later.`;
+        } else {
+          loginError.textContent = `Error connecting to OPAL server: ${error.message}`;
+        }
+        
+        // Update UI to show disconnected state
+        statusIndicator.classList.remove('connected');
+        statusIndicator.classList.add('disconnected');
+        connectionStatus.textContent = 'Disconnected';
+      }
+    });
+    
+    // Connection event handlers
+    function handleConnectionOpen() {
+      console.log('Connection established successfully');
+      
+      try {
+        // Update UI elements if they exist
+        const connectButton = document.getElementById('connect-button');
+        if (connectButton) {
+          connectButton.disabled = false;
+          connectButton.textContent = 'Connect';
+        }
+        
+        // Check if we need to add a disconnect button
+        if (!document.getElementById('disconnect-button')) {
+          // First, check if the header exists
+          const appHeader = document.querySelector('#app-container header');
+          if (!appHeader) {
+            console.warn('App header not found, skipping disconnect button creation');
+            return;
+          }
+          
+          // Check if actions container exists, create it if not
+          let headerActions = document.querySelector('#app-container header .actions');
+          if (!headerActions) {
+            headerActions = document.createElement('div');
+            headerActions.className = 'actions';
+            appHeader.appendChild(headerActions);
+          }
+          
+          // Create the disconnect button
+          const disconnectButton = document.createElement('button');
+          disconnectButton.id = 'disconnect-button';
+          disconnectButton.className = 'danger small';
+          disconnectButton.textContent = 'Disconnect';
+          disconnectButton.addEventListener('click', () => {
+            if (client) {
+              client.disconnect();
+              statusIndicator.classList.remove('connected');
+              statusIndicator.classList.add('disconnected');
+              connectionStatus.textContent = 'Disconnected';
+              appContainer.classList.add('hidden');
+              loginContainer.classList.remove('hidden');
+            }
+          });
+          
+          headerActions.appendChild(disconnectButton);
+        }
+      } catch (error) {
+        console.warn('Error in handleConnectionOpen:', error);
+        // Continue despite the error - the connection is still established
+      }
+    }
+    
+    function handleConnectionClose(event) {
+      console.log(`Connection closed: Code ${event.code}, Reason: ${event.reason || 'No reason provided'}`);
+      
+      // Update UI to show disconnected state
+      statusIndicator.classList.remove('connected');
+      statusIndicator.classList.add('disconnected');
+      connectionStatus.textContent = 'Disconnected';
+      
+      // If we're in the app container, show a notification
+      if (!appContainer.classList.contains('hidden')) {
+        // Create a notification element
+        const notification = document.createElement('div');
+        notification.className = 'notification error';
+        notification.textContent = `Connection to OPAL server lost. Code: ${event.code}`;
+        
+        // Add a reconnect button
+        const reconnectButton = document.createElement('button');
+        reconnectButton.textContent = 'Reconnect';
+        reconnectButton.className = 'small';
+        reconnectButton.onclick = async () => {
+          notification.textContent = 'Attempting to reconnect...';
+          try {
+            await client.connect({
+              retry: true,
+              maxRetries: 3
+            });
+            notification.remove();
+          } catch (error) {
+            notification.textContent = `Failed to reconnect: ${error.message}`;
+          }
+        };
+        
+        notification.appendChild(reconnectButton);
+        
+        // Add notification to the page
+        document.body.appendChild(notification);
+        
+        // Auto-remove after 10 seconds
+        setTimeout(() => {
+          if (document.body.contains(notification)) {
+            notification.remove();
+          }
+        }, 10000);
+      }
+    }
+    
+    function handleConnectionError(error) {
+      console.error('WebSocket error:', error);
+      // Most errors will also trigger the onclose event, so we don't need to duplicate UI updates here
+    }
+    
+    // Tab switching
+    tabs.forEach(tab => {
+      tab.addEventListener('click', () => {
+        // Remove active class from all tabs and contents
+        tabs.forEach(t => t.classList.remove('active'));
+        tabContents.forEach(c => c.classList.remove('active'));
+        
+        // Add active class to clicked tab and corresponding content
+        tab.classList.add('active');
+        const tabName = tab.getAttribute('data-tab');
+        document.getElementById(`${tabName}-tab`).classList.add('active');
+      });
+    });
+    
+    // Load memories
+    async function loadMemories() {
+      if (!client) return;
+      
+      const memoriesLoading = document.getElementById('memories-loading');
+      const memoriesError = document.getElementById('memories-error');
+      const memoryList = document.getElementById('memory-list');
+      
+      memoriesLoading.classList.remove('hidden');
+      memoriesError.classList.add('hidden');
+      memoryList.innerHTML = '';
+      
+      try {
+        const result = await client.listMemories({
+          limit: memoriesLimit,
+          page: memoriesPage
+        });
+        
+        if (result.memories.length === 0) {
+          memoryList.innerHTML = '<p>No memories found.</p>';
+        } else {
+          // Render memories
+          result.memories.forEach(memory => {
+            const card = document.createElement('div');
+            card.className = 'memory-card';
+            
+            const date = new Date(memory.createdAt);
+            const formattedDate = date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
+            
+            card.innerHTML = `
+              <div class="memory-title">${memory.title}</div>
+              <div class="memory-content">${memory.content}</div>
+              <div class="memory-meta">
+                <span>Created: ${formattedDate}</span>
+              </div>
+            `;
+            
+            memoryList.appendChild(card);
+          });
+          
+          // Update pagination
+          document.getElementById('memories-page-info').textContent = 
+            `Page ${result.pagination.page} of ${result.pagination.totalPages}`;
+          
+        }
+        
+        // Update pagination
+        document.getElementById('memories-page-info').textContent = 
+          `Page ${result.pagination.page} of ${result.pagination.totalPages}`;
+        
+        document.getElementById('prev-memories-page').disabled = result.pagination.page <= 1;
+        document.getElementById('next-memories-page').disabled = 
+          result.pagination.page >= result.pagination.totalPages;
+        
+        // Hide loading indicator
+        document.getElementById('memories-loading').classList.add('hidden');
+      } catch (error) {
+        console.error('Error loading memories:', error);
+        document.getElementById('memories-loading').classList.add('hidden');
+        document.getElementById('memories-error').classList.remove('hidden');
+        
+        // Provide more helpful error message for authentication errors
+        if (error.message.includes('Authentication') || error.message.includes('auth')) {
+          document.getElementById('memories-error').innerHTML = `Authentication Error: Please make sure you've provided a valid API token from the <a href="/admin" target="_blank">OPAL Admin Panel</a>.`;
+        } else if (error.message.includes('db is not defined')) {
+          // Handle database not initialized error with a friendly message
+          memoriesError.classList.add('hidden');
+          memoryList.innerHTML = `
+            <div class="info-message" style="padding: 20px; background-color: #f8f9fa; border-radius: 8px; margin-top: 20px;">
+              <h3 style="margin-top: 0; color: #4a6fa5;">Memory Feature Not Available</h3>
+              <p>The memory feature is not available in this demo environment.</p>
+              <p>This is expected behavior as the demo is focused on demonstrating the API token authentication.</p>
+              <p>The connection to the OPAL server is working correctly with your API token!</p>
+            </div>
+          `;
+        } else {
+          document.getElementById('memories-error').textContent = `Error loading memories: ${error.message}`;
+        }
+      }
+    }
+    
+    // Search memories
+    document.getElementById('search-memory-button').addEventListener('click', async () => {
+      if (!client) return;
+      
+      const query = document.getElementById('memory-search').value;
+      if (!query) {
+        loadMemories();
+        return;
+      }
+      
+      const memoriesLoading = document.getElementById('memories-loading');
+      const memoriesError = document.getElementById('memories-error');
+      const memoryList = document.getElementById('memory-list');
+      
+      memoriesLoading.classList.remove('hidden');
+      memoriesError.classList.add('hidden');
+      memoryList.innerHTML = '';
+      
+      try {
+        const result = await client.searchMemories(query, 10);
+        
+        if (result.results.length === 0) {
+          memoryList.innerHTML = '<p>No memories found matching your search.</p>';
+        } else {
+          // Render memories
+          result.results.forEach(memory => {
+            const card = document.createElement('div');
+            card.className = 'memory-card';
+            
+            const date = new Date(memory.createdAt);
+            const formattedDate = date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
+            
+            card.innerHTML = `
+              <div class="memory-title">${memory.title}</div>
+              <div class="memory-content">${memory.content}</div>
+              <div class="memory-meta">
+                <span>Created: ${formattedDate}</span>
+                <span>Similarity: ${Math.round(memory.similarity * 100)}%</span>
+              </div>
+            `;
+            
+            memoryList.appendChild(card);
+          });
+          
+          // Hide pagination for search results
+          document.getElementById('memories-pagination').classList.add('hidden');
+        }
+      } catch (error) {
+        console.error('Error searching memories:', error);
+        memoriesLoading.classList.add('hidden');
+        
+        // Provide more helpful error message for authentication errors
+        if (error.message.includes('Authentication') || error.message.includes('auth')) {
+          memoriesError.classList.remove('hidden');
+          memoriesError.innerHTML = `Authentication Error: Please make sure you've provided a valid API token from the <a href="/admin" target="_blank">OPAL Admin Panel</a>.`;
+        } else if (error.message.includes('db is not defined')) {
+          // Handle database not initialized error with a friendly message
+          memoriesError.classList.add('hidden');
+          memoryList.innerHTML = `
+            <div class="info-message" style="padding: 20px; background-color: #f8f9fa; border-radius: 8px; margin-top: 20px;">
+              <h3 style="margin-top: 0; color: #4a6fa5;">Memory Search Feature Not Available</h3>
+              <p>The memory search feature is not available in this demo environment.</p>
+              <p>This is expected behavior as the demo is focused on demonstrating the API token authentication.</p>
+              <p>The connection to the OPAL server is working correctly with your API token!</p>
+            </div>
+          `;
+        } else {
+          memoriesError.classList.remove('hidden');
+          memoriesError.textContent = `Error searching memories: ${error.message}`;
+        }
+      }
+    });
+    
+    // Pagination for memories
+    document.getElementById('prev-memories-page').addEventListener('click', () => {
+      if (memoriesPage > 1) {
+        memoriesPage--;
+        loadMemories();
+      }
+    });
+    
+    document.getElementById('next-memories-page').addEventListener('click', () => {
+      memoriesPage++;
+      loadMemories();
+    });
+    
+    // Load tool run statistics
+    async function loadToolRunStats() {
+      if (!client) return;
+      
+      const statsLoading = document.getElementById('tool-stats-loading');
+      const statsError = document.getElementById('tool-stats-error');
+      const statsContainer = document.getElementById('tool-stats');
+      
+      statsLoading.classList.remove('hidden');
+      statsError.classList.add('hidden');
+      statsContainer.innerHTML = '';
+      
+      try {
+        const stats = await client.getToolRunStats();
+        
+        // Create stats cards
+        const totalRunsCard = document.createElement('div');
+        totalRunsCard.className = 'stat-card';
+        totalRunsCard.innerHTML = `
+          <h3>Total Runs</h3>
+          <div class="stat-value">${stats.totalRuns}</div>
+        `;
+        
+        const avgDurationCard = document.createElement('div');
+        avgDurationCard.className = 'stat-card';
+        avgDurationCard.innerHTML = `
+          <h3>Average Duration</h3>
+          <div class="stat-value">${stats.averageDuration}ms</div>
+        `;
+        
+        statsContainer.appendChild(totalRunsCard);
+        statsContainer.appendChild(avgDurationCard);
+        
+        // Add top tools card
+        if (stats.topTools && stats.topTools.length > 0) {
+          const topToolsCard = document.createElement('div');
+          topToolsCard.className = 'stat-card';
+          topToolsCard.innerHTML = `
+            <h3>Top Tools</h3>
+            <ul>
+              ${stats.topTools.map(tool => `<li>${tool.name}: ${tool.count} runs</li>`).join('')}
+            </ul>
+          `;
+          
+          statsContainer.appendChild(topToolsCard);
+        }
+      } catch (error) {
+        console.error('Error loading tool stats:', error);
+        statsLoading.classList.add('hidden');
+        
+        // Provide more helpful error message for authentication errors
+        if (error.message.includes('Authentication') || error.message.includes('auth')) {
+          statsError.classList.remove('hidden');
+          statsError.innerHTML = `Authentication Error: Please make sure you've provided a valid API token from the <a href="/admin" target="_blank">OPAL Admin Panel</a>.`;
+        } else if (error.message.includes('db is not defined')) {
+          // Handle database not initialized error with a friendly message
+          statsError.classList.add('hidden');
+          statsContainer.innerHTML = `
+            <div class="info-message" style="padding: 20px; background-color: #f8f9fa; border-radius: 8px; margin-top: 20px;">
+              <h3 style="margin-top: 0; color: #4a6fa5;">Tool Stats Feature Not Available</h3>
+              <p>The tool statistics feature is not available in this demo environment.</p>
+              <p>This is expected behavior as the demo is focused on demonstrating the API token authentication.</p>
+              <p>The connection to the OPAL server is working correctly with your API token!</p>
+            </div>
+          `;
+        } else {
+          statsError.classList.remove('hidden');
+          statsError.textContent = `Error loading tool statistics: ${error.message}`;
+        }
+      }
+    }
+    
+    // Load tool runs
+    async function loadToolRuns() {
+      if (!client) return;
+      
+      const runsLoading = document.getElementById('tool-runs-loading');
+      const runsError = document.getElementById('tool-runs-error');
+      const runsList = document.getElementById('tool-runs-list');
+      
+      runsLoading.classList.remove('hidden');
+      runsError.classList.add('hidden');
+      runsList.innerHTML = '';
+      
+      try {
+        const result = await client.listToolRuns({
+          limit: toolRunsLimit,
+          page: toolRunsPage
+        });
+        
+        if (result.toolRuns.length === 0) {
+          runsList.innerHTML = '<tr><td colspan="4">No tool runs found.</td></tr>';
+        } else {
+          // Render tool runs
+          result.toolRuns.forEach(run => {
+            const row = document.createElement('tr');
+            
+            const date = new Date(run.executedAt);
+            const formattedDate = date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
+            
+            row.innerHTML = `
+              <td>${run.toolName}</td>
+              <td>${run.status}</td>
+              <td>${run.durationMs}ms</td>
+              <td>${formattedDate}</td>
+            `;
+            
+            runsList.appendChild(row);
+          });
+          
+          // Update pagination
+          document.getElementById('tool-runs-page-info').textContent = 
+            `Page ${result.pagination.page} of ${result.pagination.totalPages}`;
+          
+          document.getElementById('prev-tool-runs-page').disabled = result.pagination.page <= 1;
+          document.getElementById('next-tool-runs-page').disabled = 
+            result.pagination.page >= result.pagination.totalPages;
+        }
+      } catch (error) {
+        console.error('Error loading tool runs:', error);
+        runsLoading.classList.add('hidden');
+        
+        // Provide more helpful error message for authentication errors
+        if (error.message.includes('Authentication') || error.message.includes('auth')) {
+          runsError.classList.remove('hidden');
+          runsError.innerHTML = `Authentication Error: Please make sure you've provided a valid API token from the <a href="/admin" target="_blank">OPAL Admin Panel</a>.`;
+        } else if (error.message.includes('db is not defined')) {
+          // Handle database not initialized error with a friendly message
+          runsError.classList.add('hidden');
+          const tableContainer = document.querySelector('#tool-runs-table');
+          
+          // Create a friendly message
+          const infoMessage = document.createElement('div');
+          infoMessage.className = 'info-message';
+          infoMessage.style.cssText = 'padding: 20px; background-color: #f8f9fa; border-radius: 8px; margin-top: 20px;';
+          infoMessage.innerHTML = `
+            <h3 style="margin-top: 0; color: #4a6fa5;">Tool Runs Feature Not Available</h3>
+            <p>The tool runs feature is not available in this demo environment.</p>
+            <p>This is expected behavior as the demo is focused on demonstrating the API token authentication.</p>
+            <p>The connection to the OPAL server is working correctly with your API token!</p>
+          `;
+          
+          // Insert the message after the table
+          tableContainer.insertAdjacentElement('afterend', infoMessage);
+          
+          // Hide the table
+          tableContainer.style.display = 'none';
+        } else {
+          runsError.classList.remove('hidden');
+          runsError.textContent = `Error loading tool runs: ${error.message}`;
+        }
+      }
+    }
+    
+    // Pagination for tool runs
+    document.getElementById('prev-tool-runs-page').addEventListener('click', () => {
+      if (toolRunsPage > 1) {
+        toolRunsPage--;
+        loadToolRuns();
+      }
+    });
+    
+    document.getElementById('next-tool-runs-page').addEventListener('click', () => {
+      toolRunsPage++;
+      loadToolRuns();
+    });
+    
+    // Generate summary
+    document.getElementById('generate-summary-button').addEventListener('click', async () => {
+      if (!client) return;
+      
+      const content = document.getElementById('summary-content').value;
+      const type = document.getElementById('summary-type').value;
+      
+      if (!content) {
+        document.getElementById('summary-error').textContent = 'Please enter content to summarize';
+        document.getElementById('summary-error').classList.remove('hidden');
+        return;
+      }
+      
+      const summaryLoading = document.getElementById('summary-loading');
+      const summaryError = document.getElementById('summary-error');
+      const summaryResult = document.getElementById('summary-result');
+      
+      summaryLoading.classList.remove('hidden');
+      summaryError.classList.add('hidden');
+      summaryResult.classList.add('hidden');
+      
+      try {
+        const result = await client.generateSummary(content, type);
+        
+        // Display summary
+        summaryResult.innerHTML = `
+          <h3>Summary (${type})</h3>
+          <p>${result.summary}</p>
+          <div class="memory-meta">
+            <span>Original length: ${result.originalLength} characters</span>
+            <span>Summary length: ${result.summaryLength} characters</span>
+            <span>Reduction: ${Math.round((1 - result.summaryLength / result.originalLength) * 100)}%</span>
+          </div>
+        `;
+        
+        summaryResult.classList.remove('hidden');
+      } catch (error) {
+        console.error('Error generating summary:', error);
+        summaryLoading.classList.add('hidden');
+        summaryError.classList.remove('hidden');
+        
+        // Provide more helpful error message for authentication errors
+        if (error.message.includes('Authentication') || error.message.includes('auth')) {
+          summaryError.innerHTML = `Authentication Error: Please make sure you've provided a valid API token from the <a href="/admin" target="_blank">OPAL Admin Panel</a>.`;
+        } else {
+          summaryError.textContent = `Error generating summary: ${error.message}`;
+        }
+      }
+    });
+  </script>
+</body>
+</html>

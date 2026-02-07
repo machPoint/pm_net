@@ -1,0 +1,205 @@
+{
+  "version": "0.1",
+  "root_folder": "sidecars",
+  "sidecars": [
+    {
+      "id": "outlook-connector",
+      "folder_name": "outlook-connector",
+      "display_name": "Outlook Connector",
+      "category": "connector",
+      "description": "Read-only connector for Outlook / Microsoft 365. Provides calendar events and basic email metadata for Pulse and the Early Warning Calendar.",
+      "external_systems": ["Outlook", "Microsoft 365"],
+      "api_type": "rest",
+      "default_port": 7010,
+      "env_vars": [
+        "OUTLOOK_BASE_URL",
+        "OUTLOOK_TENANT_ID",
+        "OUTLOOK_CLIENT_ID",
+        "OUTLOOK_CLIENT_SECRET",
+        "OUTLOOK_POLL_INTERVAL_SECONDS"
+      ],
+      "mcp_tools_proxied": [
+        "getUserCalendar",
+        "workloadDaySummary",
+        "workloadRangeSummary",
+        "workloadDayDetail"
+      ]
+    },
+    {
+      "id": "jira-connector",
+      "folder_name": "jira-connector",
+      "display_name": "Jira Connector",
+      "category": "connector",
+      "description": "Connector for Jira issues, epics, status, priorities, and due dates. Feeds Pulse, triage, and commitments for the Early Warning Calendar.",
+      "external_systems": ["Jira"],
+      "api_type": "rest",
+      "default_port": 7020,
+      "env_vars": [
+        "JIRA_BASE_URL",
+        "JIRA_USERNAME",
+        "JIRA_API_TOKEN",
+        "JIRA_POLL_INTERVAL_SECONDS"
+      ],
+      "mcp_tools_proxied": [
+        "triageActivity",
+        "bulkTriage",
+        "explainPulseItem",
+        "workloadDaySummary",
+        "workloadRangeSummary",
+        "workloadDayDetail"
+      ]
+    },
+    {
+      "id": "jama-connector",
+      "folder_name": "jama-connector",
+      "display_name": "Jama Connector",
+      "category": "connector",
+      "description": "Connector for Jama requirements, relationships, and baselines. Feeds the OPAL system model and change events into Pulse.",
+      "external_systems": ["Jama"],
+      "api_type": "rest",
+      "default_port": 7030,
+      "env_vars": [
+        "JAMA_BASE_URL",
+        "JAMA_USERNAME",
+        "JAMA_API_TOKEN",
+        "JAMA_POLL_INTERVAL_SECONDS"
+      ],
+      "mcp_tools_proxied": [
+        "getSystemSlice",
+        "traceDownstreamImpact",
+        "traceUpstreamRationale",
+        "getVerificationCoverageMetrics",
+        "findVerificationGaps",
+        "checkAllocationConsistency",
+        "runConsistencyChecks",
+        "getEntityHistory",
+        "findSimilarPastChanges"
+      ]
+    },
+    {
+      "id": "windchill-connector",
+      "folder_name": "windchill-connector",
+      "display_name": "Windchill Connector",
+      "category": "connector",
+      "description": "Connector for Windchill / PLM data: parts, assemblies, and CAD structures. Used to link requirements and tests to hardware items.",
+      "external_systems": ["Windchill"],
+      "api_type": "rest",
+      "default_port": 7040,
+      "env_vars": [
+        "WINDCHILL_BASE_URL",
+        "WINDCHILL_USERNAME",
+        "WINDCHILL_PASSWORD",
+        "WINDCHILL_POLL_INTERVAL_SECONDS"
+      ],
+      "mcp_tools_proxied": [
+        "getSystemSlice",
+        "traceDownstreamImpact",
+        "checkAllocationConsistency",
+        "runConsistencyChecks"
+      ]
+    },
+    {
+      "id": "ms-tasks-connector",
+      "folder_name": "ms-tasks-connector",
+      "display_name": "MS Tasks / Planner Connector",
+      "category": "connector",
+      "description": "Connector for Microsoft To Do / Planner. Pulls assigned tasks and due dates for workload and Early Warning Calendar.",
+      "external_systems": ["Microsoft Planner", "Microsoft To Do"],
+      "api_type": "rest",
+      "default_port": 7050,
+      "env_vars": [
+        "MSTASKS_BASE_URL",
+        "MSTASKS_TENANT_ID",
+        "MSTASKS_CLIENT_ID",
+        "MSTASKS_CLIENT_SECRET",
+        "MSTASKS_POLL_INTERVAL_SECONDS"
+      ],
+      "mcp_tools_proxied": [
+        "workloadDaySummary",
+        "workloadRangeSummary",
+        "workloadDayDetail"
+      ]
+    },
+    {
+      "id": "ims-connector",
+      "folder_name": "ims-connector",
+      "display_name": "IMS / Schedule Connector",
+      "category": "connector",
+      "description": "Connector for Integrated Master Schedule systems (MS Project, Primavera, etc.). Imports key milestones and schedule-driven commitments.",
+      "external_systems": ["MS Project", "Primavera"],
+      "api_type": "rest",
+      "default_port": 7060,
+      "env_vars": [
+        "IMS_BASE_URL",
+        "IMS_USERNAME",
+        "IMS_PASSWORD",
+        "IMS_POLL_INTERVAL_SECONDS"
+      ],
+      "mcp_tools_proxied": [
+        "workloadDaySummary",
+        "workloadRangeSummary",
+        "workloadDayDetail"
+      ]
+    },
+    {
+      "id": "lessons-service",
+      "folder_name": "lessons-service",
+      "display_name": "Lessons Learned Service",
+      "category": "service",
+      "description": "Owns Lessons Learned objects, metadata, and embeddings. Provides search and retrieval of relevant lessons during impact analysis, triage, and V&V.",
+      "external_systems": [],
+      "api_type": "rest",
+      "default_port": 7070,
+      "env_vars": [
+        "LESSONS_DB_URL",
+        "LESSONS_EMBEDDING_MODEL",
+        "LESSONS_MAX_RESULTS"
+      ],
+      "mcp_tools_proxied": [
+        "searchLessons",
+        "getLessonDetail",
+        "suggestLessonsForActivity"
+      ]
+    },
+    {
+      "id": "workload-service",
+      "folder_name": "workload-service",
+      "display_name": "Workload / Early Warning Service",
+      "category": "service",
+      "description": "Aggregates commitments from Jira, MS Tasks, Planner, IMS, plus Outlook meetings, and computes day-level workload scores for the Early Warning Calendar.",
+      "external_systems": [],
+      "api_type": "rest",
+      "default_port": 7080,
+      "env_vars": [
+        "WORKLOAD_DB_URL",
+        "WORKLOAD_WORKING_HOURS_PER_DAY",
+        "WORKLOAD_MEETING_LOAD_WEIGHT",
+        "WORKLOAD_TASK_LOAD_WEIGHT"
+      ],
+      "mcp_tools_proxied": [
+        "workloadDaySummary",
+        "workloadRangeSummary",
+        "workloadDayDetail"
+      ]
+    },
+    {
+      "id": "stem-python-sidecar",
+      "folder_name": "stem-python-sidecar",
+      "display_name": "STEM Python Sidecar",
+      "category": "compute",
+      "description": "Generic Python computation sidecar for STEM and engineering analysis (numerics, reliability calcs, domain-specific solvers). OPAL calls this for heavy, deterministic math instead of pushing the work into SLIMs.",
+      "external_systems": [],
+      "api_type": "rest",
+      "default_port": 7090,
+      "env_vars": [
+        "STEM_PYTHON_MAX_RUNTIME_SECONDS",
+        "STEM_PYTHON_ALLOWED_MODULES",
+        "STEM_PYTHON_LOG_LEVEL"
+      ],
+      "mcp_tools_proxied": [
+        "runConsistencyChecks",
+        "future-STEM-tools"
+      ]
+    }
+  ]
+}

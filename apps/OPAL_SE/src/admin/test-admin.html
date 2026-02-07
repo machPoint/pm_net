@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OPAL Admin Test</title>
+  <link rel="stylesheet" href="css/admin.css">
+</head>
+<body>
+  <div id="app">
+    <h1>OPAL Admin Test Page</h1>
+    <p>This is a test page to check if the admin interface files are being served correctly.</p>
+    
+    <div>
+      <h2>Login Test</h2>
+      <div class="form-group">
+        <label for="username">Username</label>
+        <input type="text" id="username" placeholder="Enter username">
+      </div>
+      <div class="form-group">
+        <label for="password">Password</label>
+        <input type="password" id="password" placeholder="Enter password">
+      </div>
+      <button id="login-button">Login</button>
+      <div id="login-result"></div>
+    </div>
+  </div>
+
+  <script>
+    document.getElementById('login-button').addEventListener('click', async () => {
+      const username = document.getElementById('username').value;
+      const password = document.getElementById('password').value;
+      const resultDiv = document.getElementById('login-result');
+      
+      try {
+        const response = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ username, password })
+        });
+        
+        const data = await response.json();
+        resultDiv.textContent = JSON.stringify(data, null, 2);
+        
+        if (response.ok) {
+          // Store token
+          localStorage.setItem('accessToken', data.accessToken);
+          localStorage.setItem('refreshToken', data.refreshToken);
+          localStorage.setItem('user', JSON.stringify(data.user));
+          
+          resultDiv.innerHTML += '<br><strong>Login successful!</strong>';
+        }
+      } catch (error) {
+        resultDiv.textContent = 'Error: ' + error.message;
+      }
+    });
+  </script>
+</body>
+</html>

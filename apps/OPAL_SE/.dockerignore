@@ -1,0 +1,83 @@
+# Node.js dependencies and build artifacts
+node_modules
+npm-debug.log
+yarn-debug.log
+yarn-error.log
+package-lock.json.bak
+
+# Environment variables
+.env
+.env.*
+!.env.docker.example
+
+# Development files
+.git
+.github
+.gitignore
+*.md
+!README.md
+.vscode
+.idea
+*.log
+.editorconfig
+.eslintrc*
+.prettierrc*
+
+# Test files
+__tests__
+test
+tests
+coverage
+*.test.js
+*.spec.js
+
+# Temporary files
+tmp
+temp
+*.tmp
+*.temp
+*.swp
+*.swo
+*~
+
+# Database files (should be created fresh in container)
+database/
+*.sqlite3
+*.sqlite3-shm
+*.sqlite3-wal
+*.db
+dev.sqlite3
+test.sqlite3
+
+# Build artifacts (dist will be built in container)
+# dist
+build
+.cache
+
+# Docker files (avoid recursion)
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+
+# Documentation (except README)
+docs/
+WARP.md
+CHANGELOG.md
+CONTRIBUTING.md
+LICENSE
+
+# Scripts not needed in container
+scripts/
+start-opal-server.bat
+
+# Website/admin panel source (already copied in src/)
+website/
+
+# OS specific files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE files
+*.sublime-*
+*.code-workspace

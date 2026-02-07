@@ -1,0 +1,61 @@
+{
+  "name": "opal-server",
+  "version": "1.0.0",
+  "description": "OPAL (Open Protocol for AI Learning) MCP-compliant server implementation",
+  "main": "dist/src/server.js",
+  "scripts": {
+    "start": "node dist/src/server.js",
+    "start:js": "node src/server.js",
+    "dev": "cross-env NODE_NO_WARNINGS=1 tsx watch src/server.ts",
+    "dev:js": "nodemon src/server.js",
+    "build": "tsc",
+    "build:watch": "tsc --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "migrate": "knex migrate:latest",
+    "migrate:make": "knex migrate:make",
+    "seed": "knex seed:run"
+  },
+  "dependencies": {
+    "ajv": "^8.17.1",
+    "axios": "^1.6.2",
+    "bcrypt": "^5.1.1",
+    "dotenv": "^16.5.0",
+    "express": "^4.18.2",
+    "json-rpc-2.0": "1.7.0",
+    "jsonwebtoken": "^9.0.2",
+    "knex": "^3.1.0",
+    "mime-types": "^3.0.1",
+    "node-fetch": "^2.7.0",
+    "openai": "^4.28.0",
+    "pg": "^8.11.3",
+    "pgvector": "^0.1.7",
+    "sqlite3": "^5.1.7",
+    "uuid": "^9.0.1",
+    "winston": "^3.17.0",
+    "ws": "^8.14.2"
+  },
+  "devDependencies": {
+    "@types/bcrypt": "^6.0.0",
+    "@types/express": "^5.0.4",
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/mime-types": "^3.0.1",
+    "@types/node": "^24.9.1",
+    "@types/node-fetch": "^2.6.13",
+    "@types/uuid": "^10.0.0",
+    "@types/ws": "^8.18.1",
+    "cross-env": "^10.1.0",
+    "jest": "^29.7.0",
+    "nodemon": "^3.0.1",
+    "supertest": "^6.3.3",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "author": "OPAL Team",
+  "license": "MIT"
+}

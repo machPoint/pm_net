@@ -1,0 +1,70 @@
+version: '3.8'
+
+services:
+  opal-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: opal-server
+    ports:
+      - "3000:3000"
+    volumes:
+      # Persist database data
+      - opal-data:/data
+      # Optional: Mount source code for development (comment out for production)
+      # - ./src:/app/src
+    environment:
+      - NODE_ENV=development
+      - MCP_PORT=3000
+      - DB_FILE=/data/opal.sqlite3
+      - JWT_SECRET=${JWT_SECRET:-opal_development_secret_change_in_production}
+      - JWT_EXPIRY=24h
+      - OPAL_MODE=persistent
+      - OPAL_EPHEMERAL_TIMEOUT=1800000
+      # Add your API integrations here
+      - MCP_API_COUNT=${MCP_API_COUNT:-0}
+      # Example API integration (uncomment and configure):
+      # - MCP_API_0_NAME=OpenAI
+      # - MCP_API_0_BASE_URL=https://api.openai.com/v1
+      # - MCP_API_0_AUTH_TYPE=bearer_token
+      # - MCP_API_0_AUTH_VALUE=${OPENAI_API_KEY}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - opal-network
+
+  # Optional: PostgreSQL for production use
+  # Uncomment this section if you want to use PostgreSQL instead of SQLite
+  # postgres:
+  #   image: postgres:15-alpine
+  #   container_name: opal-postgres
+  #   environment:
+  #     - POSTGRES_USER=opal
+  #     - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-opal_password}
+  #     - POSTGRES_DB=opal
+  #   volumes:
+  #     - postgres-data:/var/lib/postgresql/data
+  #   ports:
+  #     - "5432:5432"
+  #   networks:
+  #     - opal-network
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "pg_isready -U opal"]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 5
+
+volumes:
+  opal-data:
+    driver: local
+  # postgres-data:
+  #   driver: local
+
+networks:
+  opal-network:
+    driver: bridge

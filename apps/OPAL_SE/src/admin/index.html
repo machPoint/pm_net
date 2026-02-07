@@ -1,0 +1,586 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OPAL Admin Panel</title>
+  <link rel="stylesheet" href="css/admin.css">
+  <link rel="stylesheet" href="css/health-metrics.css">
+</head>
+<body>
+  <div id="app">
+    <!-- Login Form (shown if not authenticated) -->
+    <div id="login-container" class="login-form">
+      <h2>OPAL Admin Login</h2>
+      <form id="login-form">
+        <div class="form-group">
+          <label for="username">Username</label>
+          <input type="text" id="username" placeholder="Enter username" required autocomplete="username">
+        </div>
+        <div class="form-group">
+          <label for="password">Password</label>
+          <input type="password" id="password" placeholder="Enter password" required autocomplete="current-password">
+        </div>
+        <button type="submit" id="login-button">Login</button>
+        <div id="login-error" class="error-message"></div>
+      </form>
+      <div class="login-info">
+        <p>Log in to manage your OPAL server instance.</p>
+        <p>If you're having trouble logging in, please contact your system administrator.</p>
+      </div>
+    </div>
+
+    <!-- Main Admin Panel (shown after authentication) -->
+    <div id="admin-panel" style="display: none;">
+      <header>
+        <h1>OPAL Admin Panel</h1>
+        <div class="header-controls">
+          <button id="dark-mode-toggle" class="icon-button" title="Toggle Dark Mode">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+            </svg>
+          </button>
+          <div id="user-info">
+            <span id="username">Not logged in</span>
+            <button id="logout-button" style="display: none;">Logout</button>
+          </div>
+        </div>
+      </header>
+      
+      <div class="container">
+        <div class="nav-tabs">
+          <div class="nav-tab active" data-tab="memories">Memories</div>
+          <div class="nav-tab" data-tab="tool-runs">Tool Runs</div>
+          <div class="nav-tab" data-tab="api-tokens">API Tokens</div>
+          <div class="nav-tab" data-tab="sidecars">Sidecar Management</div>
+          <div class="nav-tab" data-tab="backups">Backups</div>
+          <div class="nav-tab" data-tab="health">Health Metrics</div>
+          <div class="nav-tab" data-tab="mcp-inspector">MCP Inspector</div>
+        </div>
+        
+        <!-- Memories Tab -->
+        <div id="memories-tab" class="tab-content active">
+          <h2>Memory Management</h2>
+          <div class="search-form mb-20">
+            <input type="text" id="memory-search" placeholder="Search memories...">
+            <button id="search-memory-button">Search</button>
+          </div>
+          <button id="create-memory-button" class="success">Create Memory</button>
+          <table id="memories-table">
+            <thead>
+              <tr>
+                <th>Title</th>
+                <th>Content</th>
+                <th>Created</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="memories-list">
+              <!-- Memory items will be inserted here -->
+            </tbody>
+          </table>
+        </div>
+        
+        <!-- Tool Runs Tab -->
+        <div id="tool-runs-tab" class="tab-content">
+          <h2>Tool Run Audit Log</h2>
+          
+          <!-- Stats section -->
+          <div class="stats-container mb-20">
+            <div class="stat-box">
+              <h3>Total Runs</h3>
+              <div id="total-runs" class="stat-value">0</div>
+            </div>
+            <div class="stat-box">
+              <h3>Average Duration</h3>
+              <div id="avg-duration" class="stat-value">0ms</div>
+            </div>
+            <div class="stat-box wide">
+              <h3>Most Used Tools</h3>
+              <div id="top-tools" class="stat-list"></div>
+            </div>
+          </div>
+          
+          <!-- Filters -->
+          <div class="filter-container mb-20">
+            <h3>Filter Tool Runs</h3>
+            <div class="filter-form">
+              <div class="filter-group">
+                <label for="filter-tool-name">Tool Name</label>
+                <input type="text" id="filter-tool-name">
+              </div>
+              <div class="filter-group">
+                <label for="filter-status">Status</label>
+                <select id="filter-status">
+                  <option value="">All</option>
+                  <option value="completed">Completed</option>
+                  <option value="failed">Failed</option>
+                </select>
+              </div>
+              <div class="filter-group">
+                <label for="filter-date">Date Range</label>
+                <input type="date" id="filter-date">
+              </div>
+              <div class="filter-buttons">
+                <button id="filter-tool-runs-button">Apply Filters</button>
+                <button id="reset-tool-runs-button">Reset</button>
+              </div>
+            </div>
+          </div>
+          
+          <table id="tool-runs-table">
+            <thead>
+              <tr>
+                <th>Tool</th>
+                <th>Parameters</th>
+                <th>Status</th>
+                <th>Duration</th>
+                <th>Executed At</th>
+              </tr>
+            </thead>
+            <tbody id="tool-runs-list">
+              <!-- Tool run items will be inserted here -->
+            </tbody>
+          </table>
+        </div>
+        
+        <!-- API Tokens Tab -->
+        <div id="api-tokens-tab" class="tab-content">
+          <h2>API Token Management</h2>
+          <div class="flex space-between align-center mb-20">
+            <p>Create and manage API tokens for accessing the OPAL API.</p>
+            <button id="create-token-button" class="success">Create Token</button>
+          </div>
+          <table id="tokens-table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Token</th>
+                <th>Permissions</th>
+                <th>Expires</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="tokens-list">
+              <!-- Token items will be inserted here -->
+            </tbody>
+          </table>
+        </div>
+        
+        <!-- Sidecar Management Tab -->
+        <div id="sidecars-tab" class="tab-content">
+          <h2>Sidecar MCP Server Management</h2>
+          <p class="tab-description">Manage external MCP servers (sidecars) like Jama, Jira, and other specialized tools.</p>
+          
+          <!-- Statistics -->
+          <div class="stats-container mb-20">
+            <div class="stat-box">
+              <h3>Registered Sidecars</h3>
+              <div id="sidecars-count" class="stat-value">0</div>
+            </div>
+            <div class="stat-box">
+              <h3>Active Connections</h3>
+              <div id="active-sidecars-count" class="stat-value">0</div>
+            </div>
+            <div class="stat-box">
+              <h3>Available Tools</h3>
+              <div id="sidecar-tools-count" class="stat-value">0</div>
+            </div>
+            <div class="stat-box">
+              <h3>Health Status</h3>
+              <div id="sidecars-health-status" class="stat-value">Unknown</div>
+            </div>
+          </div>
+          
+          <!-- Actions -->
+          <div class="actions-container mb-20">
+            <button id="register-sidecar-button" class="success">Register New Sidecar</button>
+            <button id="refresh-sidecars-button">Refresh All</button>
+            <button id="health-check-all-button">Health Check All</button>
+          </div>
+          
+          <!-- Registered Sidecars Table -->
+          <div class="table-container">
+            <h3>Registered Sidecars</h3>
+            <table id="sidecars-table">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>URL</th>
+                  <th>Transport</th>
+                  <th>Status</th>
+                  <th>System</th>
+                  <th>Tools</th>
+                  <th>Last Seen</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="sidecars-list">
+                <!-- Sidecar items will be inserted here -->
+              </tbody>
+            </table>
+          </div>
+          
+          <!-- Sidecar Tools Section -->
+          <div class="sidecar-tools-section mt-30">
+            <h3>Available Sidecar Tools</h3>
+            <div class="filter-container mb-20">
+              <select id="sidecar-filter">
+                <option value="">All Sidecars</option>
+                <!-- Options will be populated dynamically -->
+              </select>
+              <input type="text" id="tool-search" placeholder="Search tools...">
+              <button id="search-tools-button">Search</button>
+            </div>
+            
+            <div id="sidecar-tools-grid" class="tools-grid">
+              <!-- Tool cards will be inserted here -->
+            </div>
+          </div>
+        </div>
+        
+        <!-- Backups Tab -->
+        <div id="backups-tab" class="tab-content">
+          <h2>Database Backup & Restore</h2>
+          <button id="create-backup-button">Create Backup</button>
+          <table id="backups-table">
+            <thead>
+              <tr>
+                <th>Filename</th>
+                <th>Created</th>
+                <th>Size</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="backups-list">
+              <!-- Backup items will be inserted here -->
+            </tbody>
+          </table>
+        </div>
+        
+        <!-- Health Metrics Tab -->
+        <div id="health-tab" class="tab-content">
+          <h2>Server Health Metrics</h2>
+          <div class="metrics-refresh">
+            <button id="refresh-metrics-button">Refresh Metrics</button>
+            <span id="last-updated"></span>
+          </div>
+          
+          <div class="metrics-container">
+            <div class="metrics-card">
+              <h3>Server Status</h3>
+              <div class="status-indicator">
+                <span id="server-status-indicator" class="status-dot"></span>
+                <span id="server-status-text">Checking...</span>
+              </div>
+              <div class="metrics-details">
+                <div class="metric-item">
+                  <span class="metric-label">Uptime:</span>
+                  <span id="uptime-value" class="metric-value">-</span>
+                </div>
+                <div class="metric-item">
+                  <span class="metric-label">Version:</span>
+                  <span id="version-value" class="metric-value">-</span>
+                </div>
+                <div class="metric-item">
+                  <span class="metric-label">Node.js:</span>
+                  <span id="nodejs-value" class="metric-value">-</span>
+                </div>
+              </div>
+            </div>
+            
+            <div class="metrics-card">
+              <h3>Resource Usage</h3>
+              <div class="metrics-details">
+                <div class="metric-item">
+                  <span class="metric-label">CPU Usage:</span>
+                  <span id="cpu-usage-value" class="metric-value">-</span>
+                </div>
+                <div class="metric-item">
+                  <span class="metric-label">Memory Usage:</span>
+                  <span id="memory-usage-value" class="metric-value">-</span>
+                </div>
+                <div class="metric-item">
+                  <span class="metric-label">Disk Usage:</span>
+                  <span id="disk-usage-value" class="metric-value">-</span>
+                </div>
+              </div>
+            </div>
+            
+            <div class="metrics-card">
+              <h3>MCP API Statistics</h3>
+              <div class="metrics-details">
+                <div class="metric-item">
+                  <span class="metric-label">Total Requests:</span>
+                  <span id="total-requests-value" class="metric-value">-</span>
+                </div>
+                <div class="metric-item">
+                  <span class="metric-label">Requests/Minute:</span>
+                  <span id="requests-per-minute-value" class="metric-value">-</span>
+                </div>
+                <div class="metric-item">
+                  <span class="metric-label">Active Sessions:</span>
+                  <span id="active-sessions-value" class="metric-value">-</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <div class="metrics-container">
+            <div class="metrics-card full-width">
+              <h3>Database Health</h3>
+              <div class="metrics-details">
+                <div class="metric-item">
+                  <span class="metric-label">Database Size:</span>
+                  <span id="db-size-value" class="metric-value">-</span>
+                </div>
+                <div class="metric-item">
+                  <span class="metric-label">Connection Status:</span>
+                  <span id="db-status-value" class="metric-value">-</span>
+                </div>
+                <div class="metric-item">
+                  <span class="metric-label">Last Backup:</span>
+                  <span id="last-backup-value" class="metric-value">-</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <div class="metrics-container">
+            <div class="metrics-card full-width">
+              <h3>Recent Errors</h3>
+              <div id="recent-errors" class="recent-errors">
+                <p>No recent errors</p>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- MCP Inspector Tab -->
+        <div id="mcp-inspector-tab" class="tab-content">
+          <h2>MCP Protocol Inspector</h2>
+          <p>Test and monitor the MCP protocol implementation on the OPAL server.</p>
+          
+          <div class="mcp-inspector-grid">
+            <div class="mcp-controls">
+              <h3>Server Connection</h3>
+              <div class="form-group">
+                <label for="mcp-url">MCP Endpoint URL:</label>
+                <input type="text" id="mcp-url" value="http://localhost:7788/mcp" />
+              </div>
+              <div class="form-group">
+                <label for="api-token">API Token:</label>
+                <input type="text" id="api-token" placeholder="Enter your OPAL API token here" />
+              </div>
+              <div class="button-group">
+                <button id="init-button" class="primary">1. Initialize Session</button>
+              </div>
+
+              <div class="session-info">
+                <div class="info-item">
+                  <span class="info-label">Session ID:</span>
+                  <span id="session-id" class="info-value">N/A</span>
+                </div>
+                <div class="info-item">
+                  <span class="info-label">Status:</span>
+                  <span id="session-status" class="info-value">Not Initialized</span>
+                </div>
+              </div>
+
+              <div class="button-group">
+                <button id="start-sse-button" disabled>2a. Start SSE Stream</button>
+                <button id="start-ws-button" disabled>2b. Start WebSocket</button>
+              </div>
+              <div class="button-group">
+                <button id="terminate-button" disabled>Terminate Session</button>
+                <button id="disconnect-button">Disconnect Streams</button>
+              </div>
+              
+              <h3>MCP Request</h3>
+              <div class="form-group">
+                <label for="payload-select">Request Template:</label>
+                <select id="payload-select">
+                  <optgroup label="Session Lifecycle">
+                    <option value='{"jsonrpc":"2.0","id":"init-{{id}}","method":"initialize","params":{"protocolVersion":"2024-11-05","clientInfo":{"name":"OPAL Inspector","version":"1.0.0"},"capabilities":{}}}'>initialize</option>
+                    <option value='{"jsonrpc":"2.0","method":"ping","id":"ping-{{id}}"}'>ping</option>
+                    <option value='{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}'>notifications/initialized (Notification)</option>
+                    <option value='{"jsonrpc":"2.0","method":"notifications/cancelled","params":{"requestId":"REPLACE_ME"}}'>notifications/cancelled (Notification)</option>
+                  </optgroup>
+                  <optgroup label="Resource/Tool Discovery">
+                    <option value='{"jsonrpc":"2.0","method":"getTools","params":{},"id":"getTools-{{id}}"}'>getTools</option>
+                    <option value='{"jsonrpc":"2.0","method":"getResources","params":{},"id":"getResources-{{id}}"}'>getResources</option>
+                    <option value='{"jsonrpc":"2.0","method":"getPrompts","params":{},"id":"getPrompts-{{id}}"}'>getPrompts</option>
+                  </optgroup>
+                  <optgroup label="Example (Replace Tool/Params)">
+                    <option value='{"jsonrpc":"2.0","method":"runTool","params":{"toolName":"fakestore_get_resources","params":{}},"id":"runTool-{{id}}"}'>runTool (get all resources)</option>
+                  </optgroup>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="request-payload">Request Payload:</label>
+                <textarea id="request-payload" rows="8"></textarea>
+              </div>
+              <div class="button-group">
+                <button id="send-button" disabled>3. Send Request</button>
+                <button id="clear-log-button">Clear Log</button>
+              </div>
+
+              <h3>API Integration Test</h3>
+              <div class="api-test-panel">
+                <div class="form-group">
+                  <label for="api-name">API Name:</label>
+                  <input type="text" id="api-name" value="fakestore" placeholder="e.g., fakestore" />
+                </div>
+                <div class="form-group">
+                  <label for="api-method">Method:</label>
+                  <select id="api-method">
+                    <option value="GET">GET</option>
+                    <option value="POST">POST</option>
+                    <option value="PUT">PUT</option>
+                    <option value="DELETE">DELETE</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label for="api-endpoint">Endpoint:</label>
+                  <input type="text" id="api-endpoint" value="products" placeholder="e.g., products" />
+                </div>
+                <div class="endpoint-note">
+                  <p>The server uses generic endpoint patterns internally:</p>
+                  <ul>
+                    <li>Enter the <strong>actual API endpoint</strong> you want to test (e.g., "products" or "products/1")</li>
+                    <li>For specific resources, use the format "products/1" to test a single resource by ID</li>
+                  </ul>
+                </div>
+                <div class="form-group">
+                  <label for="api-resources-path">Resources Path:</label>
+                  <input type="text" id="api-resources-path" placeholder="e.g., /products" value="/products" />
+                </div>
+                <div class="form-group">
+                  <label for="api-resource-id-path">Resource ID Path:</label>
+                  <input type="text" id="api-resource-id-path" placeholder="e.g., /products/:id" value="/products/:id" />
+                </div>
+                <div class="form-group">
+                  <label for="api-params">Parameters (JSON):</label>
+                  <textarea id="api-params" rows="4" placeholder='{"id": "1"}'></textarea>
+                </div>
+                <div class="button-group">
+                  <button id="test-api-button" disabled>Test API Integration</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="mcp-log-area">
+              <h3>Log</h3>
+              <div class="log-controls">
+                <button id="copy-log-button">Copy Log</button>
+                <button id="clear-log-button-2">Clear Log</button>
+              </div>
+              <div id="log-container" class="log-container"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Memory Modal -->
+  <div id="memory-modal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 id="memory-form-title">Create New Memory</h3>
+        <span class="close-modal close-memory-modal">&times;</span>
+      </div>
+      <form id="memory-form">
+        <input type="hidden" id="memory-id">
+        <div class="form-group">
+          <label for="memory-title">Title</label>
+          <input type="text" id="memory-title" placeholder="Memory title" required>
+        </div>
+        <div class="form-group">
+          <label for="memory-content">Content</label>
+          <textarea id="memory-content" rows="6" placeholder="Memory content" required></textarea>
+        </div>
+        <div class="form-group">
+          <label for="memory-metadata">Metadata (JSON)</label>
+          <textarea id="memory-metadata" rows="4" placeholder="{}"></textarea>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="close-memory-modal">Cancel</button>
+          <button type="submit" class="success">Save Memory</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Token Modal -->
+  <div id="token-modal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Create API Token</h3>
+        <span class="close-modal close-token-modal">&times;</span>
+      </div>
+      <form id="token-form">
+        <div class="form-group">
+          <label for="token-name">Name</label>
+          <input type="text" id="token-name" placeholder="Token name" required>
+        </div>
+        <div class="form-group">
+          <label>Permissions</label>
+          <div class="checkbox-group">
+            <label>
+              <input type="checkbox" id="perm-read" checked> Read
+            </label>
+            <label>
+              <input type="checkbox" id="perm-write"> Write
+            </label>
+            <label>
+              <input type="checkbox" id="perm-admin"> Admin
+            </label>
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="token-expiry">Expires In (days)</label>
+          <input type="number" id="token-expiry" value="30" min="1" max="365">
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="close-token-modal">Cancel</button>
+          <button type="submit" class="success">Create Token</button>
+        </div>
+      </form>
+      <!-- New Token Display (Added) -->
+      <div id="new-token-container" style="display: none;" class="token-result">
+        <div class="form-group">
+          <h4>Your New API Token</h4>
+          <p class="warning">Save this token now. You won't be able to see it again!</p>
+          <div class="token-display">
+            <code id="new-token-display"></code>
+            <button id="copy-token-button" class="icon-button" title="Copy to clipboard">
+              <span class="icon">📋</span>
+            </button>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button id="close-token-display" class="success">Done</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Load JavaScript files -->
+  <script src="js/api-service.js"></script>
+  <script src="js/auth-service.js"></script>
+  <script src="js/tab-navigation.js"></script>
+  <script src="js/memory-manager.js"></script>
+  <script src="js/token-manager.js"></script>
+  <script src="js/backup-manager.js"></script>
+  <script src="js/audit-manager.js"></script>
+  <script src="js/sidecar-manager.js"></script>
+  <script src="js/admin.js"></script>
+  <!-- Load health metrics script last to ensure all dependencies are loaded -->
+  <script src="js/health-metrics.js"></script>
+  <!-- Load MCP Inspector script -->
+  <script src="js/mcp-inspector-admin.js"></script>
+  <!-- Load Dark Mode script -->
+  <script src="js/dark-mode.js"></script>
+</body>
+</html>

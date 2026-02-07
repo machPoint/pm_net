@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run migrate:latest:*)",
+      "Bash(npm run:*)",
+      "Bash(npx knex:*)",
+      "Bash(test:*)",
+      "Bash(grep:*)"
+    ]
+  }
+}

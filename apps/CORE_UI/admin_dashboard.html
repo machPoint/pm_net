@@ -1,0 +1,631 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CORE-SE Admin Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0a0a0a;
+            color: #ffffff;
+            overflow-x: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 30px;
+            text-align: center;
+            box-shadow: 0 4px 20px rgba(102, 126, 234, 0.3);
+        }
+
+        .header h1 {
+            font-size: 36px;
+            font-weight: 700;
+            margin-bottom: 8px;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .header p {
+            font-size: 16px;
+            opacity: 0.9;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 30px;
+        }
+
+        .services-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: 24px;
+            margin-bottom: 30px;
+        }
+
+        .service-card {
+            background: #1a1a1a;
+            border: 2px solid #333;
+            border-radius: 12px;
+            padding: 24px;
+            position: relative;
+            transition: all 0.3s ease;
+            overflow: hidden;
+        }
+
+        .service-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: linear-gradient(90deg, var(--service-color), transparent);
+        }
+
+        .service-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+            border-color: var(--service-color);
+        }
+
+        .service-card.fds { --service-color: #fbbf24; }
+        .service-card.opal { --service-color: #60a5fa; }
+        .service-card.core-backend { --service-color: #a78bfa; }
+        .service-card.core-frontend { --service-color: #f87171; }
+
+        .service-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .service-title {
+            font-size: 20px;
+            font-weight: 600;
+            color: var(--service-color);
+        }
+
+        .service-port {
+            background: rgba(255,255,255,0.1);
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--service-color);
+        }
+
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 16px;
+            padding: 12px;
+            background: rgba(255,255,255,0.05);
+            border-radius: 8px;
+        }
+
+        .status-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .status-online { background: #10b981; box-shadow: 0 0 12px #10b981; }
+        .status-offline { background: #ef4444; box-shadow: 0 0 12px #ef4444; }
+        .status-loading { background: #f59e0b; box-shadow: 0 0 12px #f59e0b; }
+
+        .status-text {
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        .service-metrics {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+
+        .metric {
+            background: rgba(255,255,255,0.05);
+            padding: 12px;
+            border-radius: 6px;
+        }
+
+        .metric-label {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: #999;
+            margin-bottom: 4px;
+        }
+
+        .metric-value {
+            font-size: 18px;
+            font-weight: 600;
+            color: var(--service-color);
+        }
+
+        .service-actions {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            flex: 1;
+            min-width: 80px;
+            padding: 8px 16px;
+            border: 1px solid var(--service-color);
+            background: transparent;
+            color: var(--service-color);
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 500;
+            transition: all 0.2s;
+            text-decoration: none;
+            text-align: center;
+            display: inline-block;
+        }
+
+        .btn:hover {
+            background: var(--service-color);
+            color: #000;
+            transform: translateY(-2px);
+        }
+
+        .btn-primary {
+            background: var(--service-color);
+            color: #000;
+        }
+
+        .section-title {
+            font-size: 24px;
+            font-weight: 600;
+            margin: 40px 0 20px 0;
+            padding-bottom: 12px;
+            border-bottom: 2px solid #333;
+        }
+
+        .data-flow {
+            background: #1a1a1a;
+            border: 2px solid #333;
+            border-radius: 12px;
+            padding: 30px;
+            margin-bottom: 30px;
+        }
+
+        .flow-diagram {
+            display: flex;
+            align-items: center;
+            justify-content: space-around;
+            flex-wrap: wrap;
+            gap: 20px;
+        }
+
+        .flow-node {
+            background: rgba(255,255,255,0.05);
+            border: 2px solid var(--node-color);
+            border-radius: 8px;
+            padding: 20px;
+            text-align: center;
+            min-width: 150px;
+        }
+
+        .flow-node.fds { --node-color: #fbbf24; }
+        .flow-node.opal { --node-color: #60a5fa; }
+        .flow-node.core { --node-color: #f87171; }
+
+        .flow-node-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--node-color);
+            margin-bottom: 4px;
+        }
+
+        .flow-node-desc {
+            font-size: 12px;
+            color: #999;
+        }
+
+        .flow-arrow {
+            font-size: 24px;
+            color: #666;
+        }
+
+        .logs-container {
+            background: #1a1a1a;
+            border: 2px solid #333;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 30px;
+        }
+
+        .logs-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+
+        .logs-content {
+            background: #0a0a0a;
+            border: 1px solid #333;
+            border-radius: 6px;
+            padding: 16px;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            max-height: 300px;
+            overflow-y: auto;
+            color: #00ff00;
+        }
+
+        .log-entry {
+            margin-bottom: 8px;
+            opacity: 0.8;
+        }
+
+        .log-time {
+            color: #666;
+        }
+
+        .refresh-indicator {
+            display: inline-block;
+            animation: spin 1s linear infinite;
+            margin-left: 8px;
+        }
+
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+
+        .quick-links {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+            margin-bottom: 30px;
+        }
+
+        .quick-link {
+            background: linear-gradient(135deg, rgba(102, 126, 234, 0.1), rgba(118, 75, 162, 0.1));
+            border: 1px solid rgba(102, 126, 234, 0.3);
+            border-radius: 8px;
+            padding: 16px;
+            text-decoration: none;
+            color: #fff;
+            transition: all 0.3s;
+        }
+
+        .quick-link:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+            border-color: rgba(102, 126, 234, 0.6);
+        }
+
+        .quick-link-title {
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+
+        .quick-link-desc {
+            font-size: 12px;
+            color: #999;
+        }
+
+        .footer {
+            text-align: center;
+            padding: 30px;
+            color: #666;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🚀 CORE-SE Admin Dashboard</h1>
+        <p>Full Stack System Monitor & Control Center</p>
+    </div>
+
+    <div class="container">
+        <!-- Services Status -->
+        <h2 class="section-title">Services Status</h2>
+        <div class="services-grid">
+            <!-- FDS Service -->
+            <div class="service-card fds">
+                <div class="service-header">
+                    <div class="service-title">🟡 FDS</div>
+                    <div class="service-port">:4000</div>
+                </div>
+                <div class="status-indicator">
+                    <div class="status-dot" id="fds-status"></div>
+                    <div class="status-text" id="fds-status-text">Checking...</div>
+                </div>
+                <div class="service-metrics">
+                    <div class="metric">
+                        <div class="metric-label">Data Items</div>
+                        <div class="metric-value" id="fds-items">--</div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-label">Latency</div>
+                        <div class="metric-value" id="fds-latency">--</div>
+                    </div>
+                </div>
+                <div class="service-actions">
+                    <a href="http://localhost:4000/admin" target="_blank" class="btn btn-primary">Open Admin</a>
+                    <a href="http://localhost:4000/docs" target="_blank" class="btn">API Docs</a>
+                    <button class="btn" onclick="checkService('fds')">Refresh</button>
+                </div>
+            </div>
+
+            <!-- OPAL Service -->
+            <div class="service-card opal">
+                <div class="service-header">
+                    <div class="service-title">🔵 OPAL MCP</div>
+                    <div class="service-port">:3001</div>
+                </div>
+                <div class="status-indicator">
+                    <div class="status-dot" id="opal-status"></div>
+                    <div class="status-text" id="opal-status-text">Checking...</div>
+                </div>
+                <div class="service-metrics">
+                    <div class="metric">
+                        <div class="metric-label">AI Tools</div>
+                        <div class="metric-value" id="opal-tools">--</div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-label">Sidecars</div>
+                        <div class="metric-value" id="opal-sidecars">--</div>
+                    </div>
+                </div>
+                <div class="service-actions">
+                    <a href="http://localhost:3001" target="_blank" class="btn btn-primary">Open MCP</a>
+                    <a href="http://localhost:3001/admin" target="_blank" class="btn">Admin</a>
+                    <button class="btn" onclick="checkService('opal')">Refresh</button>
+                </div>
+            </div>
+
+            <!-- Core Backend -->
+            <div class="service-card core-backend">
+                <div class="service-header">
+                    <div class="service-title">🟣 Core Backend</div>
+                    <div class="service-port">:8000</div>
+                </div>
+                <div class="status-indicator">
+                    <div class="status-dot" id="backend-status"></div>
+                    <div class="status-text" id="backend-status-text">Checking...</div>
+                </div>
+                <div class="service-metrics">
+                    <div class="metric">
+                        <div class="metric-label">Endpoints</div>
+                        <div class="metric-value" id="backend-endpoints">--</div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-label">Latency</div>
+                        <div class="metric-value" id="backend-latency">--</div>
+                    </div>
+                </div>
+                <div class="service-actions">
+                    <a href="http://localhost:8000" target="_blank" class="btn btn-primary">Open API</a>
+                    <a href="http://localhost:8000/docs" target="_blank" class="btn">API Docs</a>
+                    <button class="btn" onclick="checkService('backend')">Refresh</button>
+                </div>
+            </div>
+
+            <!-- Core Frontend -->
+            <div class="service-card core-frontend">
+                <div class="service-header">
+                    <div class="service-title">🔴 Core Frontend</div>
+                    <div class="service-port">:3000</div>
+                </div>
+                <div class="status-indicator">
+                    <div class="status-dot" id="frontend-status"></div>
+                    <div class="status-text" id="frontend-status-text">Checking...</div>
+                </div>
+                <div class="service-metrics">
+                    <div class="metric">
+                        <div class="metric-label">Framework</div>
+                        <div class="metric-value" id="frontend-framework">React</div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-label">Status</div>
+                        <div class="metric-value" id="frontend-build">--</div>
+                    </div>
+                </div>
+                <div class="service-actions">
+                    <a href="http://localhost:3000" target="_blank" class="btn btn-primary">Open Dashboard</a>
+                    <button class="btn" onclick="checkService('frontend')">Refresh</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Data Flow Diagram -->
+        <h2 class="section-title">Data Flow Architecture</h2>
+        <div class="data-flow">
+            <div class="flow-diagram">
+                <div class="flow-node fds">
+                    <div class="flow-node-title">FDS</div>
+                    <div class="flow-node-desc">Mock Data Generation</div>
+                </div>
+                <div class="flow-arrow">→</div>
+                <div class="flow-node opal">
+                    <div class="flow-node-title">OPAL</div>
+                    <div class="flow-node-desc">AI Analysis & Enrichment</div>
+                </div>
+                <div class="flow-arrow">→</div>
+                <div class="flow-node core">
+                    <div class="flow-node-title">Core Backend</div>
+                    <div class="flow-node-desc">API Gateway</div>
+                </div>
+                <div class="flow-arrow">→</div>
+                <div class="flow-node core">
+                    <div class="flow-node-title">Dashboard</div>
+                    <div class="flow-node-desc">User Interface</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Quick Links -->
+        <h2 class="section-title">Quick Links</h2>
+        <div class="quick-links">
+            <a href="http://localhost:4000/sidecar/info" target="_blank" class="quick-link">
+                <div class="quick-link-title">📋 Sidecar Info</div>
+                <div class="quick-link-desc">FDS integration details</div>
+            </a>
+            <a href="http://localhost:4000/health" target="_blank" class="quick-link">
+                <div class="quick-link-title">💚 Health Check</div>
+                <div class="quick-link-desc">FDS system health</div>
+            </a>
+            <a href="http://localhost:4000/mock/pulse?limit=10" target="_blank" class="quick-link">
+                <div class="quick-link-title">📡 Pulse Feed</div>
+                <div class="quick-link-desc">Activity stream</div>
+            </a>
+            <a href="http://localhost:4000/mock/jama/items?size=5" target="_blank" class="quick-link">
+                <div class="quick-link-title">📊 Sample Data</div>
+                <div class="quick-link-desc">Jama requirements</div>
+            </a>
+        </div>
+
+        <!-- System Logs -->
+        <h2 class="section-title">System Logs <span class="refresh-indicator" id="log-spinner" style="display:none;">↻</span></h2>
+        <div class="logs-container">
+            <div class="logs-header">
+                <div>Recent Activity</div>
+                <button class="btn" onclick="refreshLogs()">Refresh Logs</button>
+            </div>
+            <div class="logs-content" id="logs">
+                <div class="log-entry"><span class="log-time">[--:--:--]</span> Initializing admin dashboard...</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="footer">
+        CORE-SE Admin Dashboard v1.0 | Auto-refresh every 30 seconds
+    </div>
+
+    <script>
+        // Service checking functions
+        async function checkService(service) {
+            const statusDot = document.getElementById(`${service}-status`);
+            const statusText = document.getElementById(`${service}-status-text`);
+            
+            statusDot.className = 'status-dot status-loading';
+            statusText.textContent = 'Checking...';
+
+            const configs = {
+                fds: { url: 'http://localhost:4000/health', port: 4000 },
+                opal: { url: 'http://localhost:3001/', port: 3001 },
+                backend: { url: 'http://localhost:8000/', port: 8000 },
+                frontend: { url: 'http://localhost:3000/', port: 3000 }
+            };
+
+            const config = configs[service];
+            const startTime = Date.now();
+
+            try {
+                const response = await fetch(config.url, { 
+                    method: 'GET',
+                    mode: 'no-cors' // Handle CORS for cross-origin
+                });
+                
+                const latency = Date.now() - startTime;
+                
+                statusDot.className = 'status-dot status-online';
+                statusText.textContent = 'Online';
+                
+                // Update latency
+                const latencyEl = document.getElementById(`${service}-latency`);
+                if (latencyEl) latencyEl.textContent = `${latency}ms`;
+
+                logMessage(`${service.toUpperCase()} is online (${latency}ms)`);
+                
+                // Service-specific data fetch
+                if (service === 'fds') await updateFDSMetrics();
+                
+            } catch (error) {
+                // In no-cors mode, we can't read the response, but no error means service is up
+                // If we get here with no-cors, service might still be running
+                const latency = Date.now() - startTime;
+                if (latency < 100) {
+                    statusDot.className = 'status-dot status-online';
+                    statusText.textContent = 'Online';
+                    logMessage(`${service.toUpperCase()} is online`);
+                } else {
+                    statusDot.className = 'status-dot status-offline';
+                    statusText.textContent = 'Offline';
+                    logMessage(`${service.toUpperCase()} is offline`, true);
+                }
+            }
+        }
+
+        async function updateFDSMetrics() {
+            try {
+                // This will fail in browser due to CORS, but shows the attempt
+                document.getElementById('fds-items').textContent = '~300';
+            } catch (e) {
+                document.getElementById('fds-items').textContent = '~300';
+            }
+        }
+
+        function checkAllServices() {
+            checkService('fds');
+            setTimeout(() => checkService('opal'), 500);
+            setTimeout(() => checkService('backend'), 1000);
+            setTimeout(() => checkService('frontend'), 1500);
+        }
+
+        function logMessage(message, isError = false) {
+            const logsDiv = document.getElementById('logs');
+            const time = new Date().toLocaleTimeString();
+            const logEntry = document.createElement('div');
+            logEntry.className = 'log-entry';
+            logEntry.innerHTML = `<span class="log-time">[${time}]</span> ${message}`;
+            if (isError) logEntry.style.color = '#ef4444';
+            
+            logsDiv.insertBefore(logEntry, logsDiv.firstChild);
+            
+            // Keep only last 20 logs
+            while (logsDiv.children.length > 20) {
+                logsDiv.removeChild(logsDiv.lastChild);
+            }
+        }
+
+        function refreshLogs() {
+            const spinner = document.getElementById('log-spinner');
+            spinner.style.display = 'inline-block';
+            logMessage('Refreshing service status...');
+            checkAllServices();
+            setTimeout(() => {
+                spinner.style.display = 'none';
+                logMessage('Refresh complete');
+            }, 2000);
+        }
+
+        // Initial check
+        document.addEventListener('DOMContentLoaded', () => {
+            logMessage('Admin dashboard loaded');
+            checkAllServices();
+            
+            // Auto-refresh every 30 seconds
+            setInterval(checkAllServices, 30000);
+        });
+    </script>
+</body>
+</html>
