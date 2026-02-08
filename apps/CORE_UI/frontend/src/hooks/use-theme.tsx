@@ -1,79 +1,113 @@
-"use client";
+'use client';
 
 import React, { createContext, useContext, useEffect, useState } from 'react';
-
-type Theme = 'light' | 'dark';
+import {
+  BaseTheme,
+  ColorScheme,
+  ThemeConfig,
+  GlassEffect,
+  getBaseThemes,
+  getColorSchemes,
+  applyThemeConfig,
+  applyGlassEffect,
+  isThemeDark,
+} from '@/lib/themes/theme-config';
 
 interface ThemeContextType {
-  theme: Theme;
-  toggleTheme: () => void;
+  baseTheme: BaseTheme;
+  colorScheme: ColorScheme;
+  glassEffect: GlassEffect;
+  setBaseTheme: (theme: BaseTheme) => void;
+  setColorScheme: (scheme: ColorScheme) => void;
+  setGlassEffect: (effect: GlassEffect) => void;
+  toggleBaseTheme: () => void;
+  availableBaseThemes: BaseTheme[];
+  availableColorSchemes: ColorScheme[];
+  availableGlassEffects: GlassEffect[];
+  isDarkMode: boolean;
 }
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
-interface ThemeProviderProps {
-  children: React.ReactNode;
-}
-
-export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
-  const [theme, setTheme] = useState<Theme>('dark');
+export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [mounted, setMounted] = useState(false);
+  const [baseTheme, setBaseThemeState] = useState<BaseTheme>('dark');
+  const [colorScheme, setColorSchemeState] = useState<ColorScheme>('standard');
+  const [glassEffect, setGlassEffectState] = useState<GlassEffect>('flat');
 
-  // Handle initial hydration and theme setup
   useEffect(() => {
-    const storedTheme = localStorage.getItem('theme') as Theme;
-    const preferredTheme = storedTheme || 'dark'; // Default to dark mode as per PRD
-    
-    setTheme(preferredTheme);
-    
-    // Apply theme class to document element
-    if (preferredTheme === 'dark') {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
-    
     setMounted(true);
+    
+    // Load theme from localStorage
+    const savedBaseTheme = localStorage.getItem('baseTheme') as BaseTheme | null;
+    const savedColorScheme = localStorage.getItem('colorScheme') as ColorScheme | null;
+    const savedGlassEffect = localStorage.getItem('glassEffect') as GlassEffect | null;
+
+    if (savedBaseTheme && getBaseThemes().includes(savedBaseTheme)) {
+      setBaseThemeState(savedBaseTheme);
+    }
+
+    if (savedColorScheme && getColorSchemes().includes(savedColorScheme)) {
+      setColorSchemeState(savedColorScheme);
+    }
+
+    if (savedGlassEffect && ['flat', 'glass'].includes(savedGlassEffect)) {
+      setGlassEffectState(savedGlassEffect);
+    }
   }, []);
 
-  const toggleTheme = () => {
-    const newTheme: Theme = theme === 'light' ? 'dark' : 'light';
-    setTheme(newTheme);
-    
-    // Persist to localStorage
-    localStorage.setItem('theme', newTheme);
-    
-    // Apply theme class to document element
-    if (newTheme === 'dark') {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
+  useEffect(() => {
+    if (mounted) {
+      const config: ThemeConfig = { baseTheme, colorScheme };
+      applyThemeConfig(config);
+      applyGlassEffect(glassEffect);
+      localStorage.setItem('baseTheme', baseTheme);
+      localStorage.setItem('colorScheme', colorScheme);
+      localStorage.setItem('glassEffect', glassEffect);
     }
+  }, [baseTheme, colorScheme, glassEffect, mounted]);
+
+  const setBaseTheme = (theme: BaseTheme) => {
+    setBaseThemeState(theme);
+  };
+
+  const setColorScheme = (scheme: ColorScheme) => {
+    setColorSchemeState(scheme);
+  };
+
+  const setGlassEffect = (effect: GlassEffect) => {
+    setGlassEffectState(effect);
+  };
+
+  const toggleBaseTheme = () => {
+    setBaseThemeState((prev) => (prev === 'light' ? 'dark' : 'light'));
   };
 
   const value: ThemeContextType = {
-    theme,
-    toggleTheme,
+    baseTheme,
+    colorScheme,
+    glassEffect,
+    setBaseTheme,
+    setColorScheme,
+    setGlassEffect,
+    toggleBaseTheme,
+    availableBaseThemes: getBaseThemes(),
+    availableColorSchemes: getColorSchemes(),
+    availableGlassEffects: ['flat', 'glass'],
+    isDarkMode: isThemeDark(baseTheme),
   };
 
-  // Don't render children until mounted to avoid hydration mismatch
   if (!mounted) {
     return null;
   }
 
-  return (
-    <ThemeContext.Provider value={value}>
-      {children}
-    </ThemeContext.Provider>
-  );
-};
+  return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
+}
 
-export const useTheme = (): ThemeContextType => {
+export function useTheme() {
   const context = useContext(ThemeContext);
-  
   if (context === undefined) {
     throw new Error('useTheme must be used within a ThemeProvider');
   }
-  
   return context;
-};
+}

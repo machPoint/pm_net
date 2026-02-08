@@ -4,6 +4,7 @@ Authentication utilities for CORE-SE Backend
 
 import jwt
 import uuid
+import hashlib
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 from passlib.context import CryptContext
@@ -19,12 +20,22 @@ settings = get_settings()
 
 
 def hash_password(password: str) -> str:
-    """Hash a password using bcrypt"""
+    """Hash a password using bcrypt (with SHA256 pre-hash for long passwords)"""
+    # bcrypt has a 72-byte limit, so pre-hash long passwords with SHA256
+    password_bytes = password.encode('utf-8')
+    if len(password_bytes) > 72:
+        print(f"[DEBUG] Password too long ({len(password_bytes)} bytes), pre-hashing with SHA256")
+        password = hashlib.sha256(password_bytes).hexdigest()
+    else:
+        print(f"[DEBUG] Password length OK ({len(password_bytes)} bytes)")
     return pwd_context.hash(password)
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Verify a plain password against its hash"""
+    # Apply same pre-hash logic as hash_password for long passwords
+    if len(plain_password.encode('utf-8')) > 72:
+        plain_password = hashlib.sha256(plain_password.encode('utf-8')).hexdigest()
     return pwd_context.verify(plain_password, hashed_password)
 
 

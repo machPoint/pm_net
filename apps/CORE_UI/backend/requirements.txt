@@ -21,6 +21,6 @@ openai>=1.0.0
 faker
 pyjwt
 passlib[bcrypt]
-bcrypt
+bcrypt==3.2.2
 email-validator
 fastapi-cors

@@ -209,3 +209,111 @@
 .dark .resize-handle:hover::before {
   background-color: hsl(var(--primary));
 }
+
+/* Glass Effect Styling - Subtle glassmorphism */
+.glass-effect [data-slot="card"],
+.glass-effect .card,
+.glass-effect [role="dialog"],
+.glass-effect [data-radix-dialog-content] {
+  background: rgba(255, 255, 255, 0.05) !important;
+  backdrop-filter: blur(12px) saturate(180%);
+  -webkit-backdrop-filter: blur(12px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.2);
+}
+
+.glass-effect.dark [data-slot="card"],
+.glass-effect.dark .card,
+.glass-effect.dark [role="dialog"],
+.glass-effect.dark [data-radix-dialog-content] {
+  background: rgba(0, 0, 0, 0.3) !important;
+  backdrop-filter: blur(12px) saturate(180%);
+  -webkit-backdrop-filter: blur(12px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.4);
+}
+
+/* Glass effect for sidebar */
+.glass-effect [data-slot="sidebar"],
+.glass-effect aside {
+  background: rgba(255, 255, 255, 0.03) !important;
+  backdrop-filter: blur(16px) saturate(180%);
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
+  border-right: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.glass-effect.dark [data-slot="sidebar"],
+.glass-effect.dark aside {
+  background: rgba(0, 0, 0, 0.4) !important;
+  backdrop-filter: blur(16px) saturate(180%);
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
+  border-right: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+/* Glass effect for buttons and inputs */
+.glass-effect button:not(.flat-button),
+.glass-effect [data-slot="button"] {
+  background: rgba(255, 255, 255, 0.08) !important;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.glass-effect.dark button:not(.flat-button),
+.glass-effect.dark [data-slot="button"] {
+  background: rgba(255, 255, 255, 0.05) !important;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* Glass effect for popovers and dropdowns */
+.glass-effect [data-radix-popper-content-wrapper],
+.glass-effect [role="menu"],
+.glass-effect [role="listbox"] {
+  background: rgba(255, 255, 255, 0.08) !important;
+  backdrop-filter: blur(16px) saturate(180%);
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.2);
+}
+
+.glass-effect.dark [data-radix-popper-content-wrapper],
+.glass-effect.dark [role="menu"],
+.glass-effect.dark [role="listbox"] {
+  background: rgba(0, 0, 0, 0.4) !important;
+  backdrop-filter: blur(16px) saturate(180%);
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.4);
+}
+
+/* Glass effect for badges and pills */
+.glass-effect .badge,
+.glass-effect [data-slot="badge"] {
+  background: rgba(255, 255, 255, 0.1) !important;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.glass-effect.dark .badge,
+.glass-effect.dark [data-slot="badge"] {
+  background: rgba(255, 255, 255, 0.08) !important;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* Enhance hover states for glass effect */
+.glass-effect button:hover:not(.flat-button),
+.glass-effect [data-slot="button"]:hover {
+  background: rgba(255, 255, 255, 0.12) !important;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+}
+
+.glass-effect.dark button:hover:not(.flat-button),
+.glass-effect.dark [data-slot="button"]:hover {
+  background: rgba(255, 255, 255, 0.08) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}

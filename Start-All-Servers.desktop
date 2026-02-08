@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Start NetPM Servers
+Comment=Start OPAL_SE + CORE_UI backend + CORE_UI frontend
+Exec=bash -lc '/media/x1/OS-XFER/PM_NET/start-all.sh'
+Path=/media/x1/OS-XFER/PM_NET
+Terminal=false
+Categories=Development;

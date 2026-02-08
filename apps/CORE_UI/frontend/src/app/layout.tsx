@@ -4,6 +4,7 @@ import VisualEditsMessenger from "../visual-edits/VisualEditsMessenger";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { DataModeProvider } from "@/contexts/DataModeContext";
 import { BackendStatusProvider } from "@/contexts/BackendStatusContext";
+import { ThemeProvider } from "@/hooks/use-theme";
 import BackendGate from "@/components/BackendGate";
 import Script from "next/script";
 
@@ -30,15 +31,17 @@ export default function RootLayout({
           data-debug="true"
           data-custom-data='{"appName": "YourApp", "version": "1.0.0", "greeting": "hi"}'
         />
-        <BackendStatusProvider>
-          <BackendGate>
-            <AuthProvider>
-              <DataModeProvider>
-                {children}
-              </DataModeProvider>
-            </AuthProvider>
-          </BackendGate>
-        </BackendStatusProvider>
+        <ThemeProvider>
+          <BackendStatusProvider>
+            <BackendGate>
+              <AuthProvider>
+                <DataModeProvider>
+                  {children}
+                </DataModeProvider>
+              </AuthProvider>
+            </BackendGate>
+          </BackendStatusProvider>
+        </ThemeProvider>
         <VisualEditsMessenger />
       </body>
     </html>

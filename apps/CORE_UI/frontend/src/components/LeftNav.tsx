@@ -39,7 +39,7 @@ const navItems = [
 export default function LeftNav({ activeTab, onTabChange, className }: LeftNavProps) {
   return (
     <nav className={cn(
-      "border-r border-border bg-[#1c1c1c] dark:bg-[#1c1c1c] p-4 flex flex-col gap-2",
+      "border-r border-sidebar-border bg-sidebar p-4 flex flex-col gap-2",
       className
     )}>
       <div className="space-y-1">
@@ -54,8 +54,8 @@ export default function LeftNav({ activeTab, onTabChange, className }: LeftNavPr
               className={cn(
                 "w-full justify-start gap-3 h-10 px-3 text-sm font-medium",
                 isActive
-                  ? "bg-primary text-primary-foreground"
-                  : "text-[#dbdbdb] dark:text-[#dbdbdb] hover:bg-[#2b2b2b] dark:hover:bg-[#2b2b2b] hover:text-[#dbdbdb] dark:hover:text-[#dbdbdb]"
+                  ? "bg-sidebar-primary text-sidebar-primary-foreground"
+                  : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
               )}
               onClick={() => onTabChange(item.id)}
             >

@@ -13,13 +13,16 @@ import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { ArrowLeft, Save, RotateCcw, Sparkles, Zap, Target, Key, Eye, EyeOff } from "lucide-react";
+import { ArrowLeft, Save, RotateCcw, Sparkles, Zap, Target, Key, Eye, EyeOff, Sun, Moon, Palette } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import { useTheme } from "@/hooks/use-theme";
+import { getColorSchemeInfo } from "@/lib/themes/theme-config";
 import { toast } from "sonner";
 
 export default function SettingsPage() {
   const router = useRouter();
   const { user } = useAuth();
+  const { baseTheme, colorScheme, glassEffect, setBaseTheme, setColorScheme, setGlassEffect, availableBaseThemes, availableColorSchemes, availableGlassEffects } = useTheme();
   
   // General settings
   const [displayName, setDisplayName] = useState(user?.full_name || "");
@@ -28,7 +31,6 @@ export default function SettingsPage() {
   const [language, setLanguage] = useState("en");
   
   // Display settings
-  const [theme, setTheme] = useState("dark");
   const [density, setDensity] = useState("comfortable");
   const [animations, setAnimations] = useState(true);
   
@@ -527,31 +529,165 @@ export default function SettingsPage() {
 
           {/* Display Settings */}
           <TabsContent value="display" className="space-y-4">
+            {/* Base Theme Selection */}
             <Card>
               <CardHeader>
-                <CardTitle>Appearance</CardTitle>
-                <CardDescription>Customize how the application looks</CardDescription>
+                <CardTitle className="flex items-center gap-2">
+                  <Sun className="h-5 w-5" />
+                  Base Theme
+                </CardTitle>
+                <CardDescription>Choose between light and dark mode</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-2 gap-4">
+                  {availableBaseThemes.map((theme) => (
+                    <button
+                      key={theme}
+                      onClick={() => setBaseTheme(theme)}
+                      className={`p-4 rounded-lg border-2 transition-all ${
+                        baseTheme === theme
+                          ? 'border-primary bg-primary/10'
+                          : 'border-border hover:border-primary/50'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        {theme === 'light' ? (
+                          <Sun className="h-5 w-5" />
+                        ) : (
+                          <Moon className="h-5 w-5" />
+                        )}
+                        <div className="text-left">
+                          <div className="font-medium capitalize">{theme}</div>
+                          <div className="text-xs text-muted-foreground">
+                            {theme === 'light' ? 'Bright backgrounds' : 'Dark backgrounds'}
+                          </div>
+                        </div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Color Scheme Selection */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Palette className="h-5 w-5" />
+                  Color Scheme
+                </CardTitle>
+                <CardDescription>Choose your color palette</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {availableColorSchemes.map((scheme) => {
+                    const info = getColorSchemeInfo(scheme);
+                    return (
+                      <button
+                        key={scheme}
+                        onClick={() => setColorScheme(scheme)}
+                        className={`p-4 rounded-lg border-2 transition-all ${
+                          colorScheme === scheme
+                            ? 'border-primary bg-primary/10'
+                            : 'border-border hover:border-primary/50'
+                        }`}
+                      >
+                        <div className="text-left space-y-2">
+                          <div className="font-medium">{info.name}</div>
+                          <div className="text-xs text-muted-foreground">
+                            {info.description}
+                          </div>
+                          {/* Color preview dots */}
+                          <div className="flex gap-1 mt-2">
+                            {scheme === 'standard' && (
+                              <>
+                                <div className="w-3 h-3 rounded-full bg-gray-500" />
+                                <div className="w-3 h-3 rounded-full bg-gray-600" />
+                                <div className="w-3 h-3 rounded-full bg-gray-700" />
+                              </>
+                            )}
+                            {scheme === 'colorful' && (
+                              <>
+                                <div className="w-3 h-3 rounded-full bg-blue-500" />
+                                <div className="w-3 h-3 rounded-full bg-purple-500" />
+                                <div className="w-3 h-3 rounded-full bg-pink-500" />
+                              </>
+                            )}
+                            {scheme === 'monotone' && (
+                              <>
+                                <div className="w-3 h-3 rounded-full bg-gray-300" />
+                                <div className="w-3 h-3 rounded-full bg-gray-500" />
+                                <div className="w-3 h-3 rounded-full bg-gray-700" />
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Glass Effect Selection */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Sparkles className="h-5 w-5" />
+                  Visual Style
+                </CardTitle>
+                <CardDescription>Choose between flat or glass effect styling</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-2 gap-4">
+                  {availableGlassEffects.map((effect) => (
+                    <button
+                      key={effect}
+                      onClick={() => setGlassEffect(effect)}
+                      className={`p-4 rounded-lg border-2 transition-all ${
+                        glassEffect === effect
+                          ? 'border-primary bg-primary/10'
+                          : 'border-border hover:border-primary/50'
+                      }`}
+                    >
+                      <div className="text-left space-y-2">
+                        <div className="font-medium capitalize">{effect}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {effect === 'flat' 
+                            ? 'Clean, solid backgrounds' 
+                            : 'Subtle glass-like depth with blur'}
+                        </div>
+                        {/* Visual preview */}
+                        <div className="mt-3 h-12 rounded-md border overflow-hidden">
+                          {effect === 'flat' ? (
+                            <div className="h-full bg-muted" />
+                          ) : (
+                            <div 
+                              className="h-full relative"
+                              style={{
+                                background: 'rgba(255, 255, 255, 0.05)',
+                                backdropFilter: 'blur(8px)',
+                                border: '1px solid rgba(255, 255, 255, 0.1)'
+                              }}
+                            >
+                              <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent" />
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Other Display Settings */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Display Options</CardTitle>
+                <CardDescription>Additional display preferences</CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
-                <div className="flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <Label>Theme</Label>
-                    <p className="text-sm text-muted-foreground">
-                      Choose your color scheme
-                    </p>
-                  </div>
-                  <Select value={theme} onValueChange={setTheme}>
-                    <SelectTrigger className="w-32">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="light">Light</SelectItem>
-                      <SelectItem value="dark">Dark</SelectItem>
-                      <SelectItem value="auto">Auto</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <Separator />
                 <div className="flex items-center justify-between">
                   <div className="space-y-0.5">
                     <Label>Density</Label>
