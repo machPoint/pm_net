@@ -148,7 +148,7 @@ export const submitPlan = {
 			allowed_relation_types: {
 				type: 'array',
 				items: { type: 'string' },
-				description: 'Optional: Edge types to traverse (e.g., ["TRACES_TO", "VERIFIED_BY"])'
+				description: 'Optional: Edge types to traverse. PM: depends_on, blocks, assigned_to, produces, mitigates, requires_approval, informs. Governance: for_task, proposes, executes_plan, executed, checks, evidenced_by, during_run, learned_from, based_on'
 			},
 			max_weight: {
 				type: 'number',

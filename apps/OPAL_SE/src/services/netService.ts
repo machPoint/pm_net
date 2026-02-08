@@ -178,19 +178,19 @@ export async function submitPlan(
 		created_by: ctx.agentId,
 	});
 
-	// Create has_plan edge (Task -> Plan)
+	// Create for_task edge (Plan -> Task)
 	await graphService.createEdge({
-		edge_type: 'has_plan',
-		source_node_id: input.task_id,
-		target_node_id: plan.id,
+		edge_type: 'for_task',
+		source_node_id: plan.id,
+		target_node_id: input.task_id,
 		created_by: ctx.agentId,
 	});
 
-	// Create proposed_by edge (Plan -> Agent)
+	// Create proposes edge (Agent -> Plan)
 	await graphService.createEdge({
-		edge_type: 'proposed_by',
-		source_node_id: plan.id,
-		target_node_id: ctx.agentId,
+		edge_type: 'proposes',
+		source_node_id: ctx.agentId,
+		target_node_id: plan.id,
 		created_by: ctx.agentId,
 	});
 
@@ -213,15 +213,15 @@ export async function checkPlanStatus(
 		throw new Error(`Plan not found: ${planId}`);
 	}
 
-	// Look for approval edges
+	// Look for requires_approval edges (plan -> gate)
 	const approvalEdges = await graphService.listEdges({
-		edge_type: 'approval_of',
-		target_node_id: planId,
+		edge_type: 'requires_approval',
+		source_node_id: planId,
 	});
 
 	let approval: graphService.Node | undefined;
 	if (approvalEdges.length > 0) {
-		approval = await graphService.getNode(approvalEdges[0].source_node_id) ?? undefined;
+		approval = await graphService.getNode(approvalEdges[0].target_node_id) ?? undefined;
 	}
 
 	return { status: plan.status, approval };
@@ -246,15 +246,15 @@ export async function startRun(
 		throw new Error(`Plan is not approved (status: ${plan.status})`);
 	}
 
-	// Find the associated task
+	// Find the associated task via for_task edge (plan -> task)
 	const taskEdges = await graphService.listEdges({
-		edge_type: 'has_plan',
-		target_node_id: planId,
+		edge_type: 'for_task',
+		source_node_id: planId,
 	});
 	if (taskEdges.length === 0) {
 		throw new Error(`No task found for plan ${planId}`);
 	}
-	const taskId = taskEdges[0].source_node_id;
+	const taskId = taskEdges[0].target_node_id;
 
 	// Create the run node
 	const run = await graphService.createNode({
@@ -269,27 +269,27 @@ export async function startRun(
 		created_by: ctx.agentId,
 	});
 
-	// Create has_run edge (Task -> Run)
+	// Create for_task edge (Run -> Task)
 	await graphService.createEdge({
-		edge_type: 'has_run',
-		source_node_id: taskId,
-		target_node_id: run.id,
+		edge_type: 'for_task',
+		source_node_id: run.id,
+		target_node_id: taskId,
 		created_by: ctx.agentId,
 	});
 
-	// Create executed_plan edge (Run -> Plan)
+	// Create executes_plan edge (Run -> Plan)
 	await graphService.createEdge({
-		edge_type: 'executed_plan',
+		edge_type: 'executes_plan',
 		source_node_id: run.id,
 		target_node_id: planId,
 		created_by: ctx.agentId,
 	});
 
-	// Create executed_by edge (Run -> Agent)
+	// Create executed edge (Agent -> Run)
 	await graphService.createEdge({
-		edge_type: 'executed_by',
-		source_node_id: run.id,
-		target_node_id: ctx.agentId,
+		edge_type: 'executed',
+		source_node_id: ctx.agentId,
+		target_node_id: run.id,
 		created_by: ctx.agentId,
 	});
 
@@ -334,11 +334,11 @@ export async function logDecision(
 		created_by: ctx.agentId,
 	});
 
-	// Create has_decision edge (Run -> DecisionTrace)
+	// Create during_run edge (DecisionTrace -> Run)
 	await graphService.createEdge({
-		edge_type: 'has_decision',
-		source_node_id: input.run_id,
-		target_node_id: decision.id,
+		edge_type: 'during_run',
+		source_node_id: decision.id,
+		target_node_id: input.run_id,
 		created_by: ctx.agentId,
 	});
 
@@ -393,11 +393,11 @@ export async function completeTask(
 		});
 		verificationIds.push(verification.id);
 
-		// Create has_verification edge (Task -> Verification)
+		// Create checks edge (Verification -> Task)
 		await graphService.createEdge({
-			edge_type: 'has_verification',
-			source_node_id: input.task_id,
-			target_node_id: verification.id,
+			edge_type: 'checks',
+			source_node_id: verification.id,
+			target_node_id: input.task_id,
 			created_by: ctx.agentId,
 		});
 

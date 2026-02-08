@@ -82,11 +82,11 @@ interface Agent {
 const mockAgents: Agent[] = [
   {
     id: "agent-001",
-    name: "Requirements Compliance Monitor",
-    description: "Continuously monitors requirements for compliance issues and certification gaps",
+    name: "Guardrail Compliance Monitor",
+    description: "Continuously monitors tasks for guardrail violations and constraint compliance",
     type: "monitor",
     status: "active",
-    systemPrompt: "You are a requirements compliance specialist. Monitor aerospace requirements for FAR 25 compliance, identify gaps, and flag potential certification issues. Focus on DAL-A and DAL-B requirements.",
+    systemPrompt: "You are a guardrail compliance specialist. Monitor task execution for constraint violations, identify gaps in acceptance criteria, and flag potential quality issues. Focus on critical guardrails and task boundaries.",
     model: "gpt-4o",
     temperature: 0.2,
     maxTokens: 1000,
@@ -109,11 +109,11 @@ const mockAgents: Agent[] = [
   },
   {
     id: "agent-002",
-    name: "Cross-System Integration Analyzer",
-    description: "Analyzes data across systems to discover hidden dependencies and integration points",
+    name: "Dependency Analyzer",
+    description: "Analyzes tasks and agents to discover hidden dependencies and coordination points",
     type: "analyzer",
     status: "active",
-    systemPrompt: "You are a systems integration expert. Analyze requirements, tickets, and documentation to identify cross-system dependencies, shared resources, and potential integration issues. Focus on safety-critical interfaces.",
+    systemPrompt: "You are a task dependency expert. Analyze task definitions, agent outputs, and documentation to identify cross-task dependencies, shared resources, and potential coordination issues. Focus on critical path items.",
     model: "gpt-4o",
     temperature: 0.3,
     maxTokens: 1500,
@@ -122,7 +122,7 @@ const mockAgents: Agent[] = [
       frequency: "daily",
       time: "02:00"
     },
-    dataSources: ["Jama", "Jira", "Windchill", "Email"],
+    dataSources: ["Tasks", "Agents", "Graph", "Logs"],
     outputChannels: ["Dashboard", "Email"],
     lastRun: "4 hours ago",
     nextRun: "Tomorrow at 2:00 AM",

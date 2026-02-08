@@ -8,7 +8,7 @@ export default function TestSection() {
   const testSuites = [
     {
       id: "1",
-      name: "Flight Control System Tests",
+      name: "Data Pipeline Integration Tests",
       status: "passed",
       totalTests: 156,
       passedTests: 154,
@@ -18,7 +18,7 @@ export default function TestSection() {
     },
     {
       id: "2", 
-      name: "Engine Performance Tests",
+      name: "Agent Performance Benchmarks",
       status: "running",
       totalTests: 89,
       passedTests: 76,
@@ -28,7 +28,7 @@ export default function TestSection() {
     },
     {
       id: "3",
-      name: "Landing Gear Integration Tests", 
+      name: "Queue Consumer Integration Tests", 
       status: "failed",
       totalTests: 43,
       passedTests: 38,

@@ -100,12 +100,12 @@ export async function runRule(
  */
 export async function runRules(
   project_id: string,
-  scope?: { subsystem?: string; rule_ids?: string[] }
+  scope?: { domain?: string; rule_ids?: string[] }
 ): Promise<Violation[]> {
   try {
     const context: RuleContext = {
       project_id,
-      subsystem: scope?.subsystem
+      domain: scope?.domain
     };
     
     // Determine which rules to run
@@ -219,7 +219,7 @@ export async function runConsistencyChecks(
     
     // Run rules
     const violations = await runRules(params.project_id, {
-      subsystem: params.subsystem,
+      domain: params.domain,
       rule_ids: params.rule_ids
     });
     

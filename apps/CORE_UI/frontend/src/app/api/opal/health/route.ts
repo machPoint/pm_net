@@ -1,17 +1,31 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { opalClient } from '@/services/opal-client';
+import { NextResponse } from 'next/server';
 
-export async function GET(request: NextRequest) {
+const OPAL_URL = process.env.NEXT_PUBLIC_OPAL_URL || 'http://localhost:7788';
+
+export async function GET() {
   try {
-    const health = await opalClient.healthCheck();
+    const response = await fetch(`${OPAL_URL}/health`, {
+      signal: AbortSignal.timeout(5000),
+    });
+
+    if (response.ok) {
+      const health = await response.json();
+      return NextResponse.json({
+        success: true,
+        opal: {
+          ...health,
+          status: 'online'
+        }
+      });
+    }
 
     return NextResponse.json({
-      success: true,
+      success: false,
       opal: {
-        ...health,
-        status: 'online' // Override OPAL's 'healthy' with 'online' for UI consistency
+        status: 'offline',
+        error: `OPAL returned ${response.status}`
       }
-    });
+    }, { status: 503 });
 
   } catch (error: any) {
     console.error('Error checking OPAL health:', error);

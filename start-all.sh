@@ -97,9 +97,10 @@ main() {
   echo "========================================"
   echo
   echo "Starting services:"
-  echo "  1) OPAL_SE Server    (http://localhost:7788)"
-  echo "  2) CORE_UI Backend   (http://localhost:8000)"
-  echo "  3) CORE_UI Frontend  (http://localhost:3000)"
+  echo "  1) Jama Sidecar      (http://localhost:3001)"
+  echo "  2) OPAL_SE Server    (http://localhost:7788)"
+  echo "  3) CORE_UI Backend   (http://localhost:8000)"
+  echo "  4) CORE_UI Frontend  (http://localhost:3000)"
   echo
 
   require_cmd node
@@ -159,6 +160,10 @@ main() {
   echo "========================================"
   echo " Starting services"
   echo "========================================"
+
+  # Start Jama sidecar first so it's ready when OPAL_SE connects
+  spawn_in_terminal "Jama_Sidecar" "$ROOT_DIR/apps/OPAL_SE" "node src/sidecar/jama-server-tmp.js"
+  sleep 1
 
   spawn_in_terminal "OPAL_SE" "$ROOT_DIR/apps/OPAL_SE" "npm run migrate && npm run dev"
   sleep 2

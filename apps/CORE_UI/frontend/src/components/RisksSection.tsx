@@ -20,7 +20,7 @@ import { Card, CardContent } from "@/components/ui/card";
 // Actually, let's look at how AdvancedImpactAnalysis fetches data: useRequirementImpact(selectedRequirement).
 // It expects an ID. If we pass a Risk ID, it will fetch the Risk node and its connections.
 
-const OPAL_BASE_URL = process.env.NEXT_PUBLIC_OPAL_URL || 'http://localhost:3000';
+const OPAL_BASE_URL = '/api/opal/proxy';
 
 export default function RisksSection() {
 	const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);

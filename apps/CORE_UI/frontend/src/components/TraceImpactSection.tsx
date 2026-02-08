@@ -60,7 +60,7 @@ interface TraceNode {
     owner: string;
     lastUpdated: string;
     source: string;
-    criticality?: "DAL-A" | "DAL-B" | "DAL-C" | "DAL-D" | "DAL-E";
+    criticality?: "Critical" | "High" | "Medium" | "Low" | "Info";
   };
   position?: { x: number; y: number };
   details?: {
@@ -132,50 +132,50 @@ const mockTraceNodes: TraceNode[] = [
   {
     id: "1",
     type: "requirement",
-    title: "Flight Control System Requirement",
+    title: "Data Ingestion Pipeline Task",
     status: "verified",
     connections: ["2", "3", "4"],
     metadata: {
       owner: "Dr. Sarah Mitchell",
       lastUpdated: "2 hours ago",
-      source: "Jama",
-      criticality: "DAL-A"
+      source: "System",
+      criticality: "Critical"
     },
     position: { x: 120, y: 80 },
     details: {
-      description: "The flight control system shall maintain aircraft stability and controllability during all approved flight phases including normal, abnormal, and emergency conditions. The system shall provide redundant control paths for critical flight control surfaces and implement fail-safe mechanisms to ensure continued safe flight in case of component failures.",
-      documentId: "SRD-2024-FCS-001",
+      description: "The data ingestion pipeline shall process incoming records within 5 seconds end-to-end. The system shall provide redundant processing paths for critical data streams and implement retry mechanisms to ensure no data loss in case of agent failures.",
+      documentId: "TASK-2024-DIP-001",
       version: "2.1",
       approvalStatus: "Approved",
-      certificationBasis: "FAR 25.143, FAR 25.145",
-      verificationMethod: "Flight Test + Ground Test + Analysis",
-      parentRequirement: "SYS-001 Aircraft Safety Requirements",
-      childRequirements: ["SRD-2024-FCS-002", "SRD-2024-FCS-003", "SRD-2024-FCS-004"],
-      testCases: ["FTC-001", "FTC-002", "FTC-003"],
-      riskAssessment: "High - Flight Safety Critical",
+      certificationBasis: "SLA-001, SLA-002",
+      verificationMethod: "Integration Test + Load Test + Analysis",
+      parentRequirement: "SYS-001 Platform Reliability",
+      childRequirements: ["TASK-2024-DIP-002", "TASK-2024-DIP-003", "TASK-2024-DIP-004"],
+      testCases: ["TC-001", "TC-002", "TC-003"],
+      riskAssessment: "High - Data Loss Critical",
       complianceStatus: "Compliant",
       lastReviewDate: "2024-01-15",
       nextReviewDate: "2024-07-15",
-      stakeholders: ["Flight Test Engineering", "Certification Team", "Flight Operations", "FAA DER"],
-      tags: ["flight-control", "safety-critical", "DAL-A", "certification", "redundancy"],
+      stakeholders: ["Platform Engineering", "Data Team", "Operations", "SRE"],
+      tags: ["data-pipeline", "reliability", "Critical", "sla", "redundancy"],
       changeHistory: [
         {
           date: "2024-01-10",
           author: "Dr. Sarah Mitchell",
-          change: "Updated redundancy requirements for actuator failures",
-          reason: "Incorporation of FAA feedback on certification plan"
+          change: "Updated retry requirements for agent failures",
+          reason: "Incorporation of SRE feedback on reliability targets"
         },
         {
           date: "2023-12-15",
           author: "James Rodriguez",
-          change: "Added emergency flight condition handling requirements",
-          reason: "Flight test results indicated need for enhanced emergency procedures"
+          change: "Added error handling for malformed input records",
+          reason: "Load test results indicated need for enhanced error handling"
         },
         {
           date: "2023-11-20",
           author: "Lisa Chen",
-          change: "Initial requirement creation",
-          reason: "Project initiation for next-generation flight control system"
+          change: "Initial task creation",
+          reason: "Project initiation for next-generation ingestion pipeline"
         }
       ]
     }
@@ -183,112 +183,112 @@ const mockTraceNodes: TraceNode[] = [
   {
     id: "2",
     type: "design",
-    title: "Flight Control Architecture",
+    title: "Pipeline Architecture Design",
     status: "completed",
     connections: ["5", "6"],
     metadata: {
       owner: "James Rodriguez",
       lastUpdated: "1 day ago",
       source: "Design Documents",
-      criticality: "DAL-A"
+      criticality: "Critical"
     },
     position: { x: 280, y: 180 }
   },
   {
     id: "3",
     type: "component",
-    title: "Primary Flight Control Actuator",
+    title: "Ingestion Agent Worker",
     status: "active",
     connections: ["7"],
     metadata: {
       owner: "Lisa Chen",
       lastUpdated: "4 hours ago",
-      source: "Windchill",
-      criticality: "DAL-B"
+      source: "Graph",
+      criticality: "High"
     },
     position: { x: 450, y: 120 }
   },
   {
     id: "4",
     type: "test",
-    title: "Flight Control Authority Test",
+    title: "Pipeline Throughput Validation",
     status: "pending",
     connections: ["8"],
     metadata: {
       owner: "Michael Thompson",
       lastUpdated: "6 hours ago",
-      source: "Flight Test Center",
-      criticality: "DAL-A"
+      source: "Test Suite",
+      criticality: "Critical"
     },
     position: { x: 120, y: 280 }
   },
   {
     id: "5",
     type: "code",
-    title: "Flight Control Software Module",
+    title: "Stream Processing Module",
     status: "active",
     connections: ["9"],
     metadata: {
       owner: "Anna Kowalski",
       lastUpdated: "1 hour ago",
       source: "Version Control",
-      criticality: "DAL-A"
+      criticality: "Critical"
     },
     position: { x: 280, y: 340 }
   },
   {
     id: "6",
     type: "certification",
-    title: "DO-178C Software Verification",
+    title: "SLA Compliance Verification",
     status: "pending",
     connections: [],
     metadata: {
       owner: "David Park",
       lastUpdated: "3 hours ago",
-      source: "Certification Team",
-      criticality: "DAL-A"
+      source: "Compliance Team",
+      criticality: "Critical"
     },
     position: { x: 450, y: 280 }
   },
   {
     id: "7",
     type: "test",
-    title: "Actuator Performance Test",
+    title: "Agent Performance Benchmark",
     status: "completed",
     connections: [],
     metadata: {
       owner: "Jennifer Williams",
       lastUpdated: "2 days ago",
-      source: "Ground Test Lab",
-      criticality: "DAL-B"
+      source: "Test Lab",
+      criticality: "High"
     },
     position: { x: 580, y: 180 }
   },
   {
     id: "8",
     type: "component",
-    title: "Flight Test Instrumentation",
+    title: "Monitoring Instrumentation",
     status: "verified",
     connections: [],
     metadata: {
       owner: "Robert Johnson",
       lastUpdated: "5 hours ago",
-      source: "Flight Test",
-      criticality: "DAL-C"
+      source: "Observability",
+      criticality: "Medium"
     },
     position: { x: 30, y: 420 }
   },
   {
     id: "9",
     type: "certification",
-    title: "Software Configuration Review",
+    title: "Configuration Audit Review",
     status: "active",
     connections: [],
     metadata: {
       owner: "Maria Garcia",
       lastUpdated: "1 day ago",
-      source: "FAA Review",
-      criticality: "DAL-A"
+      source: "Governance",
+      criticality: "Critical"
     },
     position: { x: 380, y: 480 }
   }
@@ -297,30 +297,30 @@ const mockTraceNodes: TraceNode[] = [
 const mockImpactAnalysis: ImpactAnalysis[] = [
   {
     id: "1",
-    title: "Flight Control Actuator Material Change",
-    description: "Proposed titanium alloy upgrade will affect 12 related components and require recertification",
+    title: "Database Schema Migration Impact",
+    description: "Proposed schema change will affect 12 downstream agents and require revalidation of all queries",
     severity: "high",
     affectedItems: 12,
     estimatedEffort: "6-8 weeks",
-    recommendation: "Coordinate with FAA DER before implementing material changes. Update structural analysis."
+    recommendation: "Coordinate with data team before implementing schema changes. Update all agent query templates."
   },
   {
     id: "2",
-    title: "Avionics Software Update Impact",
-    description: "FADEC software v2.1 will require updates to flight test procedures and pilot training",
+    title: "API Gateway Rate Limit Update",
+    description: "New rate limits will require updates to retry logic and backoff strategies across 8 agents",
     severity: "medium",
     affectedItems: 8,
     estimatedEffort: "3-4 weeks",
-    recommendation: "Schedule pilot training sessions and update flight operations manual"
+    recommendation: "Update agent configurations and run load tests with new limits"
   },
   {
     id: "3",
-    title: "Environmental Control System Modification",
-    description: "Cabin pressurization changes will impact emergency procedures and oxygen system integration",
+    title: "Message Queue Provider Migration",
+    description: "Queue provider change will impact all event-driven agents and require integration revalidation",
     severity: "critical",
     affectedItems: 15,
     estimatedEffort: "8-12 weeks",
-    recommendation: "Full system integration test required. Coordinate with certification team for compliance review."
+    recommendation: "Full integration test required. Coordinate with platform team for rollback plan."
   }
 ];
 
@@ -328,7 +328,7 @@ const mockImpactNodes: ImpactNode[] = [
   {
     id: "impact-source-1",
     type: "source",
-    title: "REQ-FCS-001 Flight Control Update",
+    title: "TASK-001 Ingestion Pipeline Update",
     severity: "high",
     impactType: "requirement",
     effort: "2 weeks",
@@ -337,27 +337,27 @@ const mockImpactNodes: ImpactNode[] = [
     metadata: {
       owner: "Dr. Sarah Mitchell",
       lastUpdated: "2 hours ago",
-      source: "JAMA",
+      source: "System",
       estimatedHours: 80,
-      affectedTeams: ["Flight Controls", "Certification"]
+      affectedTeams: ["Data Processing", "Platform"]
     },
     position: { x: 150, y: 100 },
     details: {
-      description: "Updated flight control requirements for enhanced stability",
-      changeDescription: "Added redundancy requirements for primary flight controls",
-      riskLevel: "High - Safety Critical",
-      mitigation: "Parallel development with existing system as backup",
-      dependencies: ["Hardware procurement", "Test facility scheduling"],
+      description: "Updated ingestion pipeline requirements for enhanced throughput",
+      changeDescription: "Added redundancy requirements for primary data streams",
+      riskLevel: "High - Data Loss Critical",
+      mitigation: "Parallel development with existing pipeline as fallback",
+      dependencies: ["Infrastructure provisioning", "Load test scheduling"],
       timeline: "Q2 2024",
       approvalRequired: true,
       costEstimate: "$120K",
-      stakeholders: ["Flight Test", "FAA DER", "Engineering"]
+      stakeholders: ["Platform Team", "SRE", "Engineering"]
     }
   },
   {
     id: "impact-affected-1",
     type: "affected",
-    title: "Actuator Control Module",
+    title: "Stream Processing Agent",
     severity: "critical",
     impactType: "component",
     effort: "6 weeks",
@@ -366,7 +366,7 @@ const mockImpactNodes: ImpactNode[] = [
     metadata: {
       owner: "James Rodriguez",
       lastUpdated: "4 hours ago",
-      source: "Windchill",
+      source: "Graph",
       estimatedHours: 240
     },
     position: { x: 400, y: 50 }
@@ -374,7 +374,7 @@ const mockImpactNodes: ImpactNode[] = [
   {
     id: "impact-affected-2",
     type: "affected",
-    title: "Flight Control Software",
+    title: "Pipeline Orchestration Code",
     severity: "high",
     impactType: "code",
     effort: "4 weeks",
@@ -391,7 +391,7 @@ const mockImpactNodes: ImpactNode[] = [
   {
     id: "impact-related-1",
     type: "related",
-    title: "System Integration Tests",
+    title: "Integration Test Suite",
     severity: "medium",
     impactType: "test",
     effort: "3 weeks",
@@ -408,7 +408,7 @@ const mockImpactNodes: ImpactNode[] = [
   {
     id: "impact-downstream-1",
     type: "downstream",
-    title: "Hydraulic System Interface",
+    title: "Queue Consumer Interface",
     severity: "medium",
     impactType: "component",
     effort: "2 weeks",
@@ -417,7 +417,7 @@ const mockImpactNodes: ImpactNode[] = [
     metadata: {
       owner: "Lisa Chen",
       lastUpdated: "3 hours ago",
-      source: "CAD System",
+      source: "Architecture",
       estimatedHours: 80
     },
     position: { x: 650, y: 20 }
@@ -425,7 +425,7 @@ const mockImpactNodes: ImpactNode[] = [
   {
     id: "impact-downstream-2",
     type: "downstream",
-    title: "Backup Control Logic",
+    title: "Fallback Processing Logic",
     severity: "low",
     impactType: "design",
     effort: "1 week",
@@ -442,7 +442,7 @@ const mockImpactNodes: ImpactNode[] = [
   {
     id: "impact-downstream-3",
     type: "downstream",
-    title: "Pilot Training Materials",
+    title: "Runbook & Operations Guide",
     severity: "low",
     impactType: "process",
     effort: "1 week",
@@ -451,7 +451,7 @@ const mockImpactNodes: ImpactNode[] = [
     metadata: {
       owner: "Jennifer Williams",
       lastUpdated: "2 days ago",
-      source: "Training System",
+      source: "Documentation",
       estimatedHours: 40
     },
     position: { x: 650, y: 150 }
@@ -459,7 +459,7 @@ const mockImpactNodes: ImpactNode[] = [
   {
     id: "impact-downstream-4",
     type: "downstream",
-    title: "Certification Documentation",
+    title: "Compliance Documentation",
     severity: "high",
     impactType: "process",
     effort: "2 weeks",
@@ -482,7 +482,7 @@ interface RequirementItem {
   owner: string;
   source: string;
   lastUpdated: string;
-  criticality: "DAL-A" | "DAL-B" | "DAL-C" | "DAL-D" | "DAL-E";
+  criticality: "Critical" | "High" | "Medium" | "Low" | "Info";
   status: "active" | "pending" | "completed" | "verified" | "failed";
   description?: string;
 }
@@ -490,54 +490,54 @@ interface RequirementItem {
 // Mock requirements that users can select for impact analysis
 const mockRequirements: RequirementItem[] = [
   {
-    id: "REQ-FCS-001",
-    title: "Flight Control System Requirement",
+    id: "TASK-001",
+    title: "Data Ingestion Pipeline Task",
     owner: "Dr. Sarah Mitchell",
-    source: "JAMA",
+    source: "System",
     lastUpdated: "2 hours ago",
-    criticality: "DAL-A",
+    criticality: "Critical",
     status: "active",
-    description: "Primary flight control system requirements for aircraft stability"
+    description: "Primary data ingestion pipeline throughput and reliability requirements"
   },
   {
-    id: "REQ-NAV-002", 
-    title: "Navigation System Integration",
+    id: "TASK-002",
+    title: "Agent Orchestration Integration",
     owner: "James Rodriguez",
-    source: "JAMA",
+    source: "System",
     lastUpdated: "4 hours ago",
-    criticality: "DAL-B",
+    criticality: "High",
     status: "verified",
-    description: "Integration requirements for primary navigation systems"
+    description: "Integration requirements for multi-agent orchestration layer"
   },
   {
-    id: "REQ-ECS-003",
-    title: "Environmental Control System",
+    id: "TASK-003",
+    title: "Monitoring & Alerting Setup",
     owner: "Lisa Chen",
-    source: "JAMA",
+    source: "System",
     lastUpdated: "1 day ago",
-    criticality: "DAL-C",
+    criticality: "Medium",
     status: "pending",
-    description: "Cabin pressurization and environmental control requirements"
+    description: "Health monitoring and alert escalation for all active agents"
   },
   {
-    id: "REQ-COM-004",
-    title: "Communication System Requirements",
+    id: "TASK-004",
+    title: "API Gateway Configuration",
     owner: "Michael Thompson",
-    source: "JAMA",
+    source: "System",
     lastUpdated: "2 days ago",
-    criticality: "DAL-B",
+    criticality: "High",
     status: "active",
-    description: "VHF/UHF communication system specifications"
+    description: "Rate limiting and authentication for external API endpoints"
   },
   {
-    id: "REQ-HYD-005",
-    title: "Hydraulic System Pressure Control",
+    id: "TASK-005",
+    title: "Message Queue Scaling Policy",
     owner: "Anna Kowalski",
-    source: "JAMA",
+    source: "System",
     lastUpdated: "3 hours ago",
-    criticality: "DAL-A",
+    criticality: "Critical",
     status: "completed",
-    description: "Primary and backup hydraulic system pressure requirements"
+    description: "Auto-scaling policies for message queue under peak load"
   }
 ];
 
@@ -607,7 +607,7 @@ export default function TraceImpactSection() {
         const isSource = n.id === impactData.requirement.id;
         const impactType = typeMap[n.type] || "process";
         const severity: ImpactNode["severity"] = isSource
-          ? (selectedRequirement.criticality === "DAL-A" ? "critical" : selectedRequirement.criticality === "DAL-B" ? "high" : "medium")
+          ? (selectedRequirement.criticality === "Critical" ? "critical" : selectedRequirement.criticality === "High" ? "high" : "medium")
           : (impactType === "component" || impactType === "code") ? "high" : "medium";
 
         const newId = `${isSource ? "source" : "affected"}-${n.id}`;
@@ -710,7 +710,7 @@ export default function TraceImpactSection() {
       id: `source-${requirement.id}`,
       type: "source",
       title: requirement.title,
-      severity: requirement.criticality === "DAL-A" ? "critical" : requirement.criticality === "DAL-B" ? "high" : "medium",
+      severity: requirement.criticality === "Critical" ? "critical" : requirement.criticality === "High" ? "high" : "medium",
       impactType: "requirement",
       effort: "-",
       status: "analyzing",
@@ -813,7 +813,7 @@ export default function TraceImpactSection() {
       id: `source-${requirement.id}`,
       type: "source",
       title: requirement.title,
-      severity: requirement.criticality === "DAL-A" ? "critical" : requirement.criticality === "DAL-B" ? "high" : "medium",
+      severity: requirement.criticality === "Critical" ? "critical" : requirement.criticality === "High" ? "high" : "medium",
       impactType: "requirement",
       effort: "-",
       status: "analyzing",
@@ -841,11 +841,11 @@ export default function TraceImpactSection() {
   
   const getRequirementCriticalityColor = (criticality: string) => {
     switch (criticality) {
-      case "DAL-A": return "bg-red-500/20 text-red-700 dark:text-red-300 border-red-300";
-      case "DAL-B": return "bg-orange-500/20 text-orange-700 dark:text-orange-300 border-orange-300";
-      case "DAL-C": return "bg-yellow-500/20 text-yellow-700 dark:text-yellow-300 border-yellow-300";
-      case "DAL-D": return "bg-blue-500/20 text-blue-700 dark:text-blue-300 border-blue-300";
-      case "DAL-E": return "bg-green-500/20 text-green-700 dark:text-green-300 border-green-300";
+      case "Critical": return "bg-red-500/20 text-red-700 dark:text-red-300 border-red-300";
+      case "High": return "bg-orange-500/20 text-orange-700 dark:text-orange-300 border-orange-300";
+      case "Medium": return "bg-yellow-500/20 text-yellow-700 dark:text-yellow-300 border-yellow-300";
+      case "Low": return "bg-blue-500/20 text-blue-700 dark:text-blue-300 border-blue-300";
+      case "Info": return "bg-green-500/20 text-green-700 dark:text-green-300 border-green-300";
       default: return "bg-gray-500/20 text-gray-700 dark:text-gray-300 border-gray-300";
     }
   };
@@ -1355,8 +1355,8 @@ export default function TraceImpactSection() {
                           <span className="text-muted-foreground">Criticality:</span>
                           <Badge className={cn(
                             "text-xs",
-                            detailNode.metadata.criticality === 'DAL-A' ? 'bg-[#acacac]/20 text-[#acacac] dark:bg-[#acacac]/10 dark:text-[#e9ecee]' :
-                            detailNode.metadata.criticality === 'DAL-B' ? 'bg-[#6e9fc1]/20 text-[#395a7f] dark:bg-[#395a7f]/20 dark:text-[#6e9fc1]' :
+                            detailNode.metadata.criticality === 'Critical' ? 'bg-[#acacac]/20 text-[#acacac] dark:bg-[#acacac]/10 dark:text-[#e9ecee]' :
+                            detailNode.metadata.criticality === 'High' ? 'bg-[#6e9fc1]/20 text-[#395a7f] dark:bg-[#395a7f]/20 dark:text-[#6e9fc1]' :
                             'bg-[#a3cae9]/30 text-[#395a7f] dark:bg-[#395a7f]/15 dark:text-[#a3cae9]'
                           )}>
                             {detailNode.metadata.criticality || 'N/A'}

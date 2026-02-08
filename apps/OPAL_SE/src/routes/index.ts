@@ -14,6 +14,8 @@ import apiIntegrationsRoutes from './api-integrations';
 import seAdminRoutes from './se-admin';
 import aiChatRoutes from './ai-chat';
 import impactRoutes from './impact-api';
+import eventsStreamRoutes from './events-stream';
+import taskIntakeRoutes from './task-intake';
 
 const router = express.Router();
 
@@ -26,6 +28,8 @@ router.use('/api-integrations', apiIntegrationsRoutes);
 router.use('/se', seAdminRoutes);
 router.use('/ai', aiChatRoutes);
 router.use('/requirements', impactRoutes);
+router.use('/events', eventsStreamRoutes);
+router.use('/task-intake', taskIntakeRoutes);
 
 // Register admin API routes (for the admin UI)
 router.use('/', adminApiRoutes);

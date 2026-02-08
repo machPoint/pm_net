@@ -4,7 +4,7 @@ export interface RequirementConnection {
   id: string;
   sourceId: string;
   targetId: string;
-  connectionType: 'depends_on' | 'derived_from' | 'impacts' | 'related_to' | 'implements' | 'validates';
+  connectionType: 'depends_on' | 'blocks' | 'assigned_to' | 'produces' | 'mitigates' | 'requires_approval' | 'informs';
   strength: 'weak' | 'medium' | 'strong';
   description?: string;
   createdAt: string;
@@ -57,7 +57,7 @@ class RequirementsConnectionService {
       await new Promise(resolve => setTimeout(resolve, 300));
       
       // Mock all connections for the system
-      const allRequirements = ['REQ-FCS-001', 'REQ-NAV-002', 'REQ-HYD-003', 'REQ-ECS-004', 'REQ-COM-005'];
+      const allRequirements = ['TASK-001', 'TASK-002', 'TASK-003', 'TASK-004', 'TASK-005'];
       let allConnections: RequirementConnection[] = [];
       
       for (const reqId of allRequirements) {
@@ -133,8 +133,8 @@ class RequirementsConnectionService {
       // Mock implementation - would fetch existing connection and update
       const updatedConnection: RequirementConnection = {
         id: connectionId,
-        sourceId: updates.sourceId || 'REQ-FCS-001',
-        targetId: updates.targetId || 'REQ-NAV-002',
+        sourceId: updates.sourceId || 'TASK-001',
+        targetId: updates.targetId || 'TASK-002',
         connectionType: updates.connectionType || 'depends_on',
         strength: updates.strength || 'medium',
         description: updates.description || '',
@@ -249,75 +249,75 @@ class RequirementsConnectionService {
    */
   private getMockConnections(requirementId: string): RequirementConnection[] {
     const mockConnections: Record<string, RequirementConnection[]> = {
-      'REQ-FCS-001': [
+      'TASK-001': [
         {
-          id: 'CONN-FCS-NAV-001',
-          sourceId: 'REQ-FCS-001',
-          targetId: 'REQ-NAV-002',
+          id: 'CONN-001-002',
+          sourceId: 'TASK-001',
+          targetId: 'TASK-002',
           connectionType: 'depends_on',
           strength: 'strong',
-          description: 'Flight control system depends on navigation for accurate positioning',
+          description: 'Data pipeline depends on orchestration for task scheduling',
           createdAt: '2024-01-15T10:00:00Z',
           updatedAt: '2024-01-15T10:00:00Z',
           createdBy: 'Dr. Sarah Mitchell',
           metadata: { criticality: 'high', reviewStatus: 'approved' }
         },
         {
-          id: 'CONN-FCS-HYD-001',
-          sourceId: 'REQ-FCS-001',
-          targetId: 'REQ-HYD-003',
+          id: 'CONN-001-003',
+          sourceId: 'TASK-001',
+          targetId: 'TASK-003',
           connectionType: 'depends_on',
           strength: 'strong',
-          description: 'Flight control system requires hydraulic pressure for operation',
+          description: 'Data pipeline requires message queue for reliable delivery',
           createdAt: '2024-01-15T10:30:00Z',
           updatedAt: '2024-01-15T10:30:00Z',
           createdBy: 'Dr. Sarah Mitchell',
           metadata: { criticality: 'high', reviewStatus: 'approved' }
         }
       ],
-      'REQ-NAV-002': [
+      'TASK-002': [
         {
-          id: 'CONN-NAV-COM-001',
-          sourceId: 'REQ-NAV-002',
-          targetId: 'REQ-COM-005',
-          connectionType: 'related_to',
+          id: 'CONN-002-005',
+          sourceId: 'TASK-002',
+          targetId: 'TASK-005',
+          connectionType: 'informs',
           strength: 'medium',
-          description: 'Navigation system interfaces with communication for ATC coordination',
+          description: 'Orchestration layer interfaces with API gateway for request routing',
           createdAt: '2024-01-12T14:15:00Z',
           updatedAt: '2024-01-12T14:15:00Z',
           createdBy: 'James Rodriguez',
-          metadata: { interface: 'ARINC-429', reviewStatus: 'pending' }
+          metadata: { interface: 'gRPC', reviewStatus: 'pending' }
         }
       ],
-      'REQ-HYD-003': [
+      'TASK-003': [
         {
-          id: 'CONN-HYD-ECS-001',
-          sourceId: 'REQ-HYD-003',
-          targetId: 'REQ-ECS-004',
-          connectionType: 'impacts',
+          id: 'CONN-003-004',
+          sourceId: 'TASK-003',
+          targetId: 'TASK-004',
+          connectionType: 'blocks',
           strength: 'weak',
-          description: 'Hydraulic system failure may impact environmental control backup systems',
+          description: 'Queue system failure may impact monitoring backup systems',
           createdAt: '2024-01-10T09:20:00Z',
           updatedAt: '2024-01-10T09:20:00Z',
           createdBy: 'Anna Kowalski',
-          metadata: { riskLevel: 'medium', mitigationPlan: 'backup-electric' }
+          metadata: { riskLevel: 'medium', mitigationPlan: 'failover-secondary' }
         }
       ],
-      'REQ-ECS-004': [
+      'TASK-004': [
         {
-          id: 'CONN-ECS-COM-001',
-          sourceId: 'REQ-ECS-004',
-          targetId: 'REQ-COM-005',
-          connectionType: 'related_to',
+          id: 'CONN-004-005',
+          sourceId: 'TASK-004',
+          targetId: 'TASK-005',
+          connectionType: 'informs',
           strength: 'weak',
-          description: 'Environmental control system status communicated via aircraft systems',
+          description: 'Monitoring system status communicated via platform event bus',
           createdAt: '2024-01-08T16:45:00Z',
           updatedAt: '2024-01-08T16:45:00Z',
           createdBy: 'Lisa Chen',
-          metadata: { dataLink: 'ACARS', frequency: 'periodic' }
+          metadata: { dataLink: 'event-bus', frequency: 'periodic' }
         }
       ],
-      'REQ-COM-005': []
+      'TASK-005': []
     };
     
     return mockConnections[requirementId] || [];

@@ -14,7 +14,7 @@ const LESSONS_SERVICE_URL = process.env.LESSONS_SERVICE_URL || 'http://localhost
  */
 createTool({
   name: 'search_lessons',
-  description: 'Search lessons learned with filters and semantic search. Use this to find relevant lessons from past projects based on disciplines, subsystems, failure modes, or free text queries.',
+  description: 'Search lessons learned with filters and semantic search. Use this to find relevant lessons from past projects based on disciplines, domains, failure modes, or free text queries.',
   inputSchema: {
     type: 'object',
     properties: {
@@ -23,10 +23,10 @@ createTool({
         items: { type: 'string' },
         description: 'Filter by disciplines (e.g., Systems, Thermal, EE, V&V, Safety)'
       },
-      subsystems: {
+      domains: {
         type: 'array',
         items: { type: 'string' },
-        description: 'Filter by subsystems (e.g., ECLSS, GNC, Power, Avionics)'
+        description: 'Filter by domains'
       },
       entity_ids: {
         type: 'array',
@@ -153,7 +153,7 @@ createTool({
         description: 'Optional context override',
         properties: {
           disciplines: { type: 'array', items: { type: 'string' } },
-          subsystems: { type: 'array', items: { type: 'string' } },
+          domains: { type: 'array', items: { type: 'string' } },
           phase: { type: 'array', items: { type: 'string' } },
           description: { type: 'string' }
         }
@@ -183,8 +183,8 @@ createTool({
         if (context.disciplines && context.disciplines.length > 0) {
           searchParams.disciplines = context.disciplines;
         }
-        if (context.subsystems && context.subsystems.length > 0) {
-          searchParams.subsystems = context.subsystems;
+        if (context.domains && context.domains.length > 0) {
+          searchParams.domains = context.domains;
         }
         if (context.phase && context.phase.length > 0) {
           searchParams.phase = context.phase;
@@ -207,10 +207,10 @@ createTool({
         const result = await response.json();
         
         // Format response
-        const subsystemsText = context.subsystems?.join(', ') || 'this activity';
+        const domainsText = context.domains?.join(', ') || 'this activity';
         const summary = result.total_count > 0
-          ? `Found ${result.total_count} lesson${result.total_count === 1 ? '' : 's'} related to ${subsystemsText}`
-          : `No lessons found for ${subsystemsText}`;
+          ? `Found ${result.total_count} lesson${result.total_count === 1 ? '' : 's'} related to ${domainsText}`
+          : `No lessons found for ${domainsText}`;
         
         logger.info('Lessons suggested', { count: result.total_count });
         
@@ -245,7 +245,7 @@ createTool({
       author: { type: 'string', description: 'Author name' },
       team: { type: 'string', description: 'Team name' },
       disciplines: { type: 'array', items: { type: 'string' } },
-      subsystems: { type: 'array', items: { type: 'string' } },
+      domains: { type: 'array', items: { type: 'string' } },
       entity_ids: { type: 'array', items: { type: 'string' } },
       failure_modes: { type: 'array', items: { type: 'string' } },
       root_causes: { type: 'array', items: { type: 'string' } },
@@ -254,7 +254,7 @@ createTool({
       tags: { type: 'array', items: { type: 'string' } },
       is_canonical: { type: 'boolean', description: 'True if curated, false if raw/draft' }
     },
-    required: ['title', 'summary', 'full_text', 'source_system', 'author', 'team', 'disciplines', 'subsystems', 'severity']
+    required: ['title', 'summary', 'full_text', 'source_system', 'author', 'team', 'disciplines', 'domains', 'severity']
   },
   _internal: {
     path: '/lessons/log',

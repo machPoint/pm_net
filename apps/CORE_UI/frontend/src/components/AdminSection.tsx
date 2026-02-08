@@ -138,7 +138,7 @@ interface FDSStatus {
   dataStats: {
     jamaItems: number;
     jiraIssues: number;
-    windchillParts: number;
+    agentConfigs: number;
     emailMessages: number;
     outlookMessages: number;
     pulseItems: number;
@@ -158,7 +158,7 @@ export default function AdminSection() {
     dataStats: {
       jamaItems: 142,
       jiraIssues: 28,
-      windchillParts: 19,
+      agentConfigs: 19,
       emailMessages: 10,
       outlookMessages: 10,
       pulseItems: 89
@@ -210,7 +210,7 @@ export default function AdminSection() {
           dataStats: {
             jamaItems: Math.floor(Math.random() * 50) + 120,
             jiraIssues: Math.floor(Math.random() * 15) + 20,
-            windchillParts: Math.floor(Math.random() * 10) + 15,
+            agentConfigs: Math.floor(Math.random() * 10) + 15,
             emailMessages: 10,
             outlookMessages: 10,
             pulseItems: Math.floor(Math.random() * 30) + 70
@@ -567,7 +567,7 @@ export default function AdminSection() {
           {[
             { label: "Jama Items", value: fdsStatus.dataStats.jamaItems, icon: FileText, color: "text-[#395a7f]" },
             { label: "Jira Issues", value: fdsStatus.dataStats.jiraIssues, icon: AlertTriangle, color: "text-[#6e9fc1]" },
-            { label: "Windchill Parts", value: fdsStatus.dataStats.windchillParts, icon: Settings, color: "text-[#a3cae9]" },
+            { label: "Agent Configs", value: fdsStatus.dataStats.agentConfigs, icon: Settings, color: "text-[#a3cae9]" },
             { label: "Email Messages", value: fdsStatus.dataStats.emailMessages, icon: Activity, color: "text-[#acacac]" },
             { label: "Outlook Messages", value: fdsStatus.dataStats.outlookMessages, icon: Activity, color: "text-[#395a7f]" },
             { label: "Pulse Items", value: fdsStatus.dataStats.pulseItems, icon: TrendingUp, color: "text-[#6e9fc1]" }
@@ -767,8 +767,7 @@ export default function AdminSection() {
     }));
 
     try {
-      const opalUrl = 'http://localhost:7788';
-      const response = await fetch(`${opalUrl}/api/diagnostics/test-tool`, {
+      const response = await fetch(`/api/opal/proxy/api/diagnostics/test-tool`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ toolName, params: testParams })
@@ -849,8 +848,7 @@ export default function AdminSection() {
     }));
 
     try {
-      const opalUrl = 'http://localhost:7788';
-      const response = await fetch(`${opalUrl}${serviceEndpoint}`, {
+      const response = await fetch(`/api/opal/proxy${serviceEndpoint}`, {
         method: 'GET'
       });
 
@@ -1469,11 +1467,11 @@ export default function AdminSection() {
                 icon: Database
               },
               {
-                name: 'Windchill Connector',
-                description: 'Connector for Windchill PLM data, documents, and change management.',
+                name: 'Agent Registry Connector',
+                description: 'Connector for agent configuration, capabilities, and change management.',
                 port: 7040,
                 category: 'Connector',
-                systems: ['Windchill'],
+                systems: ['AgentRegistry'],
                 status: 'planned',
                 icon: Database
               },
@@ -1699,75 +1697,43 @@ export default function AdminSection() {
     };
 
     const testDirectConnection = async () => {
-      if (!openaiApiKey || openaiApiKey.length < 20) {
-        toast.error("Please enter a valid API key first");
-        return;
-      }
-
       setIsTestingDirect(true);
       setTestResults({ type: 'direct', status: null, message: 'Testing...', timestamp: new Date() });
-      toast.info("Testing direct connection to OpenAI...", { duration: 2000 });
+      toast.info("Testing LLM connection via backend...", { duration: 2000 });
       
       try {
-        const response = await fetch('https://api.openai.com/v1/models', {
-          method: 'GET',
-          headers: {
-            'Authorization': `Bearer ${openaiApiKey}`,
-            'Content-Type': 'application/json'
-          }
-        });
+        const response = await fetch('/api/ai/test-connection');
+        const data = await response.json();
 
-        if (response.ok) {
-          const data = await response.json();
-          const modelCount = data.data?.length || 0;
-          const message = `Direct connection successful! Found ${modelCount} models available.`;
+        if (data.status === 'ok') {
+          const message = `Connection successful! Found ${data.model_count} models available.`;
           setTestResults({
             type: 'direct',
             status: 'success',
             message,
-            details: `Successfully authenticated with OpenAI API. Available models include: ${data.data?.slice(0, 3).map((m: any) => m.id).join(', ')}...`,
+            details: `Available models include: ${data.models?.slice(0, 5).join(', ')}...`,
             timestamp: new Date()
           });
           toast.success(`✅ ${message}`, { duration: 5000 });
         } else {
-          const errorText = await response.text();
-          let errorMsg = 'Invalid API key or unauthorized';
-          try {
-            const errorJson = JSON.parse(errorText);
-            errorMsg = errorJson.error?.message || errorMsg;
-          } catch (e) {
-            // Use default error message
-          }
           setTestResults({
             type: 'direct',
             status: 'error',
-            message: 'Direct connection failed',
-            details: errorMsg,
+            message: 'Connection failed',
+            details: data.error || 'Unknown error',
             timestamp: new Date()
           });
-          toast.error(`❌ Direct connection failed: ${errorMsg}`, { duration: 5000 });
+          toast.error(`❌ Connection failed: ${data.error}`, { duration: 5000 });
         }
       } catch (error: any) {
-        // CORS errors or network issues
-        if (error.message.includes('CORS') || error.name === 'TypeError') {
-          setTestResults({
-            type: 'direct',
-            status: 'warning',
-            message: 'CORS blocked direct browser access',
-            details: 'Browser security prevents direct API calls. This is normal - use "Test via OPAL" instead to test through the backend proxy.',
-            timestamp: new Date()
-          });
-          toast.warning(`⚠️ CORS blocked direct browser access. This is normal - use "Test via OPAL" instead.`, { duration: 6000 });
-        } else {
-          setTestResults({
-            type: 'direct',
-            status: 'error',
-            message: 'Connection error',
-            details: error.message,
-            timestamp: new Date()
-          });
-          toast.error(`❌ Connection error: ${error.message}`, { duration: 5000 });
-        }
+        setTestResults({
+          type: 'direct',
+          status: 'error',
+          message: 'Connection error',
+          details: error.message,
+          timestamp: new Date()
+        });
+        toast.error(`❌ Connection error: ${error.message}`, { duration: 5000 });
       } finally {
         setIsTestingDirect(false);
       }
@@ -2011,7 +1977,7 @@ export default function AdminSection() {
                 {[
                   { name: "Jira API Token", placeholder: "JIRA_xxxx", status: "Optional" },
                   { name: "Jama API Key", placeholder: "API_KEY_xxxx", status: "Optional" },
-                  { name: "Windchill Token", placeholder: "WC_TOKEN_xxxx", status: "Optional" },
+                  { name: "Agent Registry Token", placeholder: "AR_TOKEN_xxxx", status: "Optional" },
                   { name: "Azure DevOps PAT", placeholder: "PAT_xxxx", status: "Optional" }
                 ].map((apiKey) => (
                   <div key={apiKey.name} className="space-y-2">

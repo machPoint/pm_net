@@ -99,13 +99,13 @@ class JiraService {
       const mockJiraIssues: JiraIssue[] = [];
       
       // Generate mock issues based on requirement ID
-      if (requirementId.includes('FCS') || requirementId.includes('flight-control')) {
+      if (requirementId.includes('DIP') || requirementId.includes('data-pipeline')) {
         mockJiraIssues.push({
-          key: 'GOES-1234',
+          key: 'TASK-1234',
           id: '10001',
           fields: {
-            summary: 'Implement Flight Control Authority Logic',
-            description: 'Develop the core flight control authority logic to meet requirement REQ-FCS-001. This includes primary and backup control paths with appropriate switching logic.',
+            summary: 'Implement Task Processing Logic',
+            description: 'Develop the core task processing logic to meet requirement TASK-DIP-001. This includes primary and backup control paths with appropriate switching logic.',
             status: {
               id: '10001',
               name: 'In Progress',
@@ -140,16 +140,16 @@ class JiraService {
             },
             project: {
               id: '10001',
-              key: 'GOES',
-              name: 'GOES-R Flight Systems'
+              key: 'TASK',
+              name: 'Task Management'
             },
             created: '2024-01-10T10:00:00.000+0000',
             updated: '2024-01-15T14:30:00.000+0000',
-            labels: ['flight-control', 'safety-critical', 'DAL-A'],
+            labels: ['task-control', 'critical-path', 'Critical'],
             components: [
               {
                 id: '10001',
-                name: 'Flight Control Software'
+                name: 'Task Processing Module'
               }
             ],
             customFields: {
@@ -160,11 +160,11 @@ class JiraService {
         });
 
         mockJiraIssues.push({
-          key: 'GOES-1235',
+          key: 'TASK-1235',
           id: '10002',
           fields: {
-            summary: 'Flight Control System Unit Tests',
-            description: 'Create comprehensive unit tests for flight control authority implementation.',
+            summary: 'Task Processing Unit Tests',
+            description: 'Create comprehensive unit tests for task processing implementation.',
             status: {
               id: '10002',
               name: 'To Do',
@@ -199,12 +199,12 @@ class JiraService {
             },
             project: {
               id: '10001',
-              key: 'GOES',
-              name: 'GOES-R Flight Systems'
+              key: 'TASK',
+              name: 'Task Management'
             },
             created: '2024-01-12T09:15:00.000+0000',
             updated: '2024-01-12T09:15:00.000+0000',
-            labels: ['testing', 'flight-control', 'unit-tests'],
+            labels: ['testing', 'task-processing', 'unit-tests'],
             components: [
               {
                 id: '10002',
@@ -217,11 +217,11 @@ class JiraService {
 
       if (requirementId.includes('NAV') || requirementId.includes('navigation')) {
         mockJiraIssues.push({
-          key: 'GOES-2001',
+          key: 'TASK-2001',
           id: '20001',
           fields: {
-            summary: 'Navigation System Integration Development',
-            description: 'Implement navigation system integration with flight management computer.',
+            summary: 'Agent Task Integration Development',
+            description: 'Implement agent task integration with task scheduler.',
             status: {
               id: '10003',
               name: 'Done',
@@ -257,29 +257,29 @@ class JiraService {
             project: {
               id: '10002',
               key: 'NAV',
-              name: 'GOES-R Navigation'
+              name: 'Agent Task Orchestration'
             },
             created: '2024-01-08T11:20:00.000+0000',
             updated: '2024-01-14T16:45:00.000+0000',
             resolutiondate: '2024-01-14T16:45:00.000+0000',
-            labels: ['navigation', 'integration', 'DAL-B'],
+            labels: ['coordination', 'integration', 'High'],
             components: [
               {
                 id: '20001',
-                name: 'Navigation Software'
+                name: 'Task Orchestration Module'
               }
             ]
           }
         });
       }
 
-      if (requirementId.includes('HYD') || requirementId.includes('hydraulic')) {
+      if (requirementId.includes('HYD') || requirementId.includes('queue')) {
         mockJiraIssues.push({
-          key: 'GOES-3001',
+          key: 'TASK-3001',
           id: '30001',
           fields: {
-            summary: 'Hydraulic Pressure Control Implementation',
-            description: 'Develop hydraulic system pressure control algorithms and monitoring.',
+            summary: 'Queue Management Implementation',
+            description: 'Develop message queue management algorithms and monitoring.',
             status: {
               id: '10001',
               name: 'In Progress',
@@ -315,15 +315,15 @@ class JiraService {
             project: {
               id: '10003',
               key: 'HYD',
-              name: 'GOES-R Hydraulics'
+              name: 'Task Infrastructure'
             },
             created: '2024-01-09T08:30:00.000+0000',
             updated: '2024-01-13T15:20:00.000+0000',
-            labels: ['hydraulic', 'control-system', 'DAL-A'],
+            labels: ['pipeline', 'control-system', 'Critical'],
             components: [
               {
                 id: '30001',
-                name: 'Hydraulic Control'
+                name: 'Queue Management'
               }
             ]
           }
@@ -333,7 +333,7 @@ class JiraService {
       // Add a generic issue if no specific matches
       if (mockJiraIssues.length === 0) {
         mockJiraIssues.push({
-          key: 'GOES-9999',
+          key: 'TASK-9999',
           id: '99999',
           fields: {
             summary: `Implementation task for ${requirementId}`,
@@ -366,8 +366,8 @@ class JiraService {
             },
             project: {
               id: '10000',
-              key: 'GOES',
-              name: 'GOES-R General'
+              key: 'TASK',
+              name: 'Task Management'
             },
             created: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
             updated: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
@@ -439,9 +439,9 @@ class JiraService {
       const mockProjects: JiraProject[] = [
         {
           id: '10001',
-          key: 'GOES',
-          name: 'GOES-R Flight Systems',
-          description: 'Main project for GOES-R flight control systems',
+          key: 'TASK',
+          name: 'Task Management',
+          description: 'Main project for task management systems',
           projectTypeKey: 'software',
           lead: {
             displayName: 'Dr. Sarah Mitchell',
@@ -451,8 +451,8 @@ class JiraService {
         {
           id: '10002',
           key: 'NAV',
-          name: 'GOES-R Navigation',
-          description: 'Navigation and guidance systems',
+          name: 'Agent Task Orchestration',
+          description: 'Task orchestration and coordination systems',
           projectTypeKey: 'software',
           lead: {
             displayName: 'James Rodriguez',
@@ -462,8 +462,8 @@ class JiraService {
         {
           id: '10003',
           key: 'HYD',
-          name: 'GOES-R Hydraulics',
-          description: 'Hydraulic system development',
+          name: 'Task Infrastructure',
+          description: 'Queue systems development',
           projectTypeKey: 'software',
           lead: {
             displayName: 'Anna Kowalski',

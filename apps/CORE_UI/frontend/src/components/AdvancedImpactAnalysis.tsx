@@ -52,7 +52,7 @@ interface ImpactAnalysisNode {
   id: string;
   name: string;
   type: 'requirement' | 'design' | 'code' | 'test' | 'component' | 'jira' | 'jama';
-  criticality: 'DAL-A' | 'DAL-B' | 'DAL-C' | 'DAL-D' | 'DAL-E';
+  criticality: 'Critical' | 'High' | 'Medium' | 'Low' | 'Info';
   status: string;
   impactScore: number; // 0-100
   riskLevel: 'low' | 'medium' | 'high' | 'critical';
@@ -142,7 +142,7 @@ const AdvancedImpactAnalysis: React.FC<AdvancedImpactAnalysisProps> = ({
       id: node.id,
       name: node.name,
       type: node.type,
-      criticality: (node.metadata?.criticality || 'DAL-C') as 'DAL-A' | 'DAL-B' | 'DAL-C' | 'DAL-D' | 'DAL-E',
+      criticality: (node.metadata?.criticality || 'Medium') as 'Critical' | 'High' | 'Medium' | 'Low' | 'Info',
       status: node.status,
       impactScore: calculateImpactScore(node),
       riskLevel: calculateRiskLevel(node),
@@ -214,7 +214,7 @@ const AdvancedImpactAnalysis: React.FC<AdvancedImpactAnalysisProps> = ({
     const riskFactors = [
       {
         factor: 'Criticality Level',
-        score: node.criticality === 'DAL-A' ? 100 : node.criticality === 'DAL-B' ? 80 : node.criticality === 'DAL-C' ? 60 : 40,
+        score: node.criticality === 'Critical' ? 100 : node.criticality === 'High' ? 80 : node.criticality === 'Medium' ? 60 : 40,
         description: `${node.criticality} criticality level`,
         mitigation: 'Implement additional verification and validation procedures'
       },
@@ -252,10 +252,10 @@ const AdvancedImpactAnalysis: React.FC<AdvancedImpactAnalysisProps> = ({
   // Simulation scenarios
   const simulationScenarios = useMemo((): SimulationScenario[] => [
     {
-      id: 'change-dal-a',
-      name: 'Modify DAL-A Requirement',
-      description: 'Simulate impact of changing a safety-critical requirement',
-      changedRequirements: analysisNodes.filter(n => n.criticality === 'DAL-A').map(n => n.id).slice(0, 1),
+      id: 'change-critical',
+      name: 'Modify Critical Requirement',
+      description: 'Simulate impact of changing a critical requirement',
+      changedRequirements: analysisNodes.filter(n => n.criticality === 'Critical').map(n => n.id).slice(0, 1),
       estimatedImpact: {
         affectedNodes: Math.floor(analysisNodes.length * 0.6),
         totalEffort: 480,
@@ -307,8 +307,8 @@ const AdvancedImpactAnalysis: React.FC<AdvancedImpactAnalysisProps> = ({
 
   // Helper functions
   function calculateImpactScore(node: any): number {
-    const criticalityWeight = node.metadata?.criticality === 'DAL-A' ? 100 :
-      node.metadata?.criticality === 'DAL-B' ? 80 : 60;
+    const criticalityWeight = node.metadata?.criticality === 'Critical' ? 100 :
+      node.metadata?.criticality === 'High' ? 80 : 60;
     const connectionsWeight = Math.min(50, (node.connections?.length || 0) * 10);
     return Math.min(100, criticalityWeight * 0.6 + connectionsWeight * 0.4);
   }

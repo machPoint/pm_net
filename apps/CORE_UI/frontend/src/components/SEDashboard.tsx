@@ -42,10 +42,10 @@ interface RuleViolation {
 interface SystemNode {
   id: string;
   type: string;
-  name: string;
+  title: string;
   status?: string;
-  subsystem?: string;
-  external_refs: Record<string, string>;
+  source?: string;
+  metadata?: Record<string, any>;
 }
 
 interface OPALHealth {
@@ -279,11 +279,11 @@ export default function SEDashboard() {
                         <Badge variant="outline" className="text-xs">
                           {node.type}
                         </Badge>
-                        <p className="font-medium text-sm">{node.name}</p>
+                        <p className="font-medium text-sm">{node.title}</p>
                       </div>
-                      {node.subsystem && (
+                      {node.source && (
                         <p className="text-xs text-muted-foreground mt-1">
-                          {node.subsystem}
+                          {node.source}
                         </p>
                       )}
                     </div>

@@ -34,7 +34,7 @@ interface ChatMessage {
 }
 
 interface ChatContext {
-  type: 'general' | 'requirement' | 'database' | 'jira' | 'jama' | 'email' | 'windchill' | 'outlook';
+  type: 'general' | 'task' | 'requirement' | 'database' | 'jira' | 'jama' | 'email' | 'agent' | 'outlook';
   id?: string;
   includeRequirements?: boolean;
   requirementFilters?: {
@@ -265,7 +265,7 @@ export default function AIChatPanel({ selectedRequirement, onContextChange }: AI
       case 'jama': return 'Jama ID (e.g. REQ-456)';
       case 'email': return 'Email thread ID (optional)';
       case 'outlook': return 'Meeting ID (optional)';
-      case 'windchill': return 'Part/Drawing number';
+      case 'agent': return 'Agent ID';
       case 'requirement': return 'Requirement ID';
       case 'database': return 'Record ID (optional)';
       default: return 'ID or number (optional)';
@@ -406,10 +406,10 @@ export default function AIChatPanel({ selectedRequirement, onContextChange }: AI
                       Outlook Integration
                     </div>
                   </SelectItem>
-                  <SelectItem value="windchill">
+                  <SelectItem value="agent">
                     <div className="flex items-center gap-2">
                       <Settings className="w-4 h-4" />
-                      Windchill PLM
+                      Agent Context
                     </div>
                   </SelectItem>
                   <SelectItem value="requirement">
@@ -580,12 +580,12 @@ export default function AIChatPanel({ selectedRequirement, onContextChange }: AI
                     <SelectValue placeholder="Criticality" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">All DAL</SelectItem>
-                    <SelectItem value="DAL-A">DAL-A</SelectItem>
-                    <SelectItem value="DAL-B">DAL-B</SelectItem>
-                    <SelectItem value="DAL-C">DAL-C</SelectItem>
-                    <SelectItem value="DAL-D">DAL-D</SelectItem>
-                    <SelectItem value="DAL-E">DAL-E</SelectItem>
+                    <SelectItem value="">All Priorities</SelectItem>
+                    <SelectItem value="Critical">Critical</SelectItem>
+                    <SelectItem value="High">High</SelectItem>
+                    <SelectItem value="Medium">Medium</SelectItem>
+                    <SelectItem value="Low">Low</SelectItem>
+                    <SelectItem value="Info">Info</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

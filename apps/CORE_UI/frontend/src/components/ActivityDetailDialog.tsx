@@ -95,7 +95,7 @@ export default function ActivityDetailDialog({
     switch (source) {
       case "jama": return "text-blue-500";
       case "jira": return "text-orange-500";
-      case "windchill": return "text-purple-500";
+      case "agent": return "text-purple-500";
       case "email": return "text-green-500";
       default: return "text-gray-500";
     }
@@ -106,7 +106,7 @@ export default function ActivityDetailDialog({
       case "requirement": return "bg-blue-500/10 text-blue-400";
       case "test_case": return "bg-green-500/10 text-green-400";
       case "issue": return "bg-red-500/10 text-red-400";
-      case "ecn": return "bg-yellow-500/10 text-yellow-400";
+      case "change_request": return "bg-yellow-500/10 text-yellow-400";
       case "email": return "bg-purple-500/10 text-purple-400";
       default: return "bg-gray-500/10 text-gray-400";
     }

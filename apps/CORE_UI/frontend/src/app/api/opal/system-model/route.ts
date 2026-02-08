@@ -8,7 +8,7 @@ export async function GET(request: NextRequest) {
     const params = {
       project_id: searchParams.get('project_id') || 'proj-001',
       node_type: searchParams.get('node_type') || undefined,
-      subsystem: searchParams.get('subsystem') || undefined,
+      source: searchParams.get('source') || undefined,
       status: searchParams.get('status') || undefined,
       search: searchParams.get('search') || undefined,
       limit: parseInt(searchParams.get('limit') || '50'),

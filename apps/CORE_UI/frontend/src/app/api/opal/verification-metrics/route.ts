@@ -7,14 +7,14 @@ export async function GET(request: NextRequest) {
     
     const params = {
       project_id: searchParams.get('project_id') || 'proj-001',
-      subsystem: searchParams.get('subsystem') || undefined
+      domain: searchParams.get('domain') || undefined
     };
 
-    if (!params.subsystem) {
-      delete params.subsystem;
+    if (!params.domain) {
+      delete params.domain;
     }
 
-    const result = await opalClient.getVerificationCoverageMetrics(params);
+    const result = await opalClient.getValidationCoverageMetrics(params);
 
     return NextResponse.json({
       success: true,

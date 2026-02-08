@@ -31,7 +31,7 @@ interface CriticalPathNode {
   id: string;
   name: string;
   type: 'requirement' | 'design' | 'code' | 'test' | 'component' | 'jira' | 'jama';
-  criticality: 'DAL-A' | 'DAL-B' | 'DAL-C' | 'DAL-D' | 'DAL-E';
+  criticality: 'Critical' | 'High' | 'Medium' | 'Low' | 'Info';
   status: string;
   effort: number; // hours
   duration: number; // days
@@ -97,7 +97,7 @@ const CriticalPathAnalyzer: React.FC<CriticalPathAnalyzerProps> = ({
           id: node.id,
           name: node.name,
           type: node.type,
-          criticality: (node.metadata?.criticality || 'DAL-C') as any,
+          criticality: (node.metadata?.criticality || 'Medium') as any,
           status: node.status,
           effort,
           duration,
@@ -133,7 +133,7 @@ const CriticalPathAnalyzer: React.FC<CriticalPathAnalyzerProps> = ({
     }, {} as Record<string, CriticalPathNode[]>);
 
     Object.entries(requirementGroups).forEach(([reqId, nodes]) => {
-      const criticalNodes = nodes.filter(n => n.isCritical || n.criticality === 'DAL-A');
+      const criticalNodes = nodes.filter(n => n.isCritical || n.criticality === 'Critical');
       const totalDuration = criticalNodes.reduce((sum, n) => sum + n.duration, 0);
       const totalEffort = criticalNodes.reduce((sum, n) => sum + n.effort, 0);
       const riskScore = criticalNodes.length > 0 ? criticalNodes.reduce((sum, n) => sum + n.risk, 0) / criticalNodes.length : 0;
@@ -206,9 +206,9 @@ const CriticalPathAnalyzer: React.FC<CriticalPathAnalyzerProps> = ({
     let risk = 0;
 
     // Criticality risk
-    if (node.metadata?.criticality === 'DAL-A') risk += 40;
-    else if (node.metadata?.criticality === 'DAL-B') risk += 30;
-    else if (node.metadata?.criticality === 'DAL-C') risk += 20;
+    if (node.metadata?.criticality === 'Critical') risk += 40;
+    else if (node.metadata?.criticality === 'High') risk += 30;
+    else if (node.metadata?.criticality === 'Medium') risk += 20;
 
     // Status risk
     if (node.status === 'pending') risk += 20;
@@ -291,11 +291,11 @@ const CriticalPathAnalyzer: React.FC<CriticalPathAnalyzerProps> = ({
 
   const getCriticalityColor = (criticality: string) => {
     switch (criticality) {
-      case 'DAL-A': return 'bg-red-100 text-red-800 border-red-200';
-      case 'DAL-B': return 'bg-orange-100 text-orange-800 border-orange-200';
-      case 'DAL-C': return 'bg-yellow-100 text-yellow-800 border-yellow-200';
-      case 'DAL-D': return 'bg-blue-100 text-blue-800 border-blue-200';
-      case 'DAL-E': return 'bg-green-100 text-green-800 border-green-200';
+      case 'Critical': return 'bg-red-100 text-red-800 border-red-200';
+      case 'High': return 'bg-orange-100 text-orange-800 border-orange-200';
+      case 'Medium': return 'bg-yellow-100 text-yellow-800 border-yellow-200';
+      case 'Low': return 'bg-blue-100 text-blue-800 border-blue-200';
+      case 'Info': return 'bg-green-100 text-green-800 border-green-200';
       default: return 'bg-gray-100 text-gray-800 border-gray-200';
     }
   };

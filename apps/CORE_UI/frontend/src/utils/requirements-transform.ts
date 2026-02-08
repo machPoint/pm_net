@@ -14,7 +14,7 @@ interface TraceNode {
     owner: string;
     lastUpdated: string;
     source: string;
-    criticality?: "DAL-A" | "DAL-B" | "DAL-C" | "DAL-D" | "DAL-E";
+    criticality?: "Critical" | "High" | "Medium" | "Low" | "Info";
   };
   position?: { x: number; y: number };
   details?: {

@@ -45,7 +45,7 @@ interface TraceNode {
     owner: string;
     lastUpdated: string;
     source: string;
-    criticality?: "DAL-A" | "DAL-B" | "DAL-C" | "DAL-D" | "DAL-E";
+    criticality?: "Critical" | "High" | "Medium" | "Low" | "Info";
   };
   position?: { x: number; y: number };
   details?: {
@@ -133,11 +133,11 @@ const CustomNode = ({ data, id, selected }: { data: any; id: string; selected: b
   
   const getCriticalityColor = (criticality?: string) => {
     switch (criticality) {
-      case "DAL-A": return "bg-red-500";
-      case "DAL-B": return "bg-orange-500";
-      case "DAL-C": return "bg-yellow-500";
-      case "DAL-D": return "bg-blue-500";
-      case "DAL-E": return "bg-green-500";
+      case "Critical": return "bg-red-500";
+      case "High": return "bg-orange-500";
+      case "Medium": return "bg-yellow-500";
+      case "Low": return "bg-blue-500";
+      case "Info": return "bg-green-500";
       default: return "bg-gray-500";
     }
   };
@@ -263,7 +263,7 @@ export default function TraceGraph({
   // Create edges from connections with enhanced styling
   const initialEdges: Edge[] = traceNodes.flatMap((node) =>
     node.connections.map((targetId) => {
-      const isCritical = node.metadata.criticality === 'DAL-A';
+      const isCritical = node.metadata.criticality === 'Critical';
       return {
         id: `${node.id}-${targetId}`,
         source: node.id,
@@ -295,7 +295,7 @@ export default function TraceGraph({
     targetId?: string;
   }>({ isOpen: false });
   const [connectionForm, setConnectionForm] = useState({
-    connectionType: 'related_to' as RequirementConnection['connectionType'],
+    connectionType: 'depends_on' as RequirementConnection['connectionType'],
     strength: 'medium' as RequirementConnection['strength'],
     description: ''
   });
@@ -364,7 +364,7 @@ export default function TraceGraph({
       // Close dialog and reset form
       setConnectionDialog({ isOpen: false });
       setConnectionForm({
-        connectionType: 'related_to',
+        connectionType: 'depends_on',
         strength: 'medium',
         description: ''
       });
@@ -556,7 +556,7 @@ export default function TraceGraph({
               </div>
               <div className="text-xs text-muted-foreground">
                 {selectedNode.metadata.criticality && (
-                  <span className="mr-2">Safety Level: {selectedNode.metadata.criticality}</span>
+                  <span className="mr-2">Priority: {selectedNode.metadata.criticality}</span>
                 )}
                 Owner: {selectedNode.metadata.owner}
               </div>
@@ -596,11 +596,12 @@ export default function TraceGraph({
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="depends_on">Depends On</SelectItem>
-                  <SelectItem value="derived_from">Derived From</SelectItem>
-                  <SelectItem value="impacts">Impacts</SelectItem>
-                  <SelectItem value="related_to">Related To</SelectItem>
-                  <SelectItem value="implements">Implements</SelectItem>
-                  <SelectItem value="validates">Validates</SelectItem>
+                  <SelectItem value="blocks">Blocks</SelectItem>
+                  <SelectItem value="assigned_to">Assigned To</SelectItem>
+                  <SelectItem value="produces">Produces</SelectItem>
+                  <SelectItem value="mitigates">Mitigates</SelectItem>
+                  <SelectItem value="requires_approval">Requires Approval</SelectItem>
+                  <SelectItem value="informs">Informs</SelectItem>
                 </SelectContent>
               </Select>
             </div>

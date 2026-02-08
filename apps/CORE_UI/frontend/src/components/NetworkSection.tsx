@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Loader2, Network as NetworkIcon, Workflow } from "lucide-react";
 
-const OPAL_BASE_URL = process.env.NEXT_PUBLIC_OPAL_BASE_URL || 'http://localhost:7788';
+const OPAL_BASE_URL = '/api/opal/proxy';
 
 interface NetworkNodeData {
 	id: string;

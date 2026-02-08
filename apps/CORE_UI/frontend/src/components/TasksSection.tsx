@@ -26,7 +26,7 @@ import {
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
-const OPAL_BASE_URL = process.env.NEXT_PUBLIC_OPAL_BASE_URL || 'http://localhost:7788';
+const OPAL_BASE_URL = '/api/opal/proxy';
 
 interface TaskNode {
   id: string;

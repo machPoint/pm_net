@@ -23,12 +23,12 @@ import {
   TraceDownstreamImpactResult,
   TraceUpstreamRationaleParams,
   TraceUpstreamRationaleResult,
-  FindVerificationGapsParams,
-  FindVerificationGapsResult,
-  CheckAllocationConsistencyParams,
-  CheckAllocationConsistencyResult,
-  GetVerificationCoverageMetricsParams,
-  GetVerificationCoverageMetricsResult,
+  FindValidationGapsParams,
+  FindValidationGapsResult,
+  CheckAssignmentConsistencyParams,
+  CheckAssignmentConsistencyResult,
+  GetValidationCoverageMetricsParams,
+  GetValidationCoverageMetricsResult,
   GetHistoryParams,
   GetHistoryResult,
   FindSimilarPastChangesParams,
@@ -77,7 +77,7 @@ export async function querySystemModel(
 
     if (params.node_filters) {
       if (params.node_filters.type) nodeFilter.type = params.node_filters.type;
-      if (params.node_filters.subsystem) nodeFilter.subsystem = params.node_filters.subsystem;
+      if (params.node_filters.source) nodeFilter.source = params.node_filters.source;
       if (params.node_filters.status) nodeFilter.status = params.node_filters.status;
       if (params.node_filters.ids) nodeFilter.ids = params.node_filters.ids;
     }
@@ -130,11 +130,10 @@ export async function getSystemSlice(
     let nodes: SystemNode[] = [];
     let edges: any[] = [];
 
-    if (params.subsystem) {
-      // Subsystem-based slice
+    if (params.domain) {
+      // Domain-based slice
       nodes = await getNodesByFilter({
-        project_id: params.project_id,
-        subsystem: params.subsystem
+        project_id: params.project_id
       });
 
       const nodeIds = nodes.map(n => n.id);
@@ -209,12 +208,12 @@ export async function traceDownstreamImpact(
   try {
     logger.info(`Tracing downstream impact for ${params.start_nodes.length} nodes`);
 
-    // Define downstream relation types
+    // Define downstream relation types (canonical: graph-vocabulary.ts)
     const downstreamRelations: RelationType[] = [
-      'TRACES_TO',
-      'VERIFIED_BY',
-      'ALLOCATED_TO',
-      'INTERFACES_WITH'
+      'depends_on',
+      'assigned_to',
+      'produces',
+      'requires_approval'
     ];
 
     // Traverse downstream
@@ -231,11 +230,6 @@ export async function traceDownstreamImpact(
       if (params.filters.types) {
         filteredNodes = filteredNodes.filter(n => params.filters!.types!.includes(n.type));
       }
-      if (params.filters.subsystems) {
-        filteredNodes = filteredNodes.filter(n =>
-          n.subsystem && params.filters!.subsystems!.includes(n.subsystem)
-        );
-      }
       if (params.filters.statuses) {
         filteredNodes = filteredNodes.filter(n =>
           n.status && params.filters!.statuses!.includes(n.status)
@@ -243,20 +237,20 @@ export async function traceDownstreamImpact(
       }
     }
 
-    // Group by type
+    // Group by type (domain-neutral)
+    const byType: Record<string, SystemNode[]> = {};
+    for (const node of filteredNodes) {
+      const t = node.type;
+      if (!byType[t]) byType[t] = [];
+      byType[t].push(node);
+    }
+
     const impacted: TraceDownstreamImpactResult['impacted'] = {
-      requirements: filteredNodes.filter(n => n.type === 'Requirement'),
-      tests: filteredNodes.filter(n => n.type === 'Test'),
-      components: filteredNodes.filter(n => n.type === 'Component'),
-      interfaces: filteredNodes.filter(n => n.type === 'Interface'),
-      issues: filteredNodes.filter(n => n.type === 'Issue'),
-      ecns: filteredNodes.filter(n => n.type === 'ECN'),
-      other: filteredNodes.filter(n =>
-        !['Requirement', 'Test', 'Component', 'Interface', 'Issue', 'ECN'].includes(n.type)
-      )
+      by_type: byType,
+      total: filteredNodes.length
     };
 
-    const totalImpacted = Object.values(impacted).reduce((sum, arr) => sum + arr.length, 0);
+    const totalImpacted = filteredNodes.length;
     logger.info(`Impact analysis found ${totalImpacted} impacted nodes`);
 
     return {
@@ -282,10 +276,10 @@ export async function traceUpstreamRationale(
   try {
     logger.info(`Tracing upstream rationale for ${params.start_nodes.length} nodes`);
 
-    // Define upstream relation types
+    // Define upstream relation types (canonical: graph-vocabulary.ts)
     const upstreamRelations: RelationType[] = [
-      'DERIVED_FROM',
-      'TRACES_TO' // Can be bidirectional, so include it
+      'depends_on',
+      'informs'
     ];
 
     // Traverse upstream
@@ -328,8 +322,8 @@ export async function traceUpstreamRationale(
  * Find verification gaps in the system
  */
 export async function findVerificationGaps(
-  params: FindVerificationGapsParams
-): Promise<FindVerificationGapsResult> {
+  params: FindValidationGapsParams
+): Promise<FindValidationGapsResult> {
   try {
     logger.info(`Finding verification gaps for project ${params.project_id}`);
 
@@ -339,23 +333,22 @@ export async function findVerificationGaps(
       type: 'Requirement'
     };
 
-    if (params.subsystem) {
-      requirementFilter.subsystem = params.subsystem;
+    if (params.domain) {
+      // domain filtering via metadata
     }
 
     const requirements = await getNodesByFilter(requirementFilter);
 
-    // Get all tests
+    // Get all validations
     const tests = await getNodesByFilter({
       project_id: params.project_id,
-      type: 'Test',
-      ...(params.subsystem ? { subsystem: params.subsystem } : {})
+      type: 'Test'
     });
 
-    // Get verification edges
+    // Get verification edges (task → deliverable via 'produces')
     const verificationEdges = await getEdgesByFilter({
       project_id: params.project_id,
-      relation_type: 'VERIFIED_BY'
+      relation_type: 'produces'
     });
 
     // Build verification map
@@ -370,17 +363,9 @@ export async function findVerificationGaps(
     // Find gaps
     const requirements_missing_tests = requirements.filter(req => {
       // Filter by levels if specified
-      if (params.requirement_levels) {
-        const level = req.metadata?.level;
-        if (level && !params.requirement_levels.includes(level)) {
-          return false;
-        }
-      }
-
-      // Filter by safety levels if specified
-      if (params.safety_levels) {
-        const safetyLevel = req.metadata?.safety_level;
-        if (safetyLevel && !params.safety_levels.includes(safetyLevel)) {
+      if (params.priority_levels) {
+        const level = req.metadata?.priority;
+        if (level && !params.priority_levels.includes(level)) {
           return false;
         }
       }
@@ -393,21 +378,21 @@ export async function findVerificationGaps(
     );
 
     // Find broken chains (requirements that trace to other requirements but have no tests)
-    const broken_chains: FindVerificationGapsResult['broken_chains'] = [];
+    const broken_chains: FindValidationGapsResult['broken_chains'] = [];
     for (const req of requirements) {
       if (requirementsWithTests.has(req.id)) continue;
 
       // Check if it has downstream traces
       const downstreamEdges = await getEdgesByFilter({
         from_node_id: req.id,
-        relation_type: 'TRACES_TO'
+        relation_type: 'depends_on'
       });
 
       if (downstreamEdges.length > 0) {
         broken_chains.push({
-          requirement: req,
+          task: req,
           gap_type: 'missing_verification',
-          description: `Requirement traces to ${downstreamEdges.length} other items but has no verification`
+          description: `Task traces to ${downstreamEdges.length} other items but has no validation`
         });
       }
     }
@@ -415,8 +400,8 @@ export async function findVerificationGaps(
     logger.info(`Found ${requirements_missing_tests.length} requirements without tests, ${tests_without_requirements.length} tests without requirements`);
 
     return {
-      requirements_missing_tests,
-      tests_without_requirements,
+      tasks_missing_validations: requirements_missing_tests,
+      validations_without_tasks: tests_without_requirements,
       broken_chains
     };
   } catch (error: any) {
@@ -433,8 +418,8 @@ export async function findVerificationGaps(
  * Check allocation consistency
  */
 export async function checkAllocationConsistency(
-  params: CheckAllocationConsistencyParams
-): Promise<CheckAllocationConsistencyResult> {
+  params: CheckAssignmentConsistencyParams
+): Promise<CheckAssignmentConsistencyResult> {
   try {
     logger.info(`Checking allocation consistency for project ${params.project_id}`);
 
@@ -442,20 +427,18 @@ export async function checkAllocationConsistency(
     const [requirements, components] = await Promise.all([
       getNodesByFilter({
         project_id: params.project_id,
-        type: 'Requirement',
-        ...(params.subsystem ? { subsystem: params.subsystem } : {})
+        type: 'Requirement'
       }),
       getNodesByFilter({
         project_id: params.project_id,
-        type: 'Component',
-        ...(params.subsystem ? { subsystem: params.subsystem } : {})
+        type: 'Component'
       })
     ]);
 
     // Get allocation edges
     const allocationEdges = await getEdgesByFilter({
       project_id: params.project_id,
-      relation_type: 'ALLOCATED_TO'
+      relation_type: 'assigned_to'
     });
 
     // Build allocation maps
@@ -484,20 +467,20 @@ export async function checkAllocationConsistency(
     );
 
     // Find conflicting allocations (requirement allocated to multiple conflicting components)
-    const conflicting_allocations: CheckAllocationConsistencyResult['conflicting_allocations'] = [];
+    const conflicting_assignments: CheckAssignmentConsistencyResult['conflicting_assignments'] = [];
     for (const [reqId, compIds] of requirementAllocations.entries()) {
       if (compIds.length > 1) {
-        // Check if components are in different subsystems (potential conflict)
-        const comps = await getNodesByFilter({ ids: compIds });
-        const subsystems = new Set(comps.map(c => c.subsystem).filter(Boolean));
+        // Check if agents are in different domains (potential conflict)
+        const agents = await getNodesByFilter({ ids: compIds });
+        const domains = new Set(agents.map((c: any) => c.metadata?.domain).filter(Boolean));
 
-        if (subsystems.size > 1) {
+        if (domains.size > 1) {
           const req = requirements.find(r => r.id === reqId);
           if (req) {
-            conflicting_allocations.push({
-              requirement: req,
-              components: comps,
-              conflict_reason: `Allocated to components in different subsystems: ${Array.from(subsystems).join(', ')}`
+            conflicting_assignments.push({
+              task: req,
+              agents,
+              conflict_reason: `Assigned to agents in different domains: ${Array.from(domains).join(', ')}`
             });
           }
         }
@@ -507,9 +490,9 @@ export async function checkAllocationConsistency(
     logger.info(`Found ${unallocated_requirements.length} unallocated requirements, ${orphan_components.length} orphan components`);
 
     return {
-      unallocated_requirements,
-      orphan_components,
-      conflicting_allocations
+      unassigned_tasks: unallocated_requirements,
+      orphan_agents: orphan_components,
+      conflicting_assignments
     };
   } catch (error: any) {
     logger.error('Error in checkAllocationConsistency:', error);
@@ -525,8 +508,8 @@ export async function checkAllocationConsistency(
  * Get verification coverage metrics
  */
 export async function getVerificationCoverageMetrics(
-  params: GetVerificationCoverageMetricsParams
-): Promise<GetVerificationCoverageMetricsResult> {
+  params: GetValidationCoverageMetricsParams
+): Promise<GetValidationCoverageMetricsResult> {
   try {
     logger.info(`Getting verification coverage metrics for project ${params.project_id}`);
 
@@ -534,58 +517,57 @@ export async function getVerificationCoverageMetrics(
     const requirements = await getNodesByFilter({
       project_id: params.project_id,
       type: 'Requirement',
-      ...(params.subsystem ? { subsystem: params.subsystem } : {})
     });
 
-    // Get verification edges
+    // Get verification edges (task → deliverable via 'produces')
     const verificationEdges = await getEdgesByFilter({
       project_id: params.project_id,
-      relation_type: 'VERIFIED_BY'
+      relation_type: 'produces'
     });
 
     const verifiedRequirements = new Set(verificationEdges.map(e => e.from_node_id));
 
     // Overall metrics
-    const total_requirements = requirements.length;
-    const verified_requirements = requirements.filter(r => verifiedRequirements.has(r.id)).length;
-    const coverage_percentage = total_requirements > 0
-      ? (verified_requirements / total_requirements) * 100
+    const total_tasks = requirements.length;
+    const validated_tasks = requirements.filter(r => verifiedRequirements.has(r.id)).length;
+    const coverage_percentage = total_tasks > 0
+      ? (validated_tasks / total_tasks) * 100
       : 0;
 
     // By type (from metadata)
-    const by_type: Record<string, { total: number; verified: number }> = {};
+    const by_type: Record<string, { total: number; validated: number }> = {};
     for (const req of requirements) {
       const type = req.metadata?.requirement_type || 'unknown';
       if (!by_type[type]) {
-        by_type[type] = { total: 0, verified: 0 };
+        by_type[type] = { total: 0, validated: 0 };
       }
       by_type[type].total++;
       if (verifiedRequirements.has(req.id)) {
-        by_type[type].verified++;
+        by_type[type].validated++;
       }
     }
 
-    // By level (L1, L2, L3, etc.)
-    const by_level: Record<string, { total: number; verified: number }> = {};
+    // By priority
+    const by_priority: Record<string, { total: number; validated: number }> = {};
     for (const req of requirements) {
-      const level = req.metadata?.level || 'unknown';
-      if (!by_level[level]) {
-        by_level[level] = { total: 0, verified: 0 };
+      const priority = req.metadata?.priority || 'unknown';
+      if (!by_priority[priority]) {
+        by_priority[priority] = { total: 0, validated: 0 };
       }
-      by_level[level].total++;
+      by_priority[priority].total++;
       if (verifiedRequirements.has(req.id)) {
-        by_level[level].verified++;
+        by_priority[priority].validated++;
       }
     }
 
-    logger.info(`Verification coverage: ${coverage_percentage.toFixed(1)}% (${verified_requirements}/${total_requirements})`);
+    logger.info(`Validation coverage: ${coverage_percentage.toFixed(1)}% (${validated_tasks}/${total_tasks})`);
 
     return {
-      total_requirements,
-      verified_requirements,
+      total_tasks,
+      validated_tasks,
       coverage_percentage,
       by_type,
-      by_level
+      by_priority
     };
   } catch (error: any) {
     logger.error('Error in getVerificationCoverageMetrics:', error);
@@ -672,14 +654,14 @@ export async function findSimilarPastChanges(
         patterns.push(`Affects same types: ${typeOverlap.join(', ')}`);
       }
 
-      // Check subsystem overlap
-      const csSubsystems = Object.keys(changeSet.stats.counts_by_subsystem);
-      const signatureSubsystems = params.change_signature.subsystems;
-      const subsystemOverlap = csSubsystems.filter(s => signatureSubsystems.includes(s));
+      // Check domain overlap
+      const csDomains = Object.keys(changeSet.stats.counts_by_domain || {});
+      const signatureDomains = params.change_signature.domains || [];
+      const domainOverlap = csDomains.filter(s => signatureDomains.includes(s));
 
-      if (subsystemOverlap.length > 0) {
-        score += (subsystemOverlap.length / signatureSubsystems.length) * 30;
-        patterns.push(`Same subsystems: ${subsystemOverlap.join(', ')}`);
+      if (domainOverlap.length > 0 && signatureDomains.length > 0) {
+        score += (domainOverlap.length / signatureDomains.length) * 30;
+        patterns.push(`Same domains: ${domainOverlap.join(', ')}`);
       }
 
       // Check event type patterns

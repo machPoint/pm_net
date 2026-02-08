@@ -19,6 +19,7 @@ import {
   EventRecord,
   TimelineEntry
 } from '../../types/se';
+import { eventBus } from '../eventBus';
 
 // ============================================================================
 // Helper Functions
@@ -76,6 +77,30 @@ function computeDiff(
   return diff;
 }
 
+/**
+ * Build a human-readable summary for an event
+ */
+function buildSummary(
+  event_type: EventType,
+  entity_type: string,
+  entity_id: string,
+  diff: DiffPayload
+): string {
+  const title = (diff.details as any)?.node_title || entity_id;
+  switch (event_type) {
+    case 'created': return `${entity_type} "${title}" created`;
+    case 'updated': {
+      const fields = diff.fields_changed?.join(', ') || 'fields';
+      return `${entity_type} "${title}" updated (${fields})`;
+    }
+    case 'deleted': return `${entity_type} "${title}" deleted`;
+    case 'linked': return `Relationship linked: ${(diff.details as any)?.from_node || entity_id} → ${(diff.details as any)?.to_node || '?'}`;
+    case 'unlinked': return `Relationship unlinked: ${entity_id}`;
+    case 'status_changed': return `${entity_type} "${title}" status changed`;
+    default: return `${event_type} on ${entity_type} ${entity_id}`;
+  }
+}
+
 // ============================================================================
 // Event Recording
 // ============================================================================
@@ -115,6 +140,19 @@ export async function recordEvent(
     const result = recordToEvent(created);
     logger.info(`Recorded event: ${event_type} on ${entity_type} ${entity_id} (source: ${source_system})`);
 
+    // Broadcast to SSE clients via EventBus
+    eventBus.emit({
+      id,
+      event_type,
+      entity_type,
+      entity_id,
+      summary: buildSummary(event_type, entity_type, entity_id, diff_payload),
+      source: source_system,
+      timestamp: now.toISOString(),
+      project_id,
+      metadata: diff_payload.details,
+    });
+
     return result;
   } catch (error: any) {
     logger.error('Error recording event:', error);
@@ -136,7 +174,7 @@ export async function recordNodeCreated(
     'created',
     {
       after: node,
-      details: { node_name: node.name, node_type: node.type }
+      details: { node_title: node.title, node_type: node.type }
     },
     node.project_id
   );
@@ -176,7 +214,7 @@ export async function recordNodeDeleted(
     'deleted',
     {
       before: node,
-      details: { node_name: node.name, node_type: node.type }
+      details: { node_title: node.title, node_type: node.type }
     },
     node.project_id
   );

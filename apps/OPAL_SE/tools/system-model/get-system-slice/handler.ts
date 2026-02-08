@@ -90,158 +90,158 @@ function getMockSystemSlice(
   const allNodes: Node[] = [
     {
       id: 'SYS-1',
-      label: 'Aerospace System',
+      label: 'Agent Platform',
       type: 'system',
       metadata: {
-        discipline: 'Systems Engineering',
+        discipline: 'Platform Engineering',
         created_at: new Date().toISOString()
       }
     },
     {
-      id: 'SS-flight-control',
-      label: 'Flight Control',
-      type: 'subsystem',
+      id: 'DOM-ingestion',
+      label: 'Data Ingestion',
+      type: 'domain',
       metadata: {}
     },
     {
-      id: 'SS-avionics',
-      label: 'Avionics',
-      type: 'subsystem',
+      id: 'DOM-orchestration',
+      label: 'Orchestration',
+      type: 'domain',
       metadata: {}
     },
     {
-      id: 'SS-propulsion',
-      label: 'Propulsion',
-      type: 'subsystem',
+      id: 'DOM-monitoring',
+      label: 'Monitoring',
+      type: 'domain',
       metadata: {}
     },
     {
-      id: 'SS-landing-gear',
-      label: 'Landing Gear',
-      type: 'subsystem',
+      id: 'DOM-scheduling',
+      label: 'Scheduling',
+      type: 'domain',
       metadata: {}
     },
     {
-      id: 'SS-eclss',
-      label: 'ECLSS',
-      type: 'subsystem',
+      id: 'DOM-governance',
+      label: 'Governance',
+      type: 'domain',
       metadata: {}
     },
     {
-      id: 'SS-communication',
-      label: 'Communication',
-      type: 'subsystem',
+      id: 'DOM-messaging',
+      label: 'Messaging',
+      type: 'domain',
       metadata: {}
     },
     {
-      id: 'SS-hydraulics',
-      label: 'Hydraulics',
-      type: 'subsystem',
+      id: 'DOM-storage',
+      label: 'Storage',
+      type: 'domain',
       metadata: {}
     },
     {
-      id: 'SS-fuel-system',
-      label: 'Fuel System',
-      type: 'subsystem',
+      id: 'DOM-api-gateway',
+      label: 'API Gateway',
+      type: 'domain',
       metadata: {}
     },
     {
-      id: 'SS-safety-systems',
-      label: 'Safety Systems',
-      type: 'subsystem',
+      id: 'DOM-security',
+      label: 'Security',
+      type: 'domain',
       metadata: {}
     },
     {
-      id: 'SS-electrical',
-      label: 'Electrical',
-      type: 'subsystem',
+      id: 'DOM-reporting',
+      label: 'Reporting',
+      type: 'domain',
       metadata: {}
     },
     {
-      id: 'COMP-flight-control-autopilot',
-      label: 'Autopilot',
-      type: 'component',
-      metadata: { subsystem: 'Flight Control' }
+      id: 'AGT-ingestion-worker',
+      label: 'Ingestion Worker',
+      type: 'agent',
+      metadata: { domain: 'Data Ingestion' }
     },
     {
-      id: 'COMP-avionics-gps-receiver',
-      label: 'GPS Receiver',
-      type: 'component',
-      metadata: { subsystem: 'Avionics' }
+      id: 'AGT-orchestration-scheduler',
+      label: 'Task Scheduler',
+      type: 'agent',
+      metadata: { domain: 'Orchestration' }
     },
     {
-      id: 'COMP-avionics-fms',
-      label: 'FMS',
-      type: 'component',
-      metadata: { subsystem: 'Avionics' }
+      id: 'AGT-orchestration-router',
+      label: 'Task Router',
+      type: 'agent',
+      metadata: { domain: 'Orchestration' }
     },
     {
-      id: 'COMP-avionics-weather-radar',
-      label: 'Weather Radar',
-      type: 'component',
-      metadata: { subsystem: 'Avionics' }
+      id: 'AGT-monitoring-health',
+      label: 'Health Monitor',
+      type: 'agent',
+      metadata: { domain: 'Monitoring' }
     },
     {
-      id: 'COMP-propulsion-ecu',
-      label: 'ECU',
-      type: 'component',
-      metadata: { subsystem: 'Propulsion' }
+      id: 'AGT-governance-auditor',
+      label: 'Audit Agent',
+      type: 'agent',
+      metadata: { domain: 'Governance' }
     },
     {
-      id: 'COMP-eclss-pressure-controller',
-      label: 'Pressure Controller',
-      type: 'component',
-      metadata: { subsystem: 'ECLSS' }
+      id: 'AGT-governance-policy',
+      label: 'Policy Enforcer',
+      type: 'agent',
+      metadata: { domain: 'Governance' }
     },
     {
-      id: 'COMP-eclss-oxygen-system',
-      label: 'Oxygen System',
-      type: 'component',
-      metadata: { subsystem: 'ECLSS' }
+      id: 'AGT-reporting-generator',
+      label: 'Report Generator',
+      type: 'agent',
+      metadata: { domain: 'Reporting' }
     },
     {
-      id: 'REQ-001',
-      label: 'Flight Control Stability',
-      type: 'requirement',
-      metadata: { req_type: 'functional' }
+      id: 'TASK-001',
+      label: 'Pipeline Throughput SLA',
+      type: 'task',
+      metadata: { task_type: 'functional' }
     },
     {
-      id: 'REQ-002',
-      label: 'GPS Navigation Accuracy',
-      type: 'requirement',
-      metadata: { req_type: 'performance' }
+      id: 'TASK-002',
+      label: 'Agent Health Check Interval',
+      type: 'task',
+      metadata: { task_type: 'performance' }
     }
   ];
 
   const allEdges: Edge[] = [
-    // CONTAINS edges from system to subsystems
-    { id: 'e1', from: 'SYS-1', to: 'SS-flight-control', relation: 'CONTAINS', metadata: {} },
-    { id: 'e2', from: 'SYS-1', to: 'SS-avionics', relation: 'CONTAINS', metadata: {} },
-    { id: 'e3', from: 'SYS-1', to: 'SS-propulsion', relation: 'CONTAINS', metadata: {} },
-    { id: 'e4', from: 'SYS-1', to: 'SS-landing-gear', relation: 'CONTAINS', metadata: {} },
-    { id: 'e5', from: 'SYS-1', to: 'SS-eclss', relation: 'CONTAINS', metadata: {} },
-    { id: 'e6', from: 'SYS-1', to: 'SS-communication', relation: 'CONTAINS', metadata: {} },
-    { id: 'e7', from: 'SYS-1', to: 'SS-hydraulics', relation: 'CONTAINS', metadata: {} },
-    { id: 'e8', from: 'SYS-1', to: 'SS-fuel-system', relation: 'CONTAINS', metadata: {} },
-    { id: 'e9', from: 'SYS-1', to: 'SS-safety-systems', relation: 'CONTAINS', metadata: {} },
-    { id: 'e10', from: 'SYS-1', to: 'SS-electrical', relation: 'CONTAINS', metadata: {} },
+    // CONTAINS edges from system to domains
+    { id: 'e1', from: 'SYS-1', to: 'DOM-ingestion', relation: 'CONTAINS', metadata: {} },
+    { id: 'e2', from: 'SYS-1', to: 'DOM-orchestration', relation: 'CONTAINS', metadata: {} },
+    { id: 'e3', from: 'SYS-1', to: 'DOM-monitoring', relation: 'CONTAINS', metadata: {} },
+    { id: 'e4', from: 'SYS-1', to: 'DOM-scheduling', relation: 'CONTAINS', metadata: {} },
+    { id: 'e5', from: 'SYS-1', to: 'DOM-governance', relation: 'CONTAINS', metadata: {} },
+    { id: 'e6', from: 'SYS-1', to: 'DOM-messaging', relation: 'CONTAINS', metadata: {} },
+    { id: 'e7', from: 'SYS-1', to: 'DOM-storage', relation: 'CONTAINS', metadata: {} },
+    { id: 'e8', from: 'SYS-1', to: 'DOM-api-gateway', relation: 'CONTAINS', metadata: {} },
+    { id: 'e9', from: 'SYS-1', to: 'DOM-security', relation: 'CONTAINS', metadata: {} },
+    { id: 'e10', from: 'SYS-1', to: 'DOM-reporting', relation: 'CONTAINS', metadata: {} },
     
-    // CONTAINS edges from subsystems to components
-    { id: 'e11', from: 'SS-flight-control', to: 'COMP-flight-control-autopilot', relation: 'CONTAINS', metadata: {} },
-    { id: 'e12', from: 'SS-avionics', to: 'COMP-avionics-gps-receiver', relation: 'CONTAINS', metadata: {} },
-    { id: 'e13', from: 'SS-avionics', to: 'COMP-avionics-fms', relation: 'CONTAINS', metadata: {} },
-    { id: 'e14', from: 'SS-avionics', to: 'COMP-avionics-weather-radar', relation: 'CONTAINS', metadata: {} },
-    { id: 'e15', from: 'SS-propulsion', to: 'COMP-propulsion-ecu', relation: 'CONTAINS', metadata: {} },
-    { id: 'e16', from: 'SS-eclss', to: 'COMP-eclss-pressure-controller', relation: 'CONTAINS', metadata: {} },
-    { id: 'e17', from: 'SS-eclss', to: 'COMP-eclss-oxygen-system', relation: 'CONTAINS', metadata: {} },
+    // CONTAINS edges from domains to agents
+    { id: 'e11', from: 'DOM-ingestion', to: 'AGT-ingestion-worker', relation: 'CONTAINS', metadata: {} },
+    { id: 'e12', from: 'DOM-orchestration', to: 'AGT-orchestration-scheduler', relation: 'CONTAINS', metadata: {} },
+    { id: 'e13', from: 'DOM-orchestration', to: 'AGT-orchestration-router', relation: 'CONTAINS', metadata: {} },
+    { id: 'e14', from: 'DOM-monitoring', to: 'AGT-monitoring-health', relation: 'CONTAINS', metadata: {} },
+    { id: 'e15', from: 'DOM-governance', to: 'AGT-governance-auditor', relation: 'CONTAINS', metadata: {} },
+    { id: 'e16', from: 'DOM-governance', to: 'AGT-governance-policy', relation: 'CONTAINS', metadata: {} },
+    { id: 'e17', from: 'DOM-reporting', to: 'AGT-reporting-generator', relation: 'CONTAINS', metadata: {} },
     
-    // SATISFIES edges from components to requirements
-    { id: 'e18', from: 'COMP-flight-control-autopilot', to: 'REQ-001', relation: 'SATISFIES', metadata: {} },
-    { id: 'e19', from: 'COMP-avionics-gps-receiver', to: 'REQ-002', relation: 'SATISFIES', metadata: {} },
+    // SATISFIES edges from agents to tasks
+    { id: 'e18', from: 'AGT-ingestion-worker', to: 'TASK-001', relation: 'SATISFIES', metadata: {} },
+    { id: 'e19', from: 'AGT-monitoring-health', to: 'TASK-002', relation: 'SATISFIES', metadata: {} },
     
-    // INTERFACES edges between subsystems (example)
-    { id: 'e20', from: 'SS-avionics', to: 'SS-flight-control', relation: 'INTERFACES', metadata: { supporting_requirements: ['REQ-001'] } },
-    { id: 'e21', from: 'SS-propulsion', to: 'SS-flight-control', relation: 'INTERFACES', metadata: { supporting_requirements: [] } }
+    // INTERFACES edges between domains
+    { id: 'e20', from: 'DOM-orchestration', to: 'DOM-ingestion', relation: 'INTERFACES', metadata: { supporting_tasks: ['TASK-001'] } },
+    { id: 'e21', from: 'DOM-monitoring', to: 'DOM-ingestion', relation: 'INTERFACES', metadata: { supporting_tasks: [] } }
   ];
 
   // Simple traversal: start from entityIds and include nodes within radius

@@ -22,21 +22,21 @@ async function calculateImpact(nodeId: string) {
 	}
 
 	// 2. Find impacted nodes (downstream dependencies)
-	// We need a mixed traversal strategy:
-	// - Incoming 'depends_on', 'relates_to', 'required_by', 'traces_to' (Dependents)
-	// - Outgoing 'impacts', 'affects', 'blocks' (Direct impacts)
+	// Canonical edge types from graph-vocabulary.ts:
+	// - Incoming 'depends_on', 'informs' (Dependents)
+	// - Outgoing 'blocks', 'mitigates' (Direct impacts)
 
 	const impactTree = await graphService.traverse({
 		start_node_id: nodeId,
 		direction: 'incoming', // Find dependents
-		edge_types: ['depends_on', 'relates_to', 'required_by', 'traces_to'],
+		edge_types: ['depends_on', 'informs', 'produces'],
 		max_depth: 3
 	});
 
 	const riskImpacts = await graphService.traverse({
 		start_node_id: nodeId,
 		direction: 'outgoing', // Find what this node impacts (if it's a Risk)
-		edge_types: ['impacts', 'affects', 'blocks'],
+		edge_types: ['blocks', 'mitigates'],
 		max_depth: 3
 	});
 

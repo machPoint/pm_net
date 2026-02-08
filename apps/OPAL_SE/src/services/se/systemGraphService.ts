@@ -20,8 +20,7 @@ import {
   SystemNodeRecord,
   SystemEdgeRecord,
   NodeType,
-  RelationType,
-  ExternalRefs
+  RelationType
 } from '../../types/se';
 
 // ============================================================================
@@ -34,7 +33,7 @@ import {
 function recordToNode(record: SystemNodeRecord): SystemNode {
   return {
     ...record,
-    external_refs: JSON.parse(record.external_refs || '{}'),
+    status: record.status || 'active',
     metadata: JSON.parse(record.metadata || '{}')
   };
 }
@@ -44,9 +43,6 @@ function recordToNode(record: SystemNodeRecord): SystemNode {
  */
 function nodeToRecord(node: Partial<SystemNode>): Partial<SystemNodeRecord> {
   const record: any = { ...node };
-  if (node.external_refs) {
-    record.external_refs = JSON.stringify(node.external_refs);
-  }
   if (node.metadata) {
     record.metadata = JSON.stringify(node.metadata);
   }
@@ -60,7 +56,7 @@ function recordToEdge(record: SystemEdgeRecord): SystemEdge {
   return {
     ...record,
     weight: record.weight || 1.0,
-    bidirectional: record.bidirectional || false,
+    directionality: record.directionality || 'directed',
     weight_metadata: record.weight_metadata ? JSON.parse(record.weight_metadata) : undefined,
     metadata: record.metadata ? JSON.parse(record.metadata) : undefined
   };
@@ -81,8 +77,8 @@ function edgeToRecord(edge: Partial<SystemEdge>): Partial<SystemEdgeRecord> {
   if (record.weight === undefined) {
     record.weight = 1.0;
   }
-  if (record.bidirectional === undefined) {
-    record.bidirectional = false;
+  if (record.directionality === undefined) {
+    record.directionality = 'directed';
   }
   return record;
 }
@@ -329,12 +325,8 @@ export async function getNodesByFilter(filters: NodeFilter): Promise<SystemNode[
       }
     }
 
-    if (filters.subsystem) {
-      if (Array.isArray(filters.subsystem)) {
-        query = query.whereIn('subsystem', filters.subsystem);
-      } else {
-        query = query.where('subsystem', filters.subsystem);
-      }
+    if (filters.source) {
+      query = query.where('source', filters.source);
     }
 
     if (filters.status) {

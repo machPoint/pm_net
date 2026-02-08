@@ -47,7 +47,7 @@ interface FlowConnection {
   id: string;
   from: string;
   to: string;
-  type: 'traces_to' | 'verified_by' | 'implemented_by' | 'tested_by' | 'depends_on';
+  type: 'depends_on' | 'produces' | 'assigned_to' | 'blocks' | 'mitigates' | 'requires_approval' | 'informs';
   animated?: boolean;
 }
 
@@ -146,11 +146,13 @@ const RequirementFlowDiagram: React.FC<RequirementFlowDiagramProps> = ({
 
   const getConnectionColor = (type: string) => {
     switch (type) {
-      case 'traces_to': return '#3b82f6'; // blue
-      case 'verified_by': return '#10b981'; // green
-      case 'implemented_by': return '#f59e0b'; // amber
-      case 'tested_by': return '#ef4444'; // red
-      case 'depends_on': return '#8b5cf6'; // purple
+      case 'depends_on': return '#3b82f6'; // blue
+      case 'produces': return '#10b981'; // green
+      case 'assigned_to': return '#f59e0b'; // amber
+      case 'blocks': return '#ef4444'; // red
+      case 'mitigates': return '#8b5cf6'; // purple
+      case 'requires_approval': return '#f97316'; // orange
+      case 'informs': return '#6b7280'; // gray
       default: return '#6b7280'; // gray
     }
   };
@@ -238,19 +240,19 @@ const RequirementFlowDiagram: React.FC<RequirementFlowDiagramProps> = ({
           <div className="space-y-1 text-xs">
             <div className="flex items-center gap-2">
               <div className="w-2 h-2 rounded-full bg-blue-500"></div>
-              <span>Traces To</span>
+              <span>Depends On</span>
             </div>
             <div className="flex items-center gap-2">
               <div className="w-2 h-2 rounded-full bg-green-500"></div>
-              <span>Verified By</span>
+              <span>Produces</span>
             </div>
             <div className="flex items-center gap-2">
               <div className="w-2 h-2 rounded-full bg-amber-500"></div>
-              <span>Implemented By</span>
+              <span>Assigned To</span>
             </div>
             <div className="flex items-center gap-2">
               <div className="w-2 h-2 rounded-full bg-red-500"></div>
-              <span>Tested By</span>
+              <span>Blocks</span>
             </div>
           </div>
         </div>

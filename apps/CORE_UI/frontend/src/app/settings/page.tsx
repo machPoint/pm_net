@@ -35,7 +35,7 @@ export default function SettingsPage() {
   const [animations, setAnimations] = useState(true);
   
   // AI Prompt settings
-  const [domainFocus, setDomainFocus] = useState<string[]>(["interfaces", "electrical"]);
+  const [domainFocus, setDomainFocus] = useState<string[]>(["planning", "execution"]);
   const [responseStyle, setResponseStyle] = useState("detailed");
   const [analysisDepth, setAnalysisDepth] = useState("standard");
   const [customSystemPrompt, setCustomSystemPrompt] = useState("");
@@ -77,35 +77,35 @@ export default function SettingsPage() {
   }, []);
 
   const domains = [
-    { id: "interfaces", label: "Interfaces", icon: "🔌" },
-    { id: "electrical", label: "Electrical", icon: "⚡" },
-    { id: "mechanical", label: "Mechanical", icon: "⚙️" },
-    { id: "thermal", label: "Thermal", icon: "🌡️" },
-    { id: "software", label: "Software", icon: "💻" },
-    { id: "systems", label: "Systems", icon: "🔗" },
+    { id: "planning", label: "Planning", icon: "�" },
+    { id: "execution", label: "Execution", icon: "⚡" },
+    { id: "monitoring", label: "Monitoring", icon: "📊" },
+    { id: "guardrails", label: "Guardrails", icon: "🛡️" },
+    { id: "coordination", label: "Coordination", icon: "�" },
+    { id: "analysis", label: "Analysis", icon: "�" },
   ];
 
   const presetPrompts = [
     {
-      id: "electrical",
-      name: "Electrical Engineer",
-      description: "Focus on electrical systems, power, and signal integrity",
-      domains: ["electrical", "interfaces"],
-      systemPrompt: "Prioritize electrical relationships, power distribution, signal integrity, and interface definitions.",
+      id: "task-planner",
+      name: "Task Planner",
+      description: "Focus on task decomposition and dependency mapping",
+      domains: ["planning", "coordination"],
+      systemPrompt: "Prioritize task breakdown, dependency identification, resource allocation, and scheduling constraints.",
     },
     {
-      id: "thermal",
-      name: "Thermal Analyst",
-      description: "Focus on thermal management and heat dissipation",
-      domains: ["thermal", "mechanical"],
-      systemPrompt: "Prioritize thermal management, heat dissipation paths, cooling systems, and thermal interfaces.",
+      id: "executor",
+      name: "Execution Monitor",
+      description: "Focus on task execution and progress tracking",
+      domains: ["execution", "monitoring"],
+      systemPrompt: "Prioritize execution status, bottleneck detection, progress metrics, and completion tracking.",
     },
     {
-      id: "systems",
-      name: "Systems Engineer",
-      description: "Balanced view across all disciplines",
-      domains: ["systems", "interfaces", "electrical", "mechanical"],
-      systemPrompt: "Maintain balanced analysis across all engineering disciplines with focus on system-level integration.",
+      id: "guardian",
+      name: "Guardrail Enforcer",
+      description: "Balanced view across all task domains",
+      domains: ["guardrails", "analysis", "planning", "execution"],
+      systemPrompt: "Maintain balanced analysis across all task domains with focus on guardrail compliance and quality assurance.",
     },
   ];
 
@@ -146,7 +146,16 @@ export default function SettingsPage() {
 
         toast.success("API settings saved successfully! Restart the app to apply changes.");
       } else {
-        toast.success("Settings saved successfully");
+        // Show confirmation of current settings
+        const settingsSummary = [
+          `Theme: ${baseTheme.charAt(0).toUpperCase() + baseTheme.slice(1)}`,
+          `Color Scheme: ${colorScheme.charAt(0).toUpperCase() + colorScheme.slice(1)}`,
+          `Visual Style: ${glassEffect.charAt(0).toUpperCase() + glassEffect.slice(1)}`,
+        ].join(' • ');
+        
+        toast.success(`Settings confirmed!\n${settingsSummary}`, {
+          duration: 3000,
+        });
       }
       
       // TODO: Save other settings (AI prompts, display, notifications) to backend
@@ -161,7 +170,7 @@ export default function SettingsPage() {
 
   const handleReset = () => {
     // Reset to defaults
-    setDomainFocus(["interfaces", "electrical"]);
+    setDomainFocus(["planning", "execution"]);
     setResponseStyle("detailed");
     setAnalysisDepth("standard");
     setCustomSystemPrompt("");
@@ -508,7 +517,7 @@ export default function SettingsPage() {
                     id="relationshipPrompt"
                     value={relationshipPrompt}
                     onChange={(e) => setRelationshipPrompt(e.target.value)}
-                    placeholder="e.g., Focus on electrical connections and signal paths when analyzing relationships..."
+                    placeholder="e.g., Focus on task dependencies and agent coordination when analyzing relationships..."
                     rows={3}
                   />
                 </div>
@@ -519,7 +528,7 @@ export default function SettingsPage() {
                     id="impactPrompt"
                     value={impactPrompt}
                     onChange={(e) => setImpactPrompt(e.target.value)}
-                    placeholder="e.g., When analyzing impact, consider thermal effects and cooling requirements..."
+                    placeholder="e.g., When analyzing impact, consider downstream task dependencies and guardrail violations..."
                     rows={3}
                   />
                 </div>

@@ -9,7 +9,7 @@ interface RequirementTrace {
   metadata: Record<string, any>;
   connections: {
     id: string;
-    type: 'traces_to' | 'verified_by' | 'implemented_by' | 'tested_by' | 'depends_on';
+    type: 'depends_on' | 'blocks' | 'assigned_to' | 'produces' | 'mitigates' | 'requires_approval' | 'informs';
     target: string;
   }[];
 }
@@ -35,7 +35,7 @@ interface UseRequirementImpactResult {
 }
 
 // Use environment variable or default to OPAL server port
-const OPAL_BASE_URL = process.env.NEXT_PUBLIC_OPAL_URL || 'http://localhost:7788';
+const OPAL_BASE_URL = '/api/opal/proxy';
 
 export function useRequirementImpact(requirementId: string | null): UseRequirementImpactResult {
   const [data, setData] = useState<RequirementImpactData | null>(null);

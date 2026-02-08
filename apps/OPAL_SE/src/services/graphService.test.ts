@@ -370,33 +370,56 @@ describe('Graph Traversal Logic', () => {
 });
 
 describe('Node Types', () => {
-	const validNodeTypes = [
-		'task', 'plan', 'approval', 'run', 'verification',
-		'artifact', 'user', 'agent', 'decision_trace', 'precedent'
+	const pmNodeTypes = [
+		'task', 'milestone', 'deliverable', 'gate',
+		'risk', 'decision', 'resource'
 	];
 
-	it('should recognize all PM Core node types', () => {
-		for (const nodeType of validNodeTypes) {
-			const node = createMockNode({ node_type: nodeType });
+	const govNodeTypes = [
+		'plan', 'run', 'verification', 'decision_trace', 'precedent'
+	];
+
+	it('should recognize all PM Base layer node types', () => {
+		for (const nodeType of pmNodeTypes) {
+			const node = createMockNode({ node_type: nodeType, schema_layer: 'pm_core' });
 			expect(node.node_type).toBe(nodeType);
+			expect(node.schema_layer).toBe('pm_core');
+		}
+	});
+
+	it('should recognize all Governance layer node types', () => {
+		for (const nodeType of govNodeTypes) {
+			const node = createMockNode({ node_type: nodeType, schema_layer: 'governance' });
+			expect(node.node_type).toBe(nodeType);
+			expect(node.schema_layer).toBe('governance');
 		}
 	});
 });
 
 describe('Edge Types', () => {
-	const validEdgeTypes = [
-		'parent_of', 'depends_on', 'blocks', 'related_to',
-		'assigned_to', 'created_by', 'owned_by',
-		'has_plan', 'proposed_by', 'approval_of', 'approved_by', 'supersedes',
-		'has_run', 'executed_plan', 'executed_by', 'produced',
-		'has_verification', 'evidenced_by', 'verified_by',
-		'has_decision', 'references_precedent', 'derived_from'
+	const pmEdgeTypes = [
+		'depends_on', 'blocks', 'assigned_to', 'produces',
+		'mitigates', 'requires_approval', 'informs'
 	];
 
-	it('should recognize all PM Core edge types', () => {
-		for (const edgeType of validEdgeTypes) {
-			const edge = createMockEdge('a', 'b', { edge_type: edgeType });
+	const govEdgeTypes = [
+		'for_task', 'proposes', 'executes_plan', 'executed',
+		'checks', 'evidenced_by', 'during_run', 'learned_from', 'based_on'
+	];
+
+	it('should recognize all PM Base layer edge types', () => {
+		for (const edgeType of pmEdgeTypes) {
+			const edge = createMockEdge('a', 'b', { edge_type: edgeType, schema_layer: 'pm_core' });
 			expect(edge.edge_type).toBe(edgeType);
+			expect(edge.schema_layer).toBe('pm_core');
+		}
+	});
+
+	it('should recognize all Governance layer edge types', () => {
+		for (const edgeType of govEdgeTypes) {
+			const edge = createMockEdge('a', 'b', { edge_type: edgeType, schema_layer: 'governance' });
+			expect(edge.edge_type).toBe(edgeType);
+			expect(edge.schema_layer).toBe('governance');
 		}
 	});
 });

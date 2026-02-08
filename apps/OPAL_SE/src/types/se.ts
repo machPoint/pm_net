@@ -3,61 +3,78 @@
  * 
  * This module defines the core types for the system graph, including
  * node types (artifacts), edge types (relationships), events, and change sets.
+ *
+ * Canonical vocabulary lives in ./graph-vocabulary.ts (source of truth).
+ * NodeType and RelationType are re-exported from there.
  */
+
+import {
+  NodeType as CanonicalNodeType,
+  EdgeType as CanonicalEdgeType,
+  NODE_TYPES, PM_NODE_TYPES, GOV_NODE_TYPES,
+  EDGE_TYPES, PM_EDGE_TYPES, GOV_EDGE_TYPES,
+  VALID_NODE_TYPES, VALID_PM_NODE_TYPES, VALID_GOV_NODE_TYPES,
+  VALID_EDGE_TYPES, VALID_PM_EDGE_TYPES, VALID_GOV_EDGE_TYPES,
+  DEFAULT_WEIGHTS,
+  SCHEMA_LAYERS,
+  getDefaultWeight,
+  isValidNodeType, isValidEdgeType,
+  isPMNodeType, isGovernanceNodeType,
+  isPMEdgeType, isGovernanceEdgeType,
+  getNodeLayer, getEdgeLayer,
+  validateEdgeConstraint,
+} from './graph-vocabulary';
+
+// Re-export canonical vocabulary so existing importers keep working
+export { NODE_TYPES, PM_NODE_TYPES, GOV_NODE_TYPES };
+export { EDGE_TYPES, PM_EDGE_TYPES, GOV_EDGE_TYPES };
+export { VALID_NODE_TYPES, VALID_PM_NODE_TYPES, VALID_GOV_NODE_TYPES };
+export { VALID_EDGE_TYPES, VALID_PM_EDGE_TYPES, VALID_GOV_EDGE_TYPES };
+export { DEFAULT_WEIGHTS, SCHEMA_LAYERS };
+export { getDefaultWeight, isValidNodeType, isValidEdgeType, validateEdgeConstraint };
+export { isPMNodeType, isGovernanceNodeType, isPMEdgeType, isGovernanceEdgeType };
+export { getNodeLayer, getEdgeLayer };
 
 // ============================================================================
-// Node Types (Engineering Artifacts)
+// Node Types — PM: task, milestone, deliverable, gate, risk, decision, resource
+//              Gov: plan, run, verification, decision_trace, precedent
 // ============================================================================
 
-/**
- * All supported node types in the system graph
- */
-export type NodeType =
-  | 'Requirement'
-  | 'Test'
-  | 'Component'
-  | 'Interface'
-  | 'Issue'
-  | 'ECN'
-  | 'EmailMessage'
-  | 'Note'
-  | 'Task'
-  | 'LibraryItem'
-  // Network node types for infrastructure modeling
-  | 'NetworkDevice'
-  | 'NetworkInterface'
-  | 'Subnet'
-  | 'VLAN'
-  | 'NetworkService';
+export type NodeType = CanonicalNodeType;
 
 /**
- * External system references for traceability
+ * Provenance — tracks where data came from and how trustworthy it is
  */
-export interface ExternalRefs {
-  jama_id?: string;
-  jira_key?: string;
-  windchill_number?: string;
-  outlook_id?: string;
-  confluence_id?: string;
-  [key: string]: string | undefined;
+export interface Provenance {
+  source: string;       // originating system: 'ui' | 'agent' | 'import' | 'api'
+  source_ref?: string;  // external reference ID from the originating system
+  as_of?: string;       // timestamp when the source data was current
+  confidence: number;   // 0.0-1.0 (1.0 = human-verified, lower = agent-inferred)
 }
 
 /**
- * System Graph Node - represents an engineering artifact
+ * System Graph Node — domain-neutral entity in the graph
  */
 export interface SystemNode {
   id: string;
   project_id: string;
   type: NodeType;
-  name: string;
-  description: string;
-  external_refs: ExternalRefs;
-  subsystem?: string;
-  status?: string;
+  title: string;
+  description?: string;
+  status: string;
   owner?: string;
   metadata: Record<string, any>;
+  // Provenance
+  source: string;
+  source_ref?: string;
+  as_of?: string;
+  confidence: number;
+  // Lifecycle
+  created_by?: string;
   created_at: Date;
   updated_at: Date;
+  deleted_at?: Date;
+  version?: number;
 }
 
 /**
@@ -66,37 +83,23 @@ export interface SystemNode {
 export interface NodeFilter {
   project_id?: string;
   type?: NodeType | NodeType[];
-  subsystem?: string | string[];
   status?: string | string[];
   ids?: string[];
-  external_refs?: Partial<ExternalRefs>;
   owner?: string;
+  source?: string;
   limit?: number;
   offset?: number;
 }
 
 // ============================================================================
-// Edge Types (Relationships)
+// Edge Types — canonical: depends_on, blocks, assigned_to, produces,
+//              mitigates, requires_approval, informs
 // ============================================================================
 
-/**
- * All supported relationship types in the system graph
- */
-export type RelationType =
-  | 'TRACES_TO'
-  | 'VERIFIED_BY'
-  | 'ALLOCATED_TO'
-  | 'INTERFACES_WITH'
-  | 'BLOCKS'
-  | 'DERIVED_FROM'
-  | 'REFERS_TO'
-  // Network-specific relationships
-  | 'CONNECTED_TO'
-  | 'ROUTES_TO'
-  | 'DEPENDS_ON';
+export type RelationType = CanonicalEdgeType;
 
 /**
- * System Graph Edge - represents a relationship between artifacts
+ * System Graph Edge — domain-neutral relationship in the graph
  */
 export interface SystemEdge {
   id: string;
@@ -104,14 +107,22 @@ export interface SystemEdge {
   from_node_id: string;
   to_node_id: string;
   relation_type: RelationType;
-  source_system: string;
+  weight: number;                          // default: 1.0
+  weight_metadata?: Record<string, any>;
+  directionality: 'directed' | 'bidirectional'; // default: 'directed'
   rationale?: string;
-  weight: number; // For weighted graph traversal (default: 1.0)
-  bidirectional?: boolean; // Can agents traverse both ways? (default: false)
-  weight_metadata?: Record<string, any>; // Factors used in weight calculation
   metadata?: Record<string, any>;
+  // Provenance
+  source: string;
+  source_ref?: string;
+  as_of?: string;
+  confidence: number;
+  // Lifecycle
+  created_by?: string;
   created_at: Date;
   updated_at: Date;
+  deleted_at?: Date;
+  version?: number;
 }
 
 /**
@@ -159,14 +170,13 @@ export type EventType =
  * Source systems that can generate events
  */
 export type SourceSystem =
-  | 'fds'
-  | 'jama'
-  | 'jira'
-  | 'windchill'
-  | 'outlook'
-  | 'confluence'
-  | 'core_se'
-  | 'opal_se';
+  | 'ui'
+  | 'agent'
+  | 'api'
+  | 'import'
+  | 'scheduler'
+  | 'gateway'
+  | 'system';
 
 /**
  * Diff payload for tracking changes
@@ -219,7 +229,7 @@ export interface EventFilter {
 export interface ChangeSetStats {
   total_events: number;
   counts_by_type: Record<string, number>;
-  counts_by_subsystem: Record<string, number>;
+  counts_by_domain: Record<string, number>;
   counts_by_event_type: Record<EventType, number>;
   affected_nodes: number;
   affected_edges: number;
@@ -264,7 +274,7 @@ export type RuleSeverity = 'error' | 'warning' | 'info';
  */
 export interface RuleContext {
   project_id: string;
-  subsystem?: string;
+  domain?: string;
   [key: string]: any;
 }
 
@@ -311,10 +321,9 @@ export interface QuerySystemModelParams {
   project_id: string;
   node_filters?: {
     type?: NodeType[];
-    subsystem?: string[];
     status?: string[];
     ids?: string[];
-    external_refs?: Partial<ExternalRefs>;
+    source?: string;
   };
   edge_filters?: {
     relation_type?: RelationType[];
@@ -337,7 +346,7 @@ export interface QuerySystemModelResult {
  */
 export interface GetSystemSliceParams {
   project_id: string;
-  subsystem?: string;
+  domain?: string;
   start_node_ids?: string[];
   max_depth?: number;
 }
@@ -362,7 +371,6 @@ export interface TraceDownstreamImpactParams {
   depth: number;
   filters?: {
     types?: NodeType[];
-    subsystems?: string[];
     statuses?: string[];
   };
 }
@@ -372,13 +380,8 @@ export interface TraceDownstreamImpactParams {
  */
 export interface TraceDownstreamImpactResult {
   impacted: {
-    requirements: SystemNode[];
-    tests: SystemNode[];
-    components: SystemNode[];
-    interfaces: SystemNode[];
-    issues: SystemNode[];
-    ecns: SystemNode[];
-    other: SystemNode[];
+    by_type: Record<string, SystemNode[]>;
+    total: number;
   };
   traces: SystemEdge[];
 }
@@ -406,21 +409,20 @@ export interface TraceUpstreamRationaleResult {
 /**
  * Parameters for findVerificationGaps tool
  */
-export interface FindVerificationGapsParams {
+export interface FindValidationGapsParams {
   project_id: string;
-  subsystem?: string;
-  requirement_levels?: string[];
-  safety_levels?: string[];
+  domain?: string;
+  priority_levels?: string[];
 }
 
 /**
  * Result for findVerificationGaps tool
  */
-export interface FindVerificationGapsResult {
-  requirements_missing_tests: SystemNode[];
-  tests_without_requirements: SystemNode[];
+export interface FindValidationGapsResult {
+  tasks_missing_validations: SystemNode[];
+  validations_without_tasks: SystemNode[];
   broken_chains: Array<{
-    requirement: SystemNode;
+    task: SystemNode;
     gap_type: string;
     description: string;
   }>;
@@ -429,20 +431,20 @@ export interface FindVerificationGapsResult {
 /**
  * Parameters for checkAllocationConsistency tool
  */
-export interface CheckAllocationConsistencyParams {
+export interface CheckAssignmentConsistencyParams {
   project_id: string;
-  subsystem?: string;
+  domain?: string;
 }
 
 /**
  * Result for checkAllocationConsistency tool
  */
-export interface CheckAllocationConsistencyResult {
-  unallocated_requirements: SystemNode[];
-  orphan_components: SystemNode[];
-  conflicting_allocations: Array<{
-    requirement: SystemNode;
-    components: SystemNode[];
+export interface CheckAssignmentConsistencyResult {
+  unassigned_tasks: SystemNode[];
+  orphan_agents: SystemNode[];
+  conflicting_assignments: Array<{
+    task: SystemNode;
+    agents: SystemNode[];
     conflict_reason: string;
   }>;
 }
@@ -450,20 +452,20 @@ export interface CheckAllocationConsistencyResult {
 /**
  * Parameters for getVerificationCoverageMetrics tool
  */
-export interface GetVerificationCoverageMetricsParams {
+export interface GetValidationCoverageMetricsParams {
   project_id: string;
-  subsystem?: string;
+  domain?: string;
 }
 
 /**
  * Result for getVerificationCoverageMetrics tool
  */
-export interface GetVerificationCoverageMetricsResult {
-  total_requirements: number;
-  verified_requirements: number;
+export interface GetValidationCoverageMetricsResult {
+  total_tasks: number;
+  validated_tasks: number;
   coverage_percentage: number;
-  by_type: Record<string, { total: number; verified: number }>;
-  by_level: Record<string, { total: number; verified: number }>;
+  by_type: Record<string, { total: number; validated: number }>;
+  by_priority: Record<string, { total: number; validated: number }>;
 }
 
 /**
@@ -489,7 +491,7 @@ export interface GetHistoryResult {
 export interface FindSimilarPastChangesParams {
   change_signature: {
     node_types: NodeType[];
-    subsystems: string[];
+    domains?: string[];
     tags?: string[];
   };
   limit?: number;
@@ -511,7 +513,7 @@ export interface FindSimilarPastChangesResult {
  */
 export interface RunConsistencyChecksParams {
   project_id: string;
-  subsystem?: string;
+  domain?: string;
   rule_ids?: string[];
 }
 
@@ -599,11 +601,11 @@ export interface FDSJiraIssue {
 }
 
 /**
- * FDS Windchill Part (from FDS)
+ * FDS Agent Config (from external agent registry)
  */
-export interface FDSWindchillPart {
+export interface FDSAgentConfig {
   id: string;
-  number: string;
+  agent_id: string;
   name: string;
   description: string;
   version: string;
@@ -611,7 +613,7 @@ export interface FDSWindchillPart {
   created_by: string;
   created_date: string;
   modified_date: string;
-  classification: string;
+  capabilities: string[];
 }
 
 /**
@@ -670,7 +672,7 @@ export interface DailySummaryContext {
   violations: Violation[];
   metrics: {
     total_changes: number;
-    by_subsystem: Record<string, number>;
+    by_domain: Record<string, number>;
     by_type: Record<string, number>;
   };
 }
@@ -678,10 +680,10 @@ export interface DailySummaryContext {
 /**
  * Verification Review Context Bundle
  */
-export interface VerificationReviewContext {
-  gaps: FindVerificationGapsResult;
-  consistency: CheckAllocationConsistencyResult;
-  coverage: GetVerificationCoverageMetricsResult;
+export interface ValidationReviewContext {
+  gaps: FindValidationGapsResult;
+  consistency: CheckAssignmentConsistencyResult;
+  coverage: GetValidationCoverageMetricsResult;
 }
 
 // ============================================================================
@@ -702,15 +704,22 @@ export interface SystemNodeRecord {
   id: string;
   project_id: string;
   type: NodeType;
-  name: string;
+  title: string;
   description: string;
-  external_refs: string; // JSON string
-  subsystem?: string;
   status?: string;
   owner?: string;
   metadata: string; // JSON string
+  // Provenance
+  source: string;
+  source_ref?: string;
+  as_of?: string;
+  confidence: number;
+  // Lifecycle
+  created_by?: string;
   created_at: Date;
   updated_at: Date;
+  deleted_at?: Date;
+  version?: number;
 }
 
 export interface SystemEdgeRecord {
@@ -719,14 +728,22 @@ export interface SystemEdgeRecord {
   from_node_id: string;
   to_node_id: string;
   relation_type: RelationType;
-  source_system: string;
   rationale?: string;
   weight: number;
-  bidirectional?: boolean;
+  directionality: 'directed' | 'bidirectional';
   weight_metadata?: string; // JSON string
   metadata?: string; // JSON string
+  // Provenance
+  source: string;
+  source_ref?: string;
+  as_of?: string;
+  confidence: number;
+  // Lifecycle
+  created_by?: string;
   created_at: Date;
   updated_at: Date;
+  deleted_at?: Date;
+  version?: number;
 }
 
 export interface EventRecord {

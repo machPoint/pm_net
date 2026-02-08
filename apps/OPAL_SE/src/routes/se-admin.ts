@@ -258,9 +258,9 @@ router.get('/events/stats', async (req: Request, res: Response) => {
 router.get('/rules/violations', async (req: Request, res: Response) => {
   try {
     const projectId = req.query.project_id as string || 'proj-001';
-    const subsystem = req.query.subsystem as string;
+    const domain = req.query.domain as string;
     
-    const result = await ruleEngineService.runConsistencyChecks(projectId, subsystem);
+    const result = await ruleEngineService.runConsistencyChecks(projectId, domain);
     
     res.json(result);
   } catch (error: any) {

@@ -36,10 +36,10 @@ interface DataEngineStatus {
 }
 
 interface DataStats {
-  jama_items: number;
+  task_items: number;
   jira_issues: number;
-  windchill_parts: number;
-  windchill_ecn: number;
+  agent_configs: number;
+  change_requests: number;
   email_messages: number;
   outlook_messages: number;
 }
@@ -63,10 +63,10 @@ export default function DataEngineSection() {
   });
 
   const [dataStats, setDataStats] = useState<DataStats>({
-    jama_items: 0,
+    task_items: 0,
     jira_issues: 0,
-    windchill_parts: 0,
-    windchill_ecn: 0,
+    agent_configs: 0,
+    change_requests: 0,
     email_messages: 0,
     outlook_messages: 0
   });
@@ -82,11 +82,11 @@ export default function DataEngineSection() {
 
   const mockDataControls: MockDataControl[] = [
     {
-      id: "jama",
-      name: "Jama Connect",
-      description: "Requirements and test cases",
-      endpoint: "/mock/jama/items",
-      count: dataStats.jama_items,
+      id: "tasks",
+      name: "Task Definitions",
+      description: "Task specs and guardrails",
+      endpoint: "/mock/tasks/items",
+      count: dataStats.task_items,
       enabled: true
     },
     {
@@ -98,11 +98,11 @@ export default function DataEngineSection() {
       enabled: true
     },
     {
-      id: "windchill",
-      name: "Windchill PLM",
-      description: "Parts and engineering changes",
-      endpoint: "/mock/windchill/parts",
-      count: dataStats.windchill_parts + dataStats.windchill_ecn,
+      id: "agents",
+      name: "Agent Registry",
+      description: "Agent configs and change requests",
+      endpoint: "/mock/agents/configs",
+      count: dataStats.agent_configs + dataStats.change_requests,
       enabled: true
     },
     {
@@ -153,19 +153,19 @@ export default function DataEngineSection() {
   const fetchDataStats = async () => {
     try {
       // Fetch sample data from different endpoints to get counts
-      const [jamaRes, jiraRes, windchillRes, emailRes] = await Promise.all([
-        fetch('http://localhost:4000/mock/jama/items?size=1'),
+      const [tasksRes, jiraRes, agentsRes, emailRes] = await Promise.all([
+        fetch('http://localhost:4000/mock/tasks/items?size=1'),
         fetch('http://localhost:4000/mock/jira/issues?size=1'),
-        fetch('http://localhost:4000/mock/windchill/parts?size=1'),
+        fetch('http://localhost:4000/mock/agents/configs?size=1'),
         fetch('http://localhost:4000/mock/email/messages')
       ]);
 
       // For now, use mock counts since we don't have total count endpoints
       setDataStats({
-        jama_items: 137, // From our test earlier
+        task_items: 137,
         jira_issues: 35,
-        windchill_parts: 24,
-        windchill_ecn: 6,
+        agent_configs: 24,
+        change_requests: 6,
         email_messages: 10,
         outlook_messages: 10
       });
@@ -474,9 +474,9 @@ export default function DataEngineSection() {
             <CardContent>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                 <div className="space-y-1">
-                  <p className="text-sm font-medium">Jama Items</p>
-                  <p className="text-2xl font-bold text-blue-600">{dataStats.jama_items}</p>
-                  <p className="text-xs text-muted-foreground">Requirements & tests</p>
+                  <p className="text-sm font-medium">Task Items</p>
+                  <p className="text-2xl font-bold text-blue-600">{dataStats.task_items}</p>
+                  <p className="text-xs text-muted-foreground">Tasks & guardrails</p>
                 </div>
                 <div className="space-y-1">
                   <p className="text-sm font-medium">Jira Issues</p>
@@ -484,14 +484,14 @@ export default function DataEngineSection() {
                   <p className="text-xs text-muted-foreground">Engineering issues</p>
                 </div>
                 <div className="space-y-1">
-                  <p className="text-sm font-medium">Windchill Parts</p>
-                  <p className="text-2xl font-bold text-green-600">{dataStats.windchill_parts}</p>
-                  <p className="text-xs text-muted-foreground">CAD components</p>
+                  <p className="text-sm font-medium">Agent Configs</p>
+                  <p className="text-2xl font-bold text-green-600">{dataStats.agent_configs}</p>
+                  <p className="text-xs text-muted-foreground">Agent definitions</p>
                 </div>
                 <div className="space-y-1">
-                  <p className="text-sm font-medium">ECN Records</p>
-                  <p className="text-2xl font-bold text-purple-600">{dataStats.windchill_ecn}</p>
-                  <p className="text-xs text-muted-foreground">Engineering changes</p>
+                  <p className="text-sm font-medium">Change Requests</p>
+                  <p className="text-2xl font-bold text-purple-600">{dataStats.change_requests}</p>
+                  <p className="text-xs text-muted-foreground">Task modifications</p>
                 </div>
                 <div className="space-y-1">
                   <p className="text-sm font-medium">Email Messages</p>
@@ -549,7 +549,7 @@ export default function DataEngineSection() {
             <CardHeader>
               <CardTitle>Real Requirements Integration</CardTitle>
               <CardDescription>
-                Upload PDF documents to extract real mission requirements
+                Upload PDF documents to extract real project requirements
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -557,7 +557,7 @@ export default function DataEngineSection() {
                 <div>
                   <h4 className="font-medium">Upload Requirements PDF</h4>
                   <p className="text-sm text-muted-foreground">
-                    Extract real requirements from GOES-R MRD or other mission documents
+                    Extract real requirements from task specification or other project documents
                   </p>
                 </div>
                 <div className="flex gap-2">
@@ -588,8 +588,8 @@ export default function DataEngineSection() {
               <div className="text-sm text-muted-foreground bg-muted p-3 rounded">
                 <p><strong>Supported Documents:</strong></p>
                 <ul className="list-disc list-inside mt-1 space-y-1">
-                  <li>GOES-R Mission Requirements Document (MRD)</li>
-                  <li>NASA/NOAA Requirements Documents</li>
+                  <li>Task Specification Documents (TSD)</li>
+                  <li>Project Requirements Documents</li>
                   <li>System Requirements Specifications</li>
                   <li>Interface Control Documents</li>
                 </ul>
@@ -774,16 +774,16 @@ export default function DataEngineSection() {
                   <Badge variant="outline" className="text-xs">Health Check</Badge>
                 </div>
                 <div className="flex justify-between">
-                  <span>GET /mock/jama/items</span>
-                  <Badge variant="outline" className="text-xs">Requirements</Badge>
+                  <span>GET /mock/tasks/items</span>
+                  <Badge variant="outline" className="text-xs">Tasks</Badge>
                 </div>
                 <div className="flex justify-between">
                   <span>GET /mock/jira/issues</span>
                   <Badge variant="outline" className="text-xs">Issues</Badge>
                 </div>
                 <div className="flex justify-between">
-                  <span>GET /mock/windchill/parts</span>
-                  <Badge variant="outline" className="text-xs">Parts</Badge>
+                  <span>GET /mock/agents/configs</span>
+                  <Badge variant="outline" className="text-xs">Agents</Badge>
                 </div>
                 <div className="flex justify-between">
                   <span>GET /mock/pulse</span>

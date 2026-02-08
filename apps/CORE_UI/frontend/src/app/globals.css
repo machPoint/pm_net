@@ -317,3 +317,19 @@
   background: rgba(255, 255, 255, 0.08) !important;
   border: 1px solid rgba(255, 255, 255, 0.12);
 }
+
+/* Darker buttons for standard theme to improve contrast */
+[data-color-scheme="standard"] button[class*="bg-primary"],
+[data-color-scheme="standard"] [data-slot="button"][class*="bg-primary"] {
+  filter: brightness(0.85);
+}
+
+[data-color-scheme="standard"] button[class*="bg-primary"]:hover,
+[data-color-scheme="standard"] [data-slot="button"][class*="bg-primary"]:hover {
+  filter: brightness(0.75);
+}
+
+/* Darker text for better readability in standard theme */
+[data-color-scheme="standard"].dark {
+  --foreground: 220 15% 85%;
+}

@@ -13,7 +13,7 @@ interface RequirementTrace {
   metadata: Record<string, any>;
   connections: {
     id: string;
-    type: 'traces_to' | 'verified_by' | 'implemented_by' | 'tested_by' | 'depends_on';
+    type: 'depends_on' | 'produces' | 'assigned_to' | 'blocks' | 'mitigates' | 'requires_approval' | 'informs';
     target: string;
   }[];
 }
@@ -62,7 +62,7 @@ export async function GET(request: NextRequest) {
       status: requirement.status || 'active',
       description: requirement.description,
       metadata: {
-        source: requirement.source || 'GOES-R MRD',
+        source: requirement.source || 'system',
         priority: requirement.priority,
         category: requirement.category,
         version: requirement.version
@@ -90,7 +90,7 @@ export async function GET(request: NextRequest) {
           },
           connections: [{
             id: `conn-${requirement.id}-jama-${item.id}`,
-            type: 'traces_to',
+            type: 'depends_on',
             target: item.id.toString()
           }]
         };
@@ -99,7 +99,7 @@ export async function GET(request: NextRequest) {
         // Add connection back to requirement
         impactTree[0].connections.push({
           id: `conn-req-jama-${item.id}`,
-          type: 'traces_to',
+          type: 'depends_on',
           target: `jama-${item.id}`
         });
       }
@@ -129,7 +129,7 @@ export async function GET(request: NextRequest) {
           },
           connections: [{
             id: `conn-${requirement.id}-jira-${issue.key}`,
-            type: 'implemented_by',
+            type: 'produces',
             target: issue.key
           }]
         };
@@ -138,7 +138,7 @@ export async function GET(request: NextRequest) {
         // Add connection back to requirement
         impactTree[0].connections.push({
           id: `conn-req-jira-${issue.key}`,
-          type: 'implemented_by',
+          type: 'produces',
           target: `jira-${issue.key}`
         });
       }
@@ -166,7 +166,7 @@ export async function GET(request: NextRequest) {
           },
           connections: [{
             id: `conn-${requirement.id}-test-${test.id}`,
-            type: 'verified_by',
+            type: 'produces',
             target: test.id
           }]
         };
@@ -175,7 +175,7 @@ export async function GET(request: NextRequest) {
         // Add connection back to requirement
         impactTree[0].connections.push({
           id: `conn-req-test-${test.id}`,
-          type: 'verified_by',
+          type: 'produces',
           target: `test-${test.id}`
         });
       }

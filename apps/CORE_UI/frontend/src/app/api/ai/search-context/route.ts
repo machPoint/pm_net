@@ -19,34 +19,34 @@ export async function POST(request: NextRequest) {
     // In a real implementation, this would connect to your requirements database
     const mockResults = [
       {
-        id: 'REQ-GOES-001',
-        title: 'GOES-R Satellite Communication Requirements',
+        id: 'TASK-001',
+        title: 'Data Ingestion Pipeline Throughput',
         status: 'active',
-        category: 'communication',
-        criticality: 'DAL-A',
-        description: 'Defines the communication protocols and data transmission requirements for GOES-R weather satellite system.',
-        created_at: new Date().toISOString(),
-        type: 'requirement'
-      },
-      {
-        id: 'REQ-GOES-002', 
-        title: 'Weather Data Processing Algorithms',
-        status: 'verified',
         category: 'data-processing',
-        criticality: 'DAL-B',
-        description: 'Specifies the algorithms for processing meteorological data from satellite sensors.',
+        criticality: 'Critical',
+        description: 'Defines throughput and latency requirements for the data ingestion pipeline.',
         created_at: new Date().toISOString(),
-        type: 'requirement'
+        type: 'task'
       },
       {
-        id: 'REQ-GOES-003',
-        title: 'Ground Station Interface Requirements',
+        id: 'TASK-002',
+        title: 'Agent Health Monitoring',
+        status: 'validated',
+        category: 'monitoring',
+        criticality: 'High',
+        description: 'Specifies health check intervals and alerting thresholds for all active agents.',
+        created_at: new Date().toISOString(),
+        type: 'task'
+      },
+      {
+        id: 'TASK-003',
+        title: 'External API Rate Limiting',
         status: 'pending',
         category: 'interface',
-        criticality: 'DAL-A',
-        description: 'Requirements for ground station communication interfaces and protocols.',
+        criticality: 'Critical',
+        description: 'Defines rate limiting and retry policies for external API integrations.',
         created_at: new Date().toISOString(),
-        type: 'requirement'
+        type: 'task'
       }
     ];
 

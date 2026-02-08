@@ -29,24 +29,24 @@ export async function POST(request: NextRequest) {
       `[Source ${idx + 1}]\nType: ${source.type.toUpperCase()}\nTitle: ${source.title}\nSystem: ${source.metadata.system || 'Unknown'}\nContent: ${source.content}\n`
     ).join('\n---\n\n');
 
-    const systemPrompt = `You are an expert aerospace systems engineer specializing in cross-system integration analysis. Your task is to analyze multiple data sources (requirements, Jira tickets, emails, documents) and discover hidden relationships, dependencies, and integration points between different systems.
+    const systemPrompt = `You are an expert in autonomous agent task management and coordination analysis. Your task is to analyze multiple data sources (task definitions, agent outputs, guardrails, logs) and discover hidden relationships, dependencies, and coordination points between different tasks and agents.
 
 Focus on identifying:
-1. Shared resources (e.g., oxygen supply used by both propulsion and life support)
-2. Dependencies (one system relies on another)
-3. Integration points (systems that must work together)
-4. Potential conflicts (competing requirements or resource constraints)
+1. Shared resources (e.g., data sources used by multiple agents)
+2. Dependencies (one task relies on another's output)
+3. Coordination points (agents that must synchronize)
+4. Potential conflicts (competing constraints or resource contention)
 5. Opportunities (synergies that could be leveraged)
 
 For each relationship discovered:
-- Provide a clear, technical description
-- Explain the engineering significance
+- Provide a clear description
+- Explain the operational significance
 - Identify potential risks
 - Recommend specific actions
 
 Be thorough and precise. Look for subtle connections that might not be obvious.`;
 
-    const userPrompt = `Analyze these aerospace engineering data sources and discover all cross-system relationships, dependencies, and integration points:
+    const userPrompt = `Analyze these data sources and discover all cross-task relationships, dependencies, and coordination points:
 
 ${sourcesText}
 

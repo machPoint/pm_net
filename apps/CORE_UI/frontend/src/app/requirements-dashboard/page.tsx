@@ -47,42 +47,42 @@ const mockDashboardStats = {
 
 const mockRecentRequirements = [
   {
-    id: "REQ-FCS-001",
-    title: "Flight Control System Authority",
+    id: "TASK-001",
+    title: "Data Ingestion Pipeline Throughput",
     status: "verified",
-    criticality: "DAL-A",
+    criticality: "Critical",
     lastUpdated: "2 hours ago",
     coverageScore: 94
   },
   {
-    id: "REQ-NAV-002",
-    title: "Navigation System Integration", 
+    id: "TASK-002",
+    title: "Agent Orchestration Integration", 
     status: "active",
-    criticality: "DAL-B",
+    criticality: "High",
     lastUpdated: "4 hours ago",
     coverageScore: 78
   },
   {
-    id: "REQ-HYD-003",
-    title: "Hydraulic Pressure Control",
+    id: "TASK-003",
+    title: "Message Queue Scaling Policy",
     status: "pending",
-    criticality: "DAL-A", 
+    criticality: "Critical", 
     lastUpdated: "6 hours ago",
     coverageScore: 65
   },
   {
-    id: "REQ-ECS-004",
-    title: "Environmental Control System",
+    id: "TASK-004",
+    title: "Monitoring & Alerting Setup",
     status: "active",
-    criticality: "DAL-C",
+    criticality: "Medium",
     lastUpdated: "1 day ago",
     coverageScore: 82
   },
   {
-    id: "REQ-COM-005",
-    title: "Communication System Requirements",
+    id: "TASK-005",
+    title: "API Gateway Configuration",
     status: "verified",
-    criticality: "DAL-B",
+    criticality: "High",
     lastUpdated: "2 days ago",
     coverageScore: 91
   }
@@ -90,20 +90,20 @@ const mockRecentRequirements = [
 
 const mockHighRiskRequirements = [
   {
-    id: "REQ-PWR-001",
-    title: "Primary Power Distribution",
-    issues: ["Missing test coverage", "No implementation link"],
+    id: "REQ-PIPE-001",
+    title: "Data Pipeline Orchestration",
+    issues: ["Missing validation coverage", "No agent assignment"],
     severity: "critical"
   },
   {
-    id: "REQ-FMS-002", 
-    title: "Flight Management System Core",
-    issues: ["Outdated design docs", "Incomplete verification"],
+    id: "REQ-COORD-002", 
+    title: "Agent Coordination Protocol",
+    issues: ["Outdated task specs", "Incomplete validation"],
     severity: "high"
   },
   {
-    id: "REQ-ICE-003",
-    title: "Ice Protection System",
+    id: "REQ-GUARD-003",
+    title: "Guardrail Enforcement",
     issues: ["Low traceability score"],
     severity: "medium"
   }
@@ -121,11 +121,11 @@ export default function RequirementsDashboard() {
 
   const getCriticalityColor = (criticality: string) => {
     switch (criticality) {
-      case "DAL-A": return "bg-red-100 text-red-800 border-red-200";
-      case "DAL-B": return "bg-orange-100 text-orange-800 border-orange-200";
-      case "DAL-C": return "bg-yellow-100 text-yellow-800 border-yellow-200";
-      case "DAL-D": return "bg-blue-100 text-blue-800 border-blue-200";
-      case "DAL-E": return "bg-green-100 text-green-800 border-green-200";
+      case "Critical": return "bg-red-100 text-red-800 border-red-200";
+      case "High": return "bg-orange-100 text-orange-800 border-orange-200";
+      case "Medium": return "bg-yellow-100 text-yellow-800 border-yellow-200";
+      case "Low": return "bg-blue-100 text-blue-800 border-blue-200";
+      case "Info": return "bg-green-100 text-green-800 border-green-200";
       default: return "bg-gray-100 text-gray-800 border-gray-200";
     }
   };
@@ -163,9 +163,9 @@ export default function RequirementsDashboard() {
       <div className="border-b bg-card px-6 py-4">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold">GOES-R Requirements Dashboard</h1>
+            <h1 className="text-2xl font-bold">Task Requirements Dashboard</h1>
             <p className="text-muted-foreground">
-              Comprehensive impact analysis and traceability for aerospace requirements
+              Comprehensive impact analysis and traceability for task requirements
             </p>
           </div>
           <div className="flex items-center gap-3">

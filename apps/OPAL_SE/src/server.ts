@@ -220,6 +220,16 @@ app.get('/', (req: Request, res: Response) => {
   res.end('OPAL Server is running.');
 });
 
+// JSON health endpoint for monitoring
+app.get('/health', (req: Request, res: Response) => {
+  res.json({
+    status: 'healthy',
+    uptime: process.uptime(),
+    version: SERVER_INFO.version,
+    timestamp: new Date().toISOString()
+  });
+});
+
 // Factory function for the MCP POST handler middleware
 const createMcpPostHandler = (configs: any) => {
   return async (req: Request, res: Response, next: NextFunction) => {

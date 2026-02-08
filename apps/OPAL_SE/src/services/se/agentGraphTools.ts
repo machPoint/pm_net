@@ -39,7 +39,7 @@ export const findOptimalPath = {
       allowed_relation_types: {
         type: 'array',
         items: { type: 'string' },
-        description: 'Optional: Only traverse these edge types (e.g., ["TRACES_TO", "VERIFIED_BY"])'
+        description: 'Optional: Only traverse these edge types. PM: depends_on, blocks, assigned_to, produces, mitigates, requires_approval, informs. Governance: for_task, proposes, executes_plan, executed, checks, evidenced_by, during_run, learned_from, based_on'
       },
       max_weight: {
         type: 'number',
@@ -86,7 +86,7 @@ export const findOptimalPath = {
             found: true,
             path: {
               node_ids: path.nodes.map(n => n.id),
-              node_titles: path.nodes.map(n => n.name),
+              node_titles: path.nodes.map(n => n.title),
               edge_ids: path.edges.map(e => e.id),
               total_weight: path.totalWeight,
               steps: path.steps
@@ -161,11 +161,11 @@ export const getTraversableEdges = {
             neighbors: neighbors.map(n => ({
               node_id: n.node.id,
               node_type: n.node.type,
-              node_title: n.node.name,
+              node_title: n.node.title,
               edge_id: n.edge.id,
               edge_type: n.edge.relation_type,
               weight: n.weight,
-              bidirectional: n.edge.bidirectional
+              directionality: n.edge.directionality
             }))
           }, null, 2)
         }]
@@ -283,13 +283,12 @@ export const getNodeContext = {
             node: {
               id: node.id,
               type: node.type,
-              name: node.name,
+              title: node.title,
               description: node.description,
               status: node.status,
-              subsystem: node.subsystem,
+              source: node.source,
               owner: node.owner,
-              metadata: node.metadata,
-              external_refs: node.external_refs
+              metadata: node.metadata
             },
             graph_context: neighbors ? {
               outgoing_count: neighbors.filter(n => n.edge.from_node_id === node_id).length,
@@ -299,7 +298,7 @@ export const getNodeContext = {
             neighbors: neighbors ? neighbors.map(n => ({
               node_id: n.node.id,
               node_type: n.node.type,
-              node_title: n.node.name,
+              node_title: n.node.title,
               edge_type: n.edge.relation_type,
               weight: n.weight
             })) : null
@@ -342,9 +341,9 @@ export const findNodesByType = {
         items: { type: 'string' },
         description: 'Optional: Filter by status'
       },
-      subsystem: {
+      source: {
         type: 'string',
-        description: 'Optional: Filter by subsystem'
+        description: 'Optional: Filter by source'
       },
       limit: {
         type: 'number',
@@ -355,13 +354,13 @@ export const findNodesByType = {
   },
   handler: async (args: any) => {
     try {
-      const { project_id, node_types, status, subsystem, limit } = args;
+      const { project_id, node_types, status, source, limit } = args;
 
       const nodes = await getNodesByFilter({
         project_id,
         type: node_types,
         status,
-        subsystem,
+        source,
         limit: limit || 50
       });
 
@@ -373,9 +372,9 @@ export const findNodesByType = {
             nodes: nodes.map(n => ({
               id: n.id,
               type: n.type,
-              name: n.name,
+              title: n.title,
               status: n.status,
-              subsystem: n.subsystem,
+              source: n.source,
               owner: n.owner
             }))
           }, null, 2)

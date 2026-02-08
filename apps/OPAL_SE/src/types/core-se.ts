@@ -4,6 +4,11 @@
  */
 
 import { v4 as uuidv4 } from 'uuid';
+import {
+  NodeType as CanonicalNodeType,
+  EdgeType as CanonicalEdgeType,
+  SchemaLayer as CanonicalSchemaLayer,
+} from './graph-vocabulary';
 
 // ============================================================================
 // Core Output Structure
@@ -40,38 +45,12 @@ export interface CoreSEOutput<T = any> {
 }
 
 // ============================================================================
-// Domain Types - Systems Engineering Vocabulary
+// Domain Types — re-exported from canonical graph-vocabulary.ts
 // ============================================================================
 
-/**
- * Node types in the system graph
- */
-export type NodeType = 
-  | 'requirement'
-  | 'test_case'
-  | 'component'
-  | 'interface'
-  | 'verification'
-  | 'issue'
-  | 'part'
-  | 'document'
-  | 'email'
-  | 'meeting';
-
-/**
- * Relationship types between nodes
- */
-export type RelationType =
-  | 'satisfies'
-  | 'verifies'
-  | 'derives_from'
-  | 'allocated_to'
-  | 'depends_on'
-  | 'implements'
-  | 'traces_to'
-  | 'refines'
-  | 'constrains'
-  | 'relates_to';
+export type NodeType = CanonicalNodeType;
+export type RelationType = CanonicalEdgeType;
+export type SchemaLayer = CanonicalSchemaLayer;
 
 /**
  * Status values for requirements and other entities
@@ -117,10 +96,10 @@ export interface Requirement {
   title: string;
   description: string;
   status: Status;
-  subsystem?: string;
+  domain?: string;
   type?: string;
   verification_status?: VerificationStatus;
-  allocated_to?: string[];
+  assigned_to?: string[];
   metadata?: Record<string, any>;
 }
 
@@ -144,9 +123,9 @@ export interface TestCase {
 export interface Component {
   id: string;
   external_id?: string;
-  name: string;
+  title: string;
   type: string;
-  subsystem?: string;
+  domain?: string;
   implements_requirements?: string[];
   interfaces?: string[];
   metadata?: Record<string, any>;
@@ -158,12 +137,16 @@ export interface Component {
 export interface SystemNode {
   id: string;
   external_id?: string;
-  node_type: NodeType;
-  name: string;
+  type: NodeType;
+  title: string;
   description?: string;
-  status?: Status;
-  subsystem?: string;
+  status?: string;
+  domain?: string;
   metadata?: Record<string, any>;
+  // Provenance
+  source?: string;
+  source_ref?: string;
+  confidence?: number;
 }
 
 /**
@@ -210,10 +193,10 @@ export interface ConsistencyViolation {
  */
 export interface NodeFilter {
   node_type?: NodeType | NodeType[];
-  subsystem?: string | string[];
+  domain?: string | string[];
   status?: Status | Status[];
   ids?: string[];
-  external_refs?: string[];
+  source?: string;
   metadata?: Record<string, any>;
 }
 
@@ -230,7 +213,7 @@ export interface EdgeFilter {
  * Slice filter for extracting subgraphs
  */
 export interface SliceFilter {
-  subsystem?: string;
+  domain?: string;
   start_node_ids?: string[];
   max_depth?: number;
   include_relation_types?: RelationType[];
@@ -262,7 +245,7 @@ export interface TraceResultDetails {
   statistics: {
     total_nodes: number;
     by_type: Record<NodeType, number>;
-    by_subsystem?: Record<string, number>;
+    by_domain?: Record<string, number>;
   };
 }
 
@@ -283,13 +266,13 @@ export interface VerificationCoverageDetails {
   total_requirements: number;
   verified_requirements: number;
   gaps: VerificationGap[];
-  subsystem_breakdown?: Record<string, SubsystemCoverage>;
+  domain_breakdown?: Record<string, DomainCoverage>;
 }
 
 /**
- * Subsystem coverage
+ * Domain coverage
  */
-export interface SubsystemCoverage {
+export interface DomainCoverage {
   coverage: number;
   total: number;
   verified: number;
@@ -363,7 +346,7 @@ export interface TraceParams extends BaseFunctionParams {
  */
 export interface VerificationParams extends BaseFunctionParams {
   requirement_ids?: string[];
-  subsystem?: string;
+  domain?: string;
   include_recommendations?: boolean;
 }
 

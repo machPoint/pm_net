@@ -19,7 +19,7 @@ export const R002_SafetyCriticalVerification: Rule = {
     const requirements = await getNodesByFilter({
       project_id: context.project_id,
       type: 'Requirement',
-      ...(context.subsystem ? { subsystem: context.subsystem } : {})
+      ...(context.domain ? { source: context.domain } : {})
     });
 
     // Filter to safety-critical requirements
@@ -28,17 +28,17 @@ export const R002_SafetyCriticalVerification: Rule = {
     );
 
     for (const req of safetyCritical) {
-      // Check for VERIFIED_BY edges to TestCase nodes
+      // Check for produces edges to deliverable/test nodes
       const verifiesEdges = await getEdgesByFilter({
         from_node_id: req.id,
-        relation_type: 'VERIFIED_BY'
+        relation_type: 'produces'
       });
 
       if (verifiesEdges.length === 0) {
         violations.push({
           rule_id: 'R002',
           severity: 'error',
-          message: `Safety-critical requirement ${req.name} has no test verification`,
+          message: `Safety-critical requirement ${req.title} has no test verification`,
           affected_nodes: [req.id],
           details: {
             requirement_id: req.id,

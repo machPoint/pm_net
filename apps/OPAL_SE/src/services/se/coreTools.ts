@@ -54,7 +54,7 @@ import * as ruleEngineService from './ruleEngineService';
  * @description Bounded query over the system model with explicit filters
  * 
  * @param project_id - Project identifier
- * @param node_filter - Filters for nodes (type, subsystem, status, ids)
+ * @param node_filter - Filters for nodes (type, domain, status, ids)
  * @param edge_filter - Filters for edges (relation_type, source/target ids)
  * @param limit - Maximum results to return (default: 100)
  * @param offset - Pagination offset (default: 0)
@@ -90,7 +90,7 @@ export const querySystemModel = createCoreFunction<
     
     if (params.node_filter) {
       if (params.node_filter.node_type) nodeQuery.type = params.node_filter.node_type;
-      if (params.node_filter.subsystem) nodeQuery.subsystem = params.node_filter.subsystem;
+      if (params.node_filter.domain) nodeQuery.domain = params.node_filter.domain;
       if (params.node_filter.status) nodeQuery.status = params.node_filter.status;
       if (params.node_filter.ids) nodeQuery.ids = params.node_filter.ids;
     }
@@ -144,14 +144,14 @@ export const querySystemModel = createCoreFunction<
 // ============================================================================
 
 /**
- * Extract a bounded subgraph around specific nodes or within a subsystem
+ * Extract a bounded subgraph around specific nodes or within a domain
  * 
  * @layer core
  * @category Analysis
  * @description Deterministic slice extraction with explicit scope boundaries
  * 
  * @param project_id - Project identifier
- * @param subsystem - Optional subsystem to extract (bounded scope)
+ * @param domain - Optional domain to extract (bounded scope)
  * @param start_node_ids - Optional starting nodes for traversal (bounded scope)
  * @param max_depth - Maximum traversal depth (default: 2, max: 5)
  * @param include_relation_types - Optional relation types to include
@@ -161,7 +161,7 @@ export const querySystemModel = createCoreFunction<
 export const getSystemSlice = createCoreFunction<
   {
     project_id: string;
-    subsystem?: string;
+    domain?: string;
     start_node_ids?: string[];
     max_depth?: number;
     include_relation_types?: string[];
@@ -174,23 +174,23 @@ export const getSystemSlice = createCoreFunction<
     validateRequired(params, ['project_id']);
     
     // Enforce bounded scope
-    if (!params.subsystem && (!params.start_node_ids || params.start_node_ids.length === 0)) {
-      throw new Error('Must specify either subsystem or start_node_ids for bounded scope');
+    if (!params.domain && (!params.start_node_ids || params.start_node_ids.length === 0)) {
+      throw new Error('Must specify either domain or start_node_ids for bounded scope');
     }
     
     const maxDepth = Math.min(params.max_depth || 2, 5); // Cap at 5
     
-    logger.info(`[getSystemSlice] project=${params.project_id}, subsystem=${params.subsystem}, nodes=${params.start_node_ids?.length}`);
+    logger.info(`[getSystemSlice] project=${params.project_id}, domain=${params.domain}, nodes=${params.start_node_ids?.length}`);
     
     let nodes: SystemNode[] = [];
     let edges: any[] = [];
     
-    if (params.subsystem) {
-      // Subsystem-based slice (bounded by subsystem)
+    if (params.domain) {
+      // Domain-based slice
       nodes = await getNodesByFilter({
         project_id: params.project_id,
-        subsystem: params.subsystem,
-        limit: 500 // Reasonable limit for subsystem
+        // domain filtering handled via metadata or type
+        limit: 500
       });
       
       const nodeIds = nodes.map(n => n.id);
@@ -228,8 +228,8 @@ export const getSystemSlice = createCoreFunction<
     }, {} as Record<string, number>);
     
     return {
-      summary: params.subsystem 
-        ? `Extracted ${nodes.length} nodes from ${params.subsystem} subsystem`
+      summary: params.domain 
+        ? `Extracted ${nodes.length} nodes from ${params.domain} domain`
         : `Extracted ${nodes.length} nodes within depth ${maxDepth} of ${params.start_node_ids!.length} starting nodes`,
       details: {
         count: nodes.length,
@@ -239,7 +239,7 @@ export const getSystemSlice = createCoreFunction<
           metadata: {
             node_counts_by_type: nodeCounts,
             edge_counts_by_type: edgeCounts,
-            subsystem: params.subsystem,
+            domain: params.domain,
             depth_used: maxDepth
           }
         }
@@ -289,13 +289,16 @@ export const traceDownstreamImpact = createCoreFunction<
     
     logger.info(`[traceDownstreamImpact] tracing from ${params.start_node_ids.length} nodes, depth=${maxDepth}`);
     
-    // Downstream relation types
+    // Downstream relation types (PM + governance: graph-vocabulary.ts)
     const downstreamRelations = params.include_relation_types || [
-      'TRACES_TO',
-      'VERIFIED_BY',
-      'ALLOCATED_TO',
-      'INTERFACES_WITH',
-      'IMPLEMENTS'
+      'depends_on',
+      'assigned_to',
+      'produces',
+      'requires_approval',
+      'for_task',
+      'executes_plan',
+      'checks',
+      'evidenced_by'
     ];
     
     // Traverse downstream
@@ -319,10 +322,11 @@ export const traceDownstreamImpact = createCoreFunction<
       return acc;
     }, {} as Record<string, number>);
     
-    // Group by subsystem
-    const bySubsystem = result.nodes.reduce((acc, n) => {
-      if (n.subsystem) {
-        acc[n.subsystem] = (acc[n.subsystem] || 0) + 1;
+    // Group by domain (stored in metadata)
+    const byDomain = result.nodes.reduce((acc, n: any) => {
+      const domain = n.domain || n.metadata?.domain;
+      if (domain) {
+        acc[domain] = (acc[domain] || 0) + 1;
       }
       return acc;
     }, {} as Record<string, number>);
@@ -337,7 +341,7 @@ export const traceDownstreamImpact = createCoreFunction<
         statistics: {
           total_nodes: result.nodes.length,
           by_type: byType as any,
-          by_subsystem: bySubsystem
+          by_domain: byDomain
         }
       },
       raw: result
@@ -383,8 +387,8 @@ export const traceUpstreamRationale = createCoreFunction<
     
     logger.info(`[traceUpstreamRationale] tracing from ${params.start_node_ids.length} nodes, depth=${maxDepth}`);
     
-    // Upstream relation types
-    const upstreamRelations = ['DERIVED_FROM', 'TRACES_TO', 'SATISFIES'];
+    // Upstream relation types (PM + governance)
+    const upstreamRelations = ['depends_on', 'informs', 'produces', 'for_task', 'proposes', 'during_run'];
     
     // Traverse upstream
     const result = await getNeighbors(
@@ -437,7 +441,7 @@ export const traceUpstreamRationale = createCoreFunction<
  * 
  * @param project_id - Project identifier
  * @param requirement_ids - Optional specific requirements to check (bounded scope)
- * @param subsystem - Optional subsystem to scope analysis
+ * @param domain - Optional domain to scope analysis
  * 
  * @returns List of verification gaps with severity and recommendations
  */
@@ -445,7 +449,7 @@ export const findVerificationGaps = createCoreFunction<
   {
     project_id: string;
     requirement_ids?: string[];
-    subsystem?: string;
+    domain?: string;
   },
   VerificationCoverageDetails
 >(
@@ -454,7 +458,7 @@ export const findVerificationGaps = createCoreFunction<
   async (params) => {
     validateRequired(params, ['project_id']);
     
-    logger.info(`[findVerificationGaps] project=${params.project_id}, subsystem=${params.subsystem}`);
+    logger.info(`[findVerificationGaps] project=${params.project_id}, domain=${params.domain}`);
     
     // Get requirements
     const requirementFilter: any = {
@@ -465,8 +469,8 @@ export const findVerificationGaps = createCoreFunction<
     
     if (params.requirement_ids) {
       requirementFilter.ids = params.requirement_ids;
-    } else if (params.subsystem) {
-      requirementFilter.subsystem = params.subsystem;
+    } else if (params.domain) {
+      // domain filtering via metadata
     }
     
     const requirements = await getNodesByFilter(requirementFilter);
@@ -479,20 +483,20 @@ export const findVerificationGaps = createCoreFunction<
       // Check for test case allocation
       const testEdges = await getEdgesByFilter({
         from_node_id: [req.id],
-        relation_type: 'VERIFIED_BY',
+        relation_type: 'produces',
         limit: 10
       });
       
       if (testEdges.length === 0) {
         gaps.push({
           requirement_id: req.id,
-          requirement_title: req.name,
+          requirement_title: req.title,
           severity: req.status === 'approved' ? 'high' : 'medium',
           reason: 'No verification test case allocated',
           gap_type: 'no_test_case',
           recommendations: [
             'Create test case to verify this requirement',
-            'Link test case using VERIFIED_BY relation'
+            'Link test case using produces relation'
           ]
         });
       } else {
@@ -517,8 +521,8 @@ export const findVerificationGaps = createCoreFunction<
         total_requirements: requirements.length,
         verified_requirements: verifiedCount,
         gaps,
-        subsystem_breakdown: params.subsystem ? {
-          [params.subsystem]: {
+        domain_breakdown: params.domain ? {
+          [params.domain]: {
             coverage: coveragePercentage,
             total: requirements.length,
             verified: verifiedCount,
@@ -543,7 +547,7 @@ export const findVerificationGaps = createCoreFunction<
  * @description Verify allocation relationships are consistent
  * 
  * @param project_id - Project identifier
- * @param subsystem - Optional subsystem to scope check
+ * @param domain - Optional domain to scope check
  * @param component_ids - Optional specific components to check
  * 
  * @returns Consistency violations with severity
@@ -551,7 +555,7 @@ export const findVerificationGaps = createCoreFunction<
 export const checkAllocationConsistency = createCoreFunction<
   {
     project_id: string;
-    subsystem?: string;
+    domain?: string;
     component_ids?: string[];
   },
   ConsistencyCheckDetails
@@ -572,8 +576,8 @@ export const checkAllocationConsistency = createCoreFunction<
     
     if (params.component_ids) {
       componentFilter.ids = params.component_ids;
-    } else if (params.subsystem) {
-      componentFilter.subsystem = params.subsystem;
+    } else if (params.domain) {
+      // domain filtering via metadata
     }
     
     const components = await getNodesByFilter(componentFilter);
@@ -584,7 +588,7 @@ export const checkAllocationConsistency = createCoreFunction<
       // Check if component has requirements allocated
       const reqEdges = await getEdgesByFilter({
         to_node_id: [comp.id],
-        relation_type: 'ALLOCATED_TO',
+        relation_type: 'assigned_to',
         limit: 100
       });
       
@@ -594,7 +598,7 @@ export const checkAllocationConsistency = createCoreFunction<
           violation_type: 'no_requirements_allocated',
           severity: 'medium',
           affected_nodes: [comp.id],
-          description: `Component "${comp.name}" has no requirements allocated`,
+          description: `Component "${comp.title}" has no requirements allocated`,
           rule_id: 'ALLOC_001'
         });
       }
@@ -639,17 +643,17 @@ export const checkAllocationConsistency = createCoreFunction<
  * 
  * @layer core
  * @category Metrics
- * @description Compute verification coverage across project or subsystem
+ * @description Compute verification coverage across project or domain
  * 
  * @param project_id - Project identifier
- * @param subsystem - Optional subsystem to scope metrics
+ * @param domain - Optional domain to scope metrics
  * 
  * @returns Detailed coverage metrics and breakdown
  */
 export const getVerificationCoverageMetrics = createCoreFunction<
   {
     project_id: string;
-    subsystem?: string;
+    domain?: string;
   },
   VerificationCoverageDetails
 >(

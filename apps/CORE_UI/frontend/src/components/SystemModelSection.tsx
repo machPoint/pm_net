@@ -87,7 +87,7 @@ export default function SystemModelSection() {
   const convertToFlowNodes = (systemNodes: SystemNode[]): Node[] => {
     // Simple hierarchical layout
     const systemNode = systemNodes.find(n => n.type === 'system');
-    const subsystemNodes = systemNodes.filter(n => n.type === 'subsystem');
+    const domainNodes = systemNodes.filter(n => n.type === 'domain');
     const componentNodes = systemNodes.filter(n => n.type === 'component');
     const requirementNodes = systemNodes.filter(n => n.type === 'requirement');
 
@@ -119,15 +119,15 @@ export default function SystemModelSection() {
       });
     }
 
-    // Subsystems in a grid below
-    const subsystemsPerRow = 5;
-    const subsystemSpacing = 180;
-    const subsystemStartX = 100;
-    const subsystemY = 200;
+    // Domains in a grid below
+    const domainsPerRow = 5;
+    const domainSpacing = 180;
+    const domainStartX = 100;
+    const domainY = 200;
 
-    subsystemNodes.forEach((node, index) => {
-      const row = Math.floor(index / subsystemsPerRow);
-      const col = index % subsystemsPerRow;
+    domainNodes.forEach((node, index) => {
+      const row = Math.floor(index / domainsPerRow);
+      const col = index % domainsPerRow;
       
       flowNodes.push({
         id: node.id,
@@ -138,8 +138,8 @@ export default function SystemModelSection() {
           metadata: node.metadata
         },
         position: { 
-          x: subsystemStartX + (col * subsystemSpacing), 
-          y: subsystemY + (row * 180)
+          x: domainStartX + (col * domainSpacing), 
+          y: domainY + (row * 180)
         },
         style: {
           background: '#10b981',
@@ -156,7 +156,7 @@ export default function SystemModelSection() {
       });
     });
 
-    // Components below their subsystems
+    // Agents below their domains
     componentNodes.forEach((node, index) => {
       flowNodes.push({
         id: node.id,
@@ -288,7 +288,7 @@ export default function SystemModelSection() {
             <h3 className="text-2xl font-semibold mb-3">System Model Builder</h3>
             <p className="text-muted-foreground mb-6">
               Generate a hierarchical block model from your requirements. The model will show
-              the system, subsystems, components, and their relationships.
+              the system, task domains, agents, and their relationships.
             </p>
             <Button onClick={fetchSystemModel} size="lg" className="gap-2">
               <Network className="w-4 h-4" />
@@ -405,7 +405,7 @@ export default function SystemModelSection() {
           </div>
           <div className="flex items-center gap-2">
             <div className="w-4 h-4 rounded bg-[#10b981]" />
-            <span>Subsystem</span>
+            <span>Domain</span>
           </div>
           <div className="flex items-center gap-2">
             <div className="w-4 h-4 rounded bg-[#8b5cf6]" />

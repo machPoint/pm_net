@@ -49,7 +49,7 @@ function computeStats(events: Event[]): ChangeSetStats {
   const stats: ChangeSetStats = {
     total_events: events.length,
     counts_by_type: {},
-    counts_by_subsystem: {},
+    counts_by_domain: {},
     counts_by_event_type: {} as Record<EventType, number>,
     affected_nodes: 0,
     affected_edges: 0
@@ -78,13 +78,13 @@ function computeStats(events: Event[]): ChangeSetStats {
       uniqueNodes.add(event.entity_id);
     }
 
-    // Count by subsystem (if available in details)
-    if (event.diff_payload.details?.subsystem) {
-      const subsystem = event.diff_payload.details.subsystem;
-      if (!stats.counts_by_subsystem[subsystem]) {
-        stats.counts_by_subsystem[subsystem] = 0;
+    // Count by domain (if available in details)
+    if (event.diff_payload.details?.domain) {
+      const domain = event.diff_payload.details.domain;
+      if (!stats.counts_by_domain[domain]) {
+        stats.counts_by_domain[domain] = 0;
       }
-      stats.counts_by_subsystem[subsystem]++;
+      stats.counts_by_domain[domain]++;
     }
   }
 
@@ -454,22 +454,22 @@ export async function buildChangeSetForAnchor(
 export async function getProjectChangeSummary(project_id: string): Promise<{
   total_change_sets: number;
   total_events: number;
-  most_active_subsystems: Array<{ subsystem: string; count: number }>;
+  most_active_domains: Array<{ domain: string; count: number }>;
   most_common_event_types: Array<{ event_type: EventType; count: number }>;
 }> {
   try {
     const changeSets = await getChangeSetsByProject(project_id, 1000);
 
     let totalEvents = 0;
-    const subsystemCounts: Record<string, number> = {};
+    const domainCounts: Record<string, number> = {};
     const eventTypeCounts: Record<EventType, number> = {} as any;
 
     for (const changeSet of changeSets) {
       totalEvents += changeSet.stats.total_events;
 
-      // Aggregate subsystem counts
-      for (const [subsystem, count] of Object.entries(changeSet.stats.counts_by_subsystem)) {
-        subsystemCounts[subsystem] = (subsystemCounts[subsystem] || 0) + count;
+      // Aggregate domain counts
+      for (const [domain, count] of Object.entries(changeSet.stats.counts_by_domain)) {
+        domainCounts[domain] = (domainCounts[domain] || 0) + count;
       }
 
       // Aggregate event type counts
@@ -478,9 +478,9 @@ export async function getProjectChangeSummary(project_id: string): Promise<{
       }
     }
 
-    // Sort and get top subsystems
-    const mostActiveSubsystems = Object.entries(subsystemCounts)
-      .map(([subsystem, count]) => ({ subsystem, count }))
+    // Sort and get top domains
+    const mostActiveDomains = Object.entries(domainCounts)
+      .map(([domain, count]) => ({ domain, count }))
       .sort((a, b) => b.count - a.count)
       .slice(0, 10);
 
@@ -492,7 +492,7 @@ export async function getProjectChangeSummary(project_id: string): Promise<{
     return {
       total_change_sets: changeSets.length,
       total_events: totalEvents,
-      most_active_subsystems: mostActiveSubsystems,
+      most_active_domains: mostActiveDomains,
       most_common_event_types: mostCommonEventTypes
     };
   } catch (error: any) {

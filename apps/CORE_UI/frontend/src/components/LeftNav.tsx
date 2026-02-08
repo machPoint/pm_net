@@ -11,7 +11,9 @@ import {
   AlertTriangle,
   Gavel,
   BarChart3,
-  MessageSquare
+  MessageSquare,
+  ClipboardList,
+  LayoutDashboard
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -23,8 +25,10 @@ interface LeftNavProps {
 }
 
 const navItems = [
-  { id: "pulse", label: "Agent Messages", icon: MessageSquare },
+  { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { id: "pulse", label: "Messages", icon: MessageSquare },
   { id: "tasks", label: "Tasks", icon: CheckSquare },
+  { id: "task-intake", label: "Task Intake", icon: ClipboardList },
   { id: "notes", label: "Notes", icon: FileText },
   { id: "network", label: "Network", icon: Network },
   { id: "gantt", label: "Gantt", icon: Calendar },

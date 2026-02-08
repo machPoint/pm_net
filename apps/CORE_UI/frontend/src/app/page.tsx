@@ -20,6 +20,8 @@ import GanttSection from "@/components/GanttSection";
 import RisksSection from "@/components/RisksSection";
 import DecisionsSection from "@/components/DecisionsSection";
 import AnalyticsSection from "@/components/AnalyticsSection";
+import TaskIntakeSection from "@/components/TaskIntakeSection";
+import DashboardSection from "@/components/DashboardSection";
 
 // Generate mock context data
 function generateContextData() {
@@ -126,14 +128,14 @@ function generateSystemInfoData() {
 
 function PageContent() {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState("pulse");
+  const [activeTab, setActiveTab] = useState("dashboard");
   const [leftNavCollapsed, setLeftNavCollapsed] = useState(false);
   const [contextPanelCollapsed, setContextPanelCollapsed] = useState(false);
-  const [agentListCollapsed, setAgentListCollapsed] = useState(false);
-  const [capabilitiesCollapsed, setCapabilitiesCollapsed] = useState(false);
-  const [systemInfoCollapsed, setSystemInfoCollapsed] = useState(false);
+  const [agentListCollapsed, setAgentListCollapsed] = useState(true);
+  const [capabilitiesCollapsed, setCapabilitiesCollapsed] = useState(true);
+  const [systemInfoCollapsed, setSystemInfoCollapsed] = useState(true);
   const [useAIChat, setUseAIChat] = useState(true); // Kept for compatibility
-  const { theme } = useTheme();
+  const { baseTheme } = useTheme();
 
   const agentListData = generateAgentListData();
   const capabilitiesData = generateCapabilitiesData();
@@ -158,6 +160,10 @@ function PageContent() {
         return <AnalyticsSection />;
       case "tasks":
         return <TasksSection onNavigate={setActiveTab} />;
+      case "task-intake":
+        return <TaskIntakeSection />;
+      case "dashboard":
+        return <DashboardSection />;
       case "ai-chat":
         return (
           <div className="h-full">
@@ -173,7 +179,7 @@ function PageContent() {
       case "system-admin":
         return <SystemAdminSection />;
       default:
-        return <PulseSection />;
+        return <DashboardSection />;
     }
   };
 
@@ -182,7 +188,7 @@ function PageContent() {
       {/* Top Bar */}
       <TopBar
         breadcrumbs={[
-          { id: "workspace", label: "Aerospace Engineering Workspace" },
+          { id: "workspace", label: "Workspace" },
           { id: "section", label: activeTab.charAt(0).toUpperCase() + activeTab.slice(1) }
         ]}
         onSearchSubmit={(query) => console.log("Search:", query)}
@@ -196,6 +202,7 @@ function PageContent() {
         <PanelGroup direction="horizontal" className="h-full">
           {/* Left Panel Stack - Navigation + Folders + Tags + Notes */}
           <Panel defaultSize={12} minSize={10} maxSize={40} className="bg-[var(--color-left-panel)] border-r border-border flex flex-col">
+            <ScrollArea className="flex-1">
             {/* Navigation Panel */}
             <div className="border-b border-border/50">
               <div className="flex items-center justify-between p-4">
@@ -390,6 +397,7 @@ function PageContent() {
                 </div>
               </div>
             </div>
+            </ScrollArea>
           </Panel>
 
           {/* Resize Handle */}
@@ -410,7 +418,7 @@ function PageContent() {
       <Toaster
         position="top-right"
         expand={false}
-        theme={theme}
+        theme={baseTheme}
         closeButton
       />
     </div>

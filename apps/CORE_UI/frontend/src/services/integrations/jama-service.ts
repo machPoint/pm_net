@@ -57,12 +57,12 @@ class JamaService {
       const mockJamaItems: JamaItem[] = [];
       
       // Generate mock items based on requirement ID
-      if (requirementId.includes('FCS') || requirementId.includes('flight-control')) {
+      if (requirementId.includes('DIP') || requirementId.includes('data-pipeline')) {
         mockJamaItems.push({
           id: 12345,
           fields: {
-            name: 'Flight Control System Design Specification',
-            description: 'Detailed design specification for the primary flight control system including redundancy and fail-safe mechanisms.',
+            name: 'Data Pipeline Design Specification',
+            description: 'Detailed design specification for the primary data pipeline including redundancy and fail-safe mechanisms.',
             status: 'Approved',
             documentType: 'System Design',
             version: '2.1'
@@ -70,7 +70,7 @@ class JamaService {
           itemType: 101, // Design Document
           project: {
             id: 1001,
-            name: 'GOES-R Flight Controls'
+            name: 'Agent Data Processing'
           },
           createdDate: '2024-01-10T10:00:00Z',
           modifiedDate: '2024-01-15T14:30:00Z',
@@ -83,8 +83,8 @@ class JamaService {
         mockJamaItems.push({
           id: 12346,
           fields: {
-            name: 'Flight Control Actuator Requirements',
-            description: 'Functional and performance requirements for flight control actuators.',
+            name: 'Pipeline Worker Agent Requirements',
+            description: 'Functional and performance requirements for pipeline worker agents.',
             status: 'In Review',
             documentType: 'Component Requirements',
             version: '1.3'
@@ -92,7 +92,7 @@ class JamaService {
           itemType: 102, // Requirements
           project: {
             id: 1001,
-            name: 'GOES-R Flight Controls'
+            name: 'Agent Data Processing'
           },
           createdDate: '2024-01-08T09:00:00Z',
           modifiedDate: '2024-01-14T16:45:00Z',
@@ -107,8 +107,8 @@ class JamaService {
         mockJamaItems.push({
           id: 12347,
           fields: {
-            name: 'Navigation System Architecture',
-            description: 'System architecture for integrated navigation including GPS, IRS, and VOR.',
+            name: 'Orchestration Layer Architecture',
+            description: 'System architecture for agent orchestration including task routing, scheduling, and coordination.',
             status: 'Approved',
             documentType: 'Architecture Document',
             version: '1.2'
@@ -116,19 +116,19 @@ class JamaService {
           itemType: 101,
           project: {
             id: 1002,
-            name: 'GOES-R Navigation Systems'
+            name: 'Agent Orchestration'
           },
           createdDate: '2024-01-12T11:15:00Z',
           modifiedDate: '2024-01-12T17:20:00Z'
         });
       }
 
-      if (requirementId.includes('HYD') || requirementId.includes('hydraulic')) {
+      if (requirementId.includes('HYD') || requirementId.includes('queue')) {
         mockJamaItems.push({
           id: 12348,
           fields: {
-            name: 'Hydraulic System Schematic',
-            description: 'Detailed hydraulic system schematic showing primary and backup circuits.',
+            name: 'Message Queue Architecture',
+            description: 'Detailed message queue architecture showing primary and backup channels.',
             status: 'In Progress',
             documentType: 'Schematic',
             version: '1.0'
@@ -136,7 +136,7 @@ class JamaService {
           itemType: 103, // Design Artifact
           project: {
             id: 1003,
-            name: 'GOES-R Hydraulic Systems'
+            name: 'Agent Infrastructure'
           },
           createdDate: '2024-01-10T08:30:00Z',
           modifiedDate: '2024-01-11T12:45:00Z'
@@ -157,7 +157,7 @@ class JamaService {
           itemType: 101,
           project: {
             id: 9999,
-            name: 'GOES-R Generic'
+            name: 'Agent Platform'
           },
           createdDate: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
           modifiedDate: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString()
@@ -206,20 +206,20 @@ class JamaService {
       const mockProjects: JamaProject[] = [
         {
           id: 1001,
-          name: 'GOES-R Flight Controls',
-          description: 'Flight control system requirements and design',
+          name: 'Agent Data Processing',
+          description: 'Data processing pipeline requirements and design',
           projectKey: 'FCS'
         },
         {
           id: 1002,
-          name: 'GOES-R Navigation Systems',
-          description: 'Navigation and guidance system specifications',
+          name: 'Agent Orchestration',
+          description: 'Agent orchestration and coordination specifications',
           projectKey: 'NAV'
         },
         {
           id: 1003,
-          name: 'GOES-R Hydraulic Systems',
-          description: 'Hydraulic system design and requirements',
+          name: 'Agent Infrastructure',
+          description: 'Infrastructure and queue system requirements',
           projectKey: 'HYD'
         }
       ];

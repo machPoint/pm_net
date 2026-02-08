@@ -26,25 +26,33 @@ export interface MCPResponse<T = any> {
   id: string;
 }
 
+export interface Provenance {
+  source: string;       // 'ui' | 'agent' | 'import' | 'api'
+  source_ref?: string;  // external reference ID
+  as_of?: string;       // when source data was current
+  confidence: number;   // 0.0-1.0
+}
+
 export interface SystemNode {
   id: string;
   project_id: string;
-  type: 'Requirement' | 'Test' | 'Component' | 'Issue' | 'Interface' | 'ECN' | 'EmailMessage' | 'Note';
-  name: string;
+  type: 'Task' | 'Validation' | 'Agent' | 'Issue' | 'Guardrail' | 'ChangeRequest' | 'Notification' | 'Note' | string;
+  title: string;
   description?: string;
-  external_refs: {
-    jama_id?: string;
-    jira_key?: string;
-    windchill_number?: string;
-    outlook_id?: string;
-    confluence_id?: string;
-  };
-  status?: string;
+  status: string;
   owner?: string;
-  subsystem?: string;
   metadata?: Record<string, any>;
+  // Provenance
+  source: string;
+  source_ref?: string;
+  as_of?: string;
+  confidence: number;
+  // Lifecycle
+  created_by?: string;
   created_at: string;
   updated_at: string;
+  deleted_at?: string;
+  version?: number;
 }
 
 export interface SystemEdge {
@@ -52,11 +60,23 @@ export interface SystemEdge {
   project_id: string;
   from_node_id: string;
   to_node_id: string;
-  relation_type: 'VERIFIED_BY' | 'TRACES_TO' | 'ALLOCATED_TO' | 'DEPENDS_ON' | 'BLOCKS' | 'REFERS_TO' | 'PARENT_OF' | 'CONTAINS';
-  source_system?: string;
+  relation_type: 'depends_on' | 'blocks' | 'assigned_to' | 'produces' | 'mitigates' | 'requires_approval' | 'informs' | 'for_task' | 'proposes' | 'executes_plan' | 'executed' | 'checks' | 'evidenced_by' | 'during_run' | 'learned_from' | 'based_on' | string;
+  weight: number;
+  weight_metadata?: Record<string, any>;
+  directionality: 'directed' | 'bidirectional';
   rationale?: string;
+  metadata?: Record<string, any>;
+  // Provenance
+  source: string;
+  source_ref?: string;
+  as_of?: string;
+  confidence: number;
+  // Lifecycle
+  created_by?: string;
   created_at: string;
   updated_at: string;
+  deleted_at?: string;
+  version?: number;
 }
 
 export interface RuleViolation {
@@ -70,13 +90,13 @@ export interface RuleViolation {
 }
 
 export interface VerificationMetrics {
-  total_requirements: number;
-  verified_requirements: number;
-  unverified_requirements: number;
-  verification_coverage: number;
-  by_subsystem?: Record<string, {
+  total_tasks: number;
+  validated_tasks: number;
+  unvalidated_tasks: number;
+  validation_coverage: number;
+  by_domain?: Record<string, {
     total: number;
-    verified: number;
+    validated: number;
     coverage: number;
   }>;
 }
@@ -102,17 +122,17 @@ export interface ChangeEvent {
 }
 
 export class OPALClient {
-  private baseUrl: string;
+  private proxyUrl: string;
   private timeout: number;
   private requestId: number = 0;
 
-  constructor(baseUrl: string = 'http://localhost:7788', timeout: number = 30000) {
-    this.baseUrl = baseUrl;
+  constructor(proxyUrl: string = '/api/opal', timeout: number = 30000) {
+    this.proxyUrl = proxyUrl;
     this.timeout = timeout;
   }
 
   /**
-   * Make a JSON-RPC MCP request to OPAL_SE
+   * Make a JSON-RPC MCP request to OPAL_SE via Next.js proxy
    */
   private async mcpRequest<T = any>(
     toolName: string,
@@ -134,11 +154,10 @@ export class OPALClient {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), this.timeout);
 
-      const response = await fetch(`${this.baseUrl}/mcp`, {
+      const response = await fetch(`${this.proxyUrl}/mcp`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'MCP-Protocol-Version': '2025-06-18'
         },
         body: JSON.stringify(request),
         signal: controller.signal
@@ -170,11 +189,11 @@ export class OPALClient {
   }
 
   /**
-   * Check if OPAL_SE server is reachable
+   * Check if OPAL_SE server is reachable (via Next.js proxy)
    */
   async healthCheck(): Promise<{ status: string; version?: string }> {
     try {
-      const response = await fetch(`${this.baseUrl}/api/health`, {
+      const response = await fetch(`${this.proxyUrl}/health`, {
         signal: AbortSignal.timeout(5000)
       });
       if (response.ok) {
@@ -196,7 +215,7 @@ export class OPALClient {
   async querySystemModel(params: {
     project_id: string;
     node_type?: string;
-    subsystem?: string;
+    source?: string;
     status?: string;
     search?: string;
     limit?: number;
@@ -240,32 +259,32 @@ export class OPALClient {
   }
 
   /**
-   * Find verification gaps (requirements without tests)
+   * Find validation gaps (tasks without acceptance criteria)
    */
-  async findVerificationGaps(params: {
+  async findValidationGaps(params: {
     project_id: string;
-    subsystem?: string;
-  }): Promise<{ unverified_requirements: SystemNode[] }> {
-    return this.mcpRequest('findVerificationGaps', params);
+    domain?: string;
+  }): Promise<{ unvalidated_tasks: SystemNode[] }> {
+    return this.mcpRequest('findValidationGaps', params);
   }
 
   /**
-   * Check allocation consistency (requirements without components)
+   * Check assignment consistency (tasks without agents)
    */
-  async checkAllocationConsistency(params: {
+  async checkAssignmentConsistency(params: {
     project_id: string;
-  }): Promise<{ unallocated_requirements: SystemNode[] }> {
-    return this.mcpRequest('checkAllocationConsistency', params);
+  }): Promise<{ unassigned_tasks: SystemNode[] }> {
+    return this.mcpRequest('checkAssignmentConsistency', params);
   }
 
   /**
-   * Get verification coverage metrics
+   * Get validation coverage metrics
    */
-  async getVerificationCoverageMetrics(params: {
+  async getValidationCoverageMetrics(params: {
     project_id: string;
-    subsystem?: string;
+    domain?: string;
   }): Promise<VerificationMetrics> {
-    return this.mcpRequest('getVerificationCoverageMetrics', params);
+    return this.mcpRequest('getValidationCoverageMetrics', params);
   }
 
   /**
@@ -306,23 +325,19 @@ export class OPALClient {
   // ============================================================================
 
   /**
-   * Trigger FDS data ingestion
+   * Trigger data ingestion from external source
    */
-  async ingestFromFDS(params: {
-    source: 'jama' | 'jira' | 'windchill';
+  async ingestFromSource(params: {
+    source: 'tasks' | 'agents' | 'external';
     items: any[];
   }): Promise<{ successful: number; failed: number; errors: string[] }> {
-    const response = await fetch(`${this.baseUrl}/api/fds/ingest/${params.source}`, {
+    const response = await fetch(`/api/opal/proxy/api/ingest/${params.source}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': 'Bearer test-token'
       },
-      body: JSON.stringify(
-        params.source === 'jama' ? { requirements: params.items } :
-        params.source === 'jira' ? { issues: params.items } :
-        { items: params.items, type: 'part' }
-      )
+      body: JSON.stringify({ items: params.items })
     });
 
     if (!response.ok) {
@@ -349,7 +364,7 @@ export class OPALClient {
       };
     }>;
   }> {
-    const response = await fetch(`${this.baseUrl}/api/fds/admin/sidecars`, {
+    const response = await fetch(`/api/opal/proxy/api/fds/admin/sidecars`, {
       headers: {
         'Authorization': 'Bearer test-token'
       }
@@ -366,7 +381,7 @@ export class OPALClient {
    * Start FDS sidecar polling
    */
   async startFDSPolling(): Promise<void> {
-    const response = await fetch(`${this.baseUrl}/api/fds/admin/start-all`, {
+    const response = await fetch(`/api/opal/proxy/api/fds/admin/start-all`, {
       method: 'POST',
       headers: {
         'Authorization': 'Bearer test-token'
@@ -382,7 +397,7 @@ export class OPALClient {
    * Stop FDS sidecar polling
    */
   async stopFDSPolling(): Promise<void> {
-    const response = await fetch(`${this.baseUrl}/api/fds/admin/stop-all`, {
+    const response = await fetch(`/api/opal/proxy/api/fds/admin/stop-all`, {
       method: 'POST',
       headers: {
         'Authorization': 'Bearer test-token'
@@ -399,6 +414,6 @@ export class OPALClient {
 export const opalClient = new OPALClient();
 
 // Export helper function to create custom instances
-export function createOPALClient(baseUrl?: string, timeout?: number): OPALClient {
-  return new OPALClient(baseUrl, timeout);
+export function createOPALClient(proxyUrl?: string, timeout?: number): OPALClient {
+  return new OPALClient(proxyUrl, timeout);
 }

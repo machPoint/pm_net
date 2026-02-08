@@ -29,7 +29,7 @@ import { toast } from "sonner";
 
 interface DataSource {
   id: string;
-  type: "jira" | "jama" | "email" | "document" | "requirement" | "code";
+  type: "task" | "note" | "document" | "email" | "requirement" | "code" | "jira" | "jama";
   title: string;
   content: string;
   metadata: {
@@ -62,58 +62,58 @@ export default function RelationshipsSection() {
   // Mock data sources
   const mockDataSources: DataSource[] = [
     {
-      id: "jira-prop-001",
-      type: "jira",
-      title: "PROP-456: Propulsion System O2 Pressure Regulation",
-      content: "Update oxygen pressure regulation system for main propulsion. Requirements include maintaining 3000 PSI oxygen supply for combustion chamber with redundant pressure sensors.",
+      id: "task-ingest-001",
+      type: "task",
+      title: "TASK-456: Data Ingestion Pipeline Rate Limiting",
+      content: "Update rate limiting for the data ingestion pipeline. Requirements include processing up to 10k records/sec with backpressure handling and retry logic for failed batches.",
       metadata: {
         owner: "Sarah Chen",
         date: "2024-01-15",
-        system: "Propulsion"
+        system: "Data Processing"
       }
     },
     {
-      id: "jama-eclss-002",
-      type: "jama",
-      title: "REQ-ECLSS-789: Air Revitalization System Requirements",
-      content: "The Environmental Control and Life Support System (ECLSS) shall provide breathable atmosphere for crew. Oxygen supply requirements: 0.84 kg/day per crew member at 14.7 PSI cabin pressure.",
+      id: "task-monitor-002",
+      type: "task",
+      title: "TASK-789: Agent Health Monitoring Requirements",
+      content: "The monitoring agent shall track health of all active agents. Requirements: heartbeat every 30s, automatic restart on 3 consecutive failures, alert escalation to governance layer.",
       metadata: {
         owner: "Dr. Michael Rodriguez",
         date: "2024-01-10",
-        system: "Life Support"
+        system: "Monitoring"
       }
     },
     {
-      id: "email-safety-003",
-      type: "email",
-      title: "Email: Cross-System Safety Review Meeting Notes",
-      content: "Discussed oxygen distribution across propulsion and ECLSS. Chief Engineer noted potential shared supply tank between systems. Action item: verify O2 routing and ensure adequate supply for both critical systems.",
+      id: "note-review-003",
+      type: "note",
+      title: "Cross-Agent Coordination Review Notes",
+      content: "Discussed shared database connections across ingestion and reporting agents. Lead noted potential connection pool exhaustion under peak load. Action item: verify connection limits and ensure adequate pooling for both agents.",
       metadata: {
-        owner: "Chief Engineer Lisa Park",
+        owner: "Lead Engineer Lisa Park",
         date: "2024-01-12",
-        system: "Systems Engineering"
+        system: "Coordination"
       }
     },
     {
-      id: "jama-power-004",
-      type: "jama",
-      title: "REQ-PWR-334: Battery System Power Distribution",
-      content: "Primary battery system shall provide power to critical avionics, ECLSS fans, and propulsion ignition systems. Load analysis required for concurrent operations.",
+      id: "task-queue-004",
+      type: "task",
+      title: "TASK-334: Message Queue Capacity Planning",
+      content: "Message queue shall handle burst traffic from ingestion, monitoring alerts, and scheduled report generation. Capacity analysis required for concurrent operations.",
       metadata: {
         owner: "James Wilson",
         date: "2024-01-08",
-        system: "Power Systems"
+        system: "Infrastructure"
       }
     },
     {
-      id: "doc-thermal-005",
+      id: "doc-scaling-005",
       type: "document",
-      title: "Thermal Control System Design Document",
-      content: "Heat rejection from propulsion combustion affects cabin thermal management. ECLSS cooling loops must account for additional thermal load during propulsion burns.",
+      title: "Auto-Scaling Policy Design Document",
+      content: "High ingestion load triggers additional worker agents, which increases monitoring overhead. Scaling policies must account for cascading resource demands across the agent fleet.",
       metadata: {
         owner: "Anna Kowalski",
         date: "2024-01-05",
-        system: "Thermal Management"
+        system: "Scaling"
       }
     }
   ];
@@ -152,7 +152,7 @@ export default function RelationshipsSection() {
     } catch (error) {
       console.error('Error analyzing relationships:', error);
       const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-      toast.error(`❌ Failed to analyze relationships: ${errorMsg}\n\nMake sure OPAL_SE is running and the OpenAI API key is configured.`, { duration: 8000 });
+      toast.error(`❌ Failed to analyze relationships: ${errorMsg}\n\nMake sure the OPAL server is running and the API key is configured.`, { duration: 8000 });
     } finally {
       setIsAnalyzing(false);
     }
@@ -329,9 +329,9 @@ export default function RelationshipsSection() {
                     Example Use Case
                   </h4>
                   <p className="text-xs text-muted-foreground">
-                    A propulsion Jira ticket, life support requirements, and a meeting email 
-                    might reveal that O2 in the propulsion system is also used as breathing air 
-                    for the crew—a critical relationship that could be missed!
+                    An ingestion task, monitoring requirements, and a coordination note 
+                    might reveal that two agents share a database connection pool—a critical 
+                    dependency that could cause outages under load!
                   </p>
                 </div>
               </div>

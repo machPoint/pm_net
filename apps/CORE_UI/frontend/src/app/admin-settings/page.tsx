@@ -15,7 +15,7 @@ export default function AdminSettingsPage() {
         {/* Top Bar */}
         <TopBar 
           breadcrumbs={[
-            { id: "workspace", label: "Aerospace Engineering Workspace" },
+            { id: "workspace", label: "Workspace" },
             { id: "admin", label: "Admin Settings" }
           ]}
           onSearchSubmit={(query) => console.log("Search:", query)}

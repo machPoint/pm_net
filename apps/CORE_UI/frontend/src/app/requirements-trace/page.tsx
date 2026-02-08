@@ -32,7 +32,7 @@ interface TraceNode {
     owner: string;
     lastUpdated: string;
     source: string;
-    criticality?: "DAL-A" | "DAL-B" | "DAL-C" | "DAL-D" | "DAL-E";
+    criticality?: "Critical" | "High" | "Medium" | "Low" | "Info";
   };
   position?: { x: number; y: number };
   details?: any;
@@ -184,7 +184,7 @@ export default function RequirementsTracePage() {
     const pending = traceNodes.filter(n => n.status === 'pending').length;
     const connections = traceNodes.reduce((sum, node) => sum + node.connections.length, 0) / 2; // Divide by 2 since connections are bidirectional
     const criticalRequirements = traceNodes.filter(n => 
-      n.metadata.criticality === 'DAL-A' || n.metadata.criticality === 'DAL-B'
+      n.metadata.criticality === 'Critical' || n.metadata.criticality === 'High'
     ).length;
     
     setStats({
@@ -278,7 +278,7 @@ export default function RequirementsTracePage() {
         
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Critical (DAL-A/B)</CardTitle>
+            <CardTitle className="text-sm font-medium">Critical / High</CardTitle>
             <AlertTriangle className="h-4 w-4 text-red-600" />
           </CardHeader>
           <CardContent>
@@ -323,12 +323,12 @@ export default function RequirementsTracePage() {
                 <SelectValue placeholder="Criticality" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">All DAL</SelectItem>
-                <SelectItem value="DAL-A">DAL-A</SelectItem>
-                <SelectItem value="DAL-B">DAL-B</SelectItem>
-                <SelectItem value="DAL-C">DAL-C</SelectItem>
-                <SelectItem value="DAL-D">DAL-D</SelectItem>
-                <SelectItem value="DAL-E">DAL-E</SelectItem>
+                <SelectItem value="">All Priorities</SelectItem>
+                <SelectItem value="Critical">Critical</SelectItem>
+                <SelectItem value="High">High</SelectItem>
+                <SelectItem value="Medium">Medium</SelectItem>
+                <SelectItem value="Low">Low</SelectItem>
+                <SelectItem value="Info">Info</SelectItem>
               </SelectContent>
             </Select>
             

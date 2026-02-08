@@ -6,6 +6,7 @@
 import express, { Request, Response } from 'express';
 import logger from '../logger';
 import db from '../config/database';
+import { callLLM, testConnection, getGatewayStats, GatewayError } from '../services/agentGateway';
 
 const router = express.Router();
 
@@ -35,73 +36,28 @@ router.post('/analyze', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'userPrompt is required' });
     }
 
-    // Get OpenAI API key
-    const openaiApiKey = process.env.OPENAI_API_KEY;
-    
-    if (!openaiApiKey || openaiApiKey === 'your-openai-api-key') {
-      logger.error('OpenAI API key not configured in OPAL_SE');
-      return res.status(500).json({ 
-        error: 'OpenAI API key not configured in OPAL_SE'
-      });
-    }
-
-    // Build messages array
-    const messages: any[] = [];
-    if (systemPrompt) {
-      messages.push({ role: 'system', content: systemPrompt });
-    }
-    messages.push({ role: 'user', content: userPrompt });
-
-    logger.info(`AI Analyze request - Temperature: ${temperature}, Max tokens: ${max_tokens}`);
-
-    // Call OpenAI
-    const requestBody: any = {
-      model: process.env.MODEL || 'gpt-4o',
-      messages,
+    const result = await callLLM({
+      caller: 'ai-analyze',
+      system_prompt: systemPrompt,
+      user_prompt: userPrompt,
       temperature,
-      max_tokens
-    };
-
-    // Add response format if specified
-    if (response_format === 'json_object') {
-      requestBody.response_format = { type: 'json_object' };
-    }
-
-    const openaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${openaiApiKey}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(requestBody)
+      max_tokens,
+      json_mode: response_format === 'json_object',
     });
 
-    if (!openaiResponse.ok) {
-      const errorText = await openaiResponse.text();
-      logger.error('OpenAI API error:', errorText);
-      return res.status(openaiResponse.status).json({
-        error: 'Failed to get AI response from OpenAI',
-        details: `Status: ${openaiResponse.status}`,
-        openai_error: errorText
-      });
-    }
-
-    const data = await openaiResponse.json();
-    const aiMessage = data.choices[0]?.message?.content;
-
-    if (!aiMessage) {
-      return res.status(500).json({ error: 'No response from OpenAI' });
-    }
-
     return res.json({
-      message: aiMessage,
-      content: aiMessage,
-      model: data.model,
-      usage: data.usage
+      message: result.content,
+      content: result.content,
+      model: result.model,
+      usage: result.usage,
+      request_id: result.request_id,
     });
 
   } catch (error: any) {
     logger.error('AI analyze error:', error);
+    if (error instanceof GatewayError) {
+      return res.status(500).json(error.toJSON());
+    }
     return res.status(500).json({
       error: 'Failed to process AI analysis',
       details: error.message
@@ -118,19 +74,6 @@ router.post('/chat', async (req: Request, res: Response) => {
   try {
     const { message, history, context_type, context_id, include_requirements } = req.body;
 
-    // Get OpenAI API key
-    const openaiApiKey = process.env.OPENAI_API_KEY;
-    
-    logger.info(`OpenAI API Key loaded: ${openaiApiKey ? 'Yes (length: ' + openaiApiKey.length + ')' : 'No'}`);
-    
-    if (!openaiApiKey || openaiApiKey === 'your-openai-api-key') {
-      logger.error('OpenAI API key not configured in OPAL_SE');
-      return res.status(500).json({ 
-        error: 'OpenAI API key not configured in OPAL_SE',
-        debug: `Key present: ${!!openaiApiKey}, Key length: ${openaiApiKey?.length || 0}`
-      });
-    }
-
     // Gather system context based on request
     let systemContext = '';
     
@@ -141,7 +84,7 @@ router.post('/chat', async (req: Request, res: Response) => {
       const eventCount = await db('events').count('* as count').first();
       
       systemContext += `\n\nSystem Graph Context:
-- Total Nodes: ${nodeCount?.count || 0} (requirements, tests, issues, parts, etc.)
+- Total Nodes: ${nodeCount?.count || 0}
 - Total Relationships: ${edgeCount?.count || 0}
 - Total Events: ${eventCount?.count || 0}`;
     } catch (error) {
@@ -153,20 +96,20 @@ router.post('/chat', async (req: Request, res: Response) => {
       try {
         const node = await db('system_nodes')
           .where({ id: context_id })
-          .orWhere({ name: context_id })
+          .orWhere({ title: context_id })
           .first();
         
         if (node) {
           systemContext += `\n\nCurrent Context - ${node.type}:
 - ID: ${node.id}
-- Name: ${node.name}
+- Title: ${node.title}
 - Status: ${node.status}
 - Description: ${node.description || 'N/A'}`;
           
           // Get related nodes
           const related = await db('system_edges')
-            .where({ source_id: node.id })
-            .orWhere({ target_id: node.id })
+            .where({ source_node_id: node.id })
+            .orWhere({ target_node_id: node.id })
             .limit(10);
           
           if (related.length > 0) {
@@ -188,7 +131,7 @@ router.post('/chat', async (req: Request, res: Response) => {
         
         if (recentEvents.length > 0) {
           systemContext += `\n\nRecent System Activity:`;
-          recentEvents.forEach(event => {
+          recentEvents.forEach((event: any) => {
             systemContext += `\n- ${event.event_type}: ${event.summary}`;
           });
         }
@@ -198,75 +141,46 @@ router.post('/chat', async (req: Request, res: Response) => {
     }
 
     // Build system message with context
-    const systemMessage = `You are an AI assistant for the CORE-SE systems engineering platform. You have access to a live system graph with requirements, tests, issues, and their relationships.
+    const systemMessage = `You are an AI assistant for the OPAL task management and coordination platform. You have access to a live system graph with tasks, validations, agents, and their relationships.
 
 ${systemContext}
 
 You can help with:
-- Requirements analysis and traceability
+- Task analysis and traceability
 - Impact analysis of changes
-- Test coverage analysis  
-- System engineering queries
+- Validation coverage analysis  
+- System graph queries
 - Data exploration and insights
 
 Provide specific, actionable responses based on the system context above.`;
 
-    // Prepare messages for OpenAI
-    const messages = [
-      {
-        role: 'system',
-        content: systemMessage
-      },
-      // Include recent history (last 10 messages)
-      ...history.slice(-10).map((msg: any) => ({
-        role: msg.role,
-        content: msg.content
-      })),
-      {
-        role: 'user',
-        content: message
-      }
-    ];
+    // Build history for gateway
+    const chatHistory = (history || []).slice(-10).map((msg: any) => ({
+      role: msg.role as 'user' | 'assistant',
+      content: msg.content
+    }));
 
-    // Call OpenAI
-    const openaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${openaiApiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: process.env.MODEL || 'gpt-4o',
-        messages: messages,
-        temperature: 0.7,
-        max_tokens: 1000
-      })
+    // Call LLM through gateway
+    const result = await callLLM({
+      caller: 'ai-chat',
+      system_prompt: systemMessage,
+      user_prompt: message,
+      history: chatHistory,
+      temperature: 0.7,
+      max_tokens: 1000,
     });
-
-    if (!openaiResponse.ok) {
-      const errorText = await openaiResponse.text();
-      logger.error('OpenAI API error:', { status: openaiResponse.status, error: errorText });
-      return res.status(500).json({ 
-        error: 'Failed to get AI response from OpenAI',
-        details: `Status: ${openaiResponse.status}`,
-        openai_error: errorText.substring(0, 200)
-      });
-    }
-
-    const openaiData = await openaiResponse.json();
-    const aiMessage = openaiData.choices[0]?.message?.content || 'Sorry, I could not generate a response.';
 
     // Generate context-aware suggestions
     const suggestions = [
       'Query system graph statistics',
-      'Analyze requirement traceability',
-      'Find gaps in test coverage',
+      'Analyze task traceability',
+      'Find gaps in validation coverage',
       'Show recent system changes',
       'Explain impact of a change'
     ];
 
     res.json({
-      message: aiMessage,
+      message: result.content,
       timestamp: new Date().toISOString(),
       context_used: {
         context_type,
@@ -274,16 +188,43 @@ Provide specific, actionable responses based on the system context above.`;
         include_requirements,
         system_stats: systemContext.includes('System Graph Context')
       },
-      suggestions
+      suggestions,
+      request_id: result.request_id,
     });
 
   } catch (error: any) {
     logger.error('AI chat error:', error);
+    if (error instanceof GatewayError) {
+      return res.status(500).json(error.toJSON());
+    }
     res.status(500).json({ 
       error: 'Internal server error',
       details: error.message 
     });
   }
+});
+
+/**
+ * @route GET /api/ai/test-connection
+ * @desc Test the LLM connection (replaces direct browser→OpenAI calls)
+ * @access Public
+ */
+router.get('/test-connection', async (_req: Request, res: Response) => {
+  try {
+    const result = await testConnection();
+    res.json(result);
+  } catch (error: any) {
+    res.status(500).json({ status: 'error', error: error.message });
+  }
+});
+
+/**
+ * @route GET /api/ai/gateway-stats
+ * @desc Get agent gateway statistics
+ * @access Public
+ */
+router.get('/gateway-stats', async (_req: Request, res: Response) => {
+  res.json(getGatewayStats());
 });
 
 export default router;

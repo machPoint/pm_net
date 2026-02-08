@@ -22,6 +22,7 @@ import {
 interface ServiceStatus {
   name: string;
   url: string;
+  proxyUrl?: string;
   port: number;
   status: "online" | "offline" | "checking";
   latency?: number;
@@ -53,6 +54,7 @@ export default function AdminSystemPage() {
     {
       name: "OPAL MCP Server",
       url: "http://localhost:7788/",
+      proxyUrl: "/api/opal/health",
       port: 7788,
       status: "checking",
       icon: <Activity className="w-5 h-5" />,
@@ -120,6 +122,43 @@ export default function AdminSystemPage() {
 
     const startTime = Date.now();
 
+    // Use proxy URL if available (server-side check, avoids CORS issues)
+    if (service.proxyUrl) {
+      try {
+        const response = await fetch(service.proxyUrl, {
+          signal: AbortSignal.timeout(5000),
+        });
+        const latency = Date.now() - startTime;
+
+        if (response.ok) {
+          setServices((prev) =>
+            prev.map((s, i) =>
+              i === serviceIndex
+                ? { ...s, status: "online" as const, latency }
+                : s
+            )
+          );
+          addLog(`${service.name} is online (${latency}ms)`);
+        } else {
+          setServices((prev) =>
+            prev.map((s, i) =>
+              i === serviceIndex ? { ...s, status: "offline" as const } : s
+            )
+          );
+          addLog(`${service.name} is offline`, true);
+        }
+      } catch (error) {
+        setServices((prev) =>
+          prev.map((s, i) =>
+            i === serviceIndex ? { ...s, status: "offline" as const } : s
+          )
+        );
+        addLog(`${service.name} is offline`, true);
+      }
+      return;
+    }
+
+    // Fallback: direct fetch with no-cors for services without a proxy
     try {
       const response = await fetch(service.url, {
         method: "GET",

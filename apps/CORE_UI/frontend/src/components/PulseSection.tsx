@@ -28,10 +28,11 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { useDataMode } from "@/contexts/DataModeContext";
 import { generateFakePulseItems, StreamingDataGenerator } from "@/lib/fakeDataGenerators";
+import { useEventStream, ActivityEvent } from "@/hooks/useEventStream";
 
 interface ActivityItem {
   id: string;
-  type: "requirement" | "test_case" | "issue" | "ecn" | "email";
+  type: "task" | "validation" | "issue" | "change_request" | "notification";
   title: string;
   description: string;
   timestamp: string;
@@ -77,6 +78,42 @@ export default function PulseSection() {
   const [selectedAgentLayers, setSelectedAgentLayers] = useState<string[]>([]);
   const [selectedAgentStatuses, setSelectedAgentStatuses] = useState<string[]>([]);
   const [selectedAgentCapabilities, setSelectedAgentCapabilities] = useState<string[]>([]);
+
+  // Real-time event stream (only active in real data mode)
+  const { events: sseEvents, connected: sseConnected } = useEventStream({
+    maxEvents: 50,
+    autoReconnect: true,
+  });
+
+  // Merge SSE events into activities when in real mode
+  useEffect(() => {
+    if (dataMode !== 'real' || sseEvents.length === 0) return;
+
+    const newItems: ActivityItem[] = sseEvents
+      .filter((ev: ActivityEvent) => !activities.some(a => a.id === ev.id))
+      .map((ev: ActivityEvent) => ({
+        id: ev.id,
+        type: (ev.entity_type === 'Task' ? 'task' :
+               ev.entity_type === 'Validation' ? 'validation' :
+               ev.entity_type === 'Issue' ? 'issue' : 'notification') as ActivityItem['type'],
+        title: ev.summary,
+        description: `${ev.event_type} by ${ev.source}`,
+        timestamp: new Date(ev.timestamp).toLocaleString(),
+        user: {
+          name: ev.source,
+          avatar: ev.source.substring(0, 2).toUpperCase(),
+        },
+        source: ev.source,
+        isRead: false,
+        status: ev.event_type,
+        changeType: ev.event_type,
+        metadata: ev.metadata,
+      }));
+
+    if (newItems.length > 0) {
+      setActivities(prev => [...newItems, ...prev].slice(0, 100));
+    }
+  }, [sseEvents, dataMode]);
 
   // Fetch activities - respects data mode
   useEffect(() => {
@@ -237,7 +274,7 @@ export default function PulseSection() {
       case "requirement": return FileText;
       case "test_case": return GitCommit;
       case "issue": return MessageSquare;
-      case "ecn": return Bell;
+      case "change_request": return Bell;
       case "email": return Mail;
       default: return FileText;
     }
@@ -247,7 +284,7 @@ export default function PulseSection() {
     switch (source) {
       case "jama": return "bg-blue-500/10 text-blue-500 border-blue-500/30";
       case "jira": return "bg-orange-500/10 text-orange-500 border-orange-500/30";
-      case "windchill": return "bg-purple-500/10 text-purple-500 border-purple-500/30";
+      case "agent": return "bg-purple-500/10 text-purple-500 border-purple-500/30";
       case "email": return "bg-green-500/10 text-green-500 border-green-500/30";
       default: return "bg-card text-card-foreground border-border";
     }
@@ -258,7 +295,7 @@ export default function PulseSection() {
       case "requirement": return "bg-blue-500/10 text-blue-400";
       case "test_case": return "bg-green-500/10 text-green-400";
       case "issue": return "bg-red-500/10 text-red-400";
-      case "ecn": return "bg-yellow-500/10 text-yellow-400";
+      case "change_request": return "bg-yellow-500/10 text-yellow-400";
       case "email": return "bg-purple-500/10 text-purple-400";
       default: return "bg-card text-card-foreground border-border";
     }

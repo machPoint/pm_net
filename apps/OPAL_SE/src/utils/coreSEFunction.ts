@@ -222,7 +222,7 @@ export function validateTypes(
 export function validateBounded(params: any): void {
   const hasLimit = params.limit !== undefined;
   const hasIds = params.ids && Array.isArray(params.ids) && params.ids.length > 0;
-  const hasScope = params.subsystem || params.start_node_ids;
+  const hasScope = params.domain || params.start_node_ids;
   
   if (!hasLimit && !hasIds && !hasScope) {
     throw new Error('Function must have bounded scope: provide limit, IDs, or scope filter');

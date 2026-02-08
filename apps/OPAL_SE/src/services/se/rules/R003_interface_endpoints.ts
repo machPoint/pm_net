@@ -19,7 +19,7 @@ export const R003_InterfaceEndpoints: Rule = {
     const interfaces = await getNodesByFilter({
       project_id: context.project_id,
       type: 'Interface',
-      ...(context.subsystem ? { subsystem: context.subsystem } : {})
+      ...(context.domain ? { source: context.domain } : {})
     });
 
     for (const iface of interfaces) {
@@ -40,7 +40,7 @@ export const R003_InterfaceEndpoints: Rule = {
         violations.push({
           rule_id: 'R003',
           severity: 'warning',
-          message: `Interface ${iface.name} has ${totalConnections} connections instead of 2`,
+          message: `Interface ${iface.title} has ${totalConnections} connections instead of 2`,
           affected_nodes: [iface.id],
           details: {
             interface_id: iface.id,

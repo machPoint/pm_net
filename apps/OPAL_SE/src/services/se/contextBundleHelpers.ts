@@ -38,7 +38,7 @@ export interface ImpactAnalysisParams {
   max_depth?: number;
   include_history?: boolean;
   history_days?: number;
-  subsystem?: string;
+  domain?: string;
 }
 
 export interface ImpactAnalysisContext {
@@ -58,7 +58,7 @@ export interface ImpactAnalysisContext {
   analysis_scope: {
     start_nodes: number;
     max_depth: number;
-    subsystem?: string;
+    domain?: string;
   };
   timestamp: string;
 }
@@ -74,7 +74,7 @@ export async function getImpactAnalysisContext(
       project_id: params.project_id,
       start_node_ids: params.start_node_ids,
       max_depth: params.max_depth,
-      include_relation_types: ['TRACES_TO', 'VERIFIED_BY', 'ALLOCATED_TO', 'INTERFACES_WITH']
+      include_relation_types: ['depends_on', 'assigned_to', 'produces', 'requires_approval', 'for_task', 'executes_plan', 'checks', 'evidenced_by']
     };
     
     const impactResult = await traceDownstreamImpact(impactParams);
@@ -82,7 +82,7 @@ export async function getImpactAnalysisContext(
     // 2. Run consistency checks on impacted area
     const checksResult = await runConsistencyChecks({
       project_id: params.project_id,
-      subsystem: params.subsystem
+      domain: params.domain
     });
     
     // 3. Get change history if requested
@@ -109,7 +109,7 @@ export async function getImpactAnalysisContext(
       analysis_scope: {
         start_nodes: params.start_node_ids.length,
         max_depth: params.max_depth || 3,
-        subsystem: params.subsystem
+        domain: params.domain
       },
       timestamp: new Date().toISOString()
     };
@@ -132,7 +132,7 @@ export async function getImpactAnalysisContext(
 export interface DailySummaryParams {
   project_id: string;
   date?: string; // ISO date string, defaults to today
-  subsystem?: string;
+  domain?: string;
 }
 
 export interface DailySummaryContext {
@@ -152,7 +152,7 @@ export interface DailySummaryContext {
   // Activity summary
   activity_summary: {
     total_events: number;
-    by_source_system: Record<string, number>;
+    by_source: Record<string, number>;
     by_entity_type: Record<string, number>;
     by_event_type: Record<string, number>;
   };
@@ -185,13 +185,13 @@ export async function getDailySummaryContext(
     // 2. Get graph statistics
     const graphStats = await getGraphStatistics({
       project_id: params.project_id,
-      subsystem: params.subsystem
+      domain: params.domain
     });
     
     // 3. Run consistency checks
     const checksResult = await runConsistencyChecks({
       project_id: params.project_id,
-      subsystem: params.subsystem
+      domain: params.domain
     });
     
     // 4. Build activity summary from change set stats
@@ -199,7 +199,7 @@ export async function getDailySummaryContext(
     
     const activitySummary = {
       total_events: changeSet.event_count || 0,
-      by_source_system: stats.by_source_system || {},
+      by_source: stats.by_source || {},
       by_entity_type: stats.by_entity_type || {},
       by_event_type: stats.by_event_type || {}
     };
@@ -226,12 +226,12 @@ export async function getDailySummaryContext(
 /**
  * Verification Review Context Bundle
  * 
- * Provides comprehensive verification status for a project or subsystem.
+ * Provides comprehensive verification status for a project or domain.
  * Combines verification gaps analysis with coverage metrics.
  */
 export interface VerificationReviewParams {
   project_id: string;
-  subsystem?: string;
+  domain?: string;
   requirement_type?: string;
 }
 
@@ -248,7 +248,7 @@ export interface VerificationReviewContext {
     overall_coverage: number;
     by_type: Record<string, any>;
     by_level?: Record<string, any>;
-    by_subsystem?: Record<string, any>;
+    by_domain?: Record<string, any>;
   };
   
   // Summary statistics
@@ -264,7 +264,7 @@ export interface VerificationReviewContext {
   // Scope
   scope: {
     project_id: string;
-    subsystem?: string;
+    domain?: string;
     requirement_type?: string;
   };
   
@@ -280,14 +280,14 @@ export async function getVerificationReviewContext(
     // 1. Find verification gaps
     const gapsResult = await findVerificationGaps({
       project_id: params.project_id,
-      subsystem: params.subsystem,
+      domain: params.domain,
       requirement_type: params.requirement_type
     });
     
     // 2. Get coverage metrics
     const metricsResult = await getVerificationCoverageMetrics({
       project_id: params.project_id,
-      subsystem: params.subsystem
+      domain: params.domain
     });
     
     // 3. Build summary statistics
@@ -312,12 +312,12 @@ export async function getVerificationReviewContext(
         overall_coverage: metricsResult.overall_coverage,
         by_type: metricsResult.by_type || {},
         by_level: metricsResult.by_level,
-        by_subsystem: metricsResult.by_subsystem
+        by_domain: metricsResult.by_domain
       },
       summary,
       scope: {
         project_id: params.project_id,
-        subsystem: params.subsystem,
+        domain: params.domain,
         requirement_type: params.requirement_type
       },
       timestamp: new Date().toISOString()

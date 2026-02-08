@@ -9,10 +9,22 @@
 import { v4 as uuid } from 'uuid';
 import db from '../config/database';
 import logger from '../logger';
+import {
+	NodeType, EdgeType,
+	getDefaultWeight, isValidNodeType, isValidEdgeType,
+	getNodeLayer, getEdgeLayer,
+} from '../types/graph-vocabulary';
 
 // ============================================================================
 // Types
 // ============================================================================
+
+export interface Provenance {
+	source: string;       // originating system: 'ui' | 'agent' | 'import' | 'api' | ...
+	source_ref?: string;  // external reference ID from the originating system
+	as_of?: string;       // timestamp when the source data was current
+	confidence: number;   // 0.0-1.0 (1.0 = human-verified, lower = agent-inferred)
+}
 
 export interface Node {
 	id: string;
@@ -22,6 +34,12 @@ export interface Node {
 	description?: string;
 	status: string;
 	metadata?: Record<string, any>;
+	// Provenance
+	source: string;
+	source_ref?: string;
+	as_of?: string;
+	confidence: number;
+	// Lifecycle
 	created_by: string;
 	created_at: string;
 	updated_at: string;
@@ -39,6 +57,12 @@ export interface Edge {
 	weight_metadata?: Record<string, any>;
 	directionality: 'directed' | 'bidirectional';
 	metadata?: Record<string, any>;
+	// Provenance
+	source: string;
+	source_ref?: string;
+	as_of?: string;
+	confidence: number;
+	// Lifecycle
 	created_by: string;
 	created_at: string;
 	updated_at: string;
@@ -47,13 +71,18 @@ export interface Edge {
 }
 
 export interface CreateNodeInput {
-	node_type: string;
+	node_type: NodeType;
 	title: string;
 	description?: string;
 	status: string;
 	metadata?: Record<string, any>;
 	created_by: string;
 	schema_layer?: string;
+	// Provenance (optional, defaults applied)
+	source?: string;
+	source_ref?: string;
+	as_of?: string;
+	confidence?: number;
 }
 
 export interface UpdateNodeInput {
@@ -65,7 +94,7 @@ export interface UpdateNodeInput {
 }
 
 export interface CreateEdgeInput {
-	edge_type: string;
+	edge_type: EdgeType;
 	source_node_id: string;
 	target_node_id: string;
 	weight?: number;
@@ -74,6 +103,11 @@ export interface CreateEdgeInput {
 	metadata?: Record<string, any>;
 	created_by: string;
 	schema_layer?: string;
+	// Provenance (optional, defaults applied)
+	source?: string;
+	source_ref?: string;
+	as_of?: string;
+	confidence?: number;
 }
 
 export interface UpdateEdgeInput {
@@ -107,17 +141,27 @@ export interface TraverseResult {
  * Create a new node
  */
 export async function createNode(input: CreateNodeInput): Promise<Node> {
+	if (!isValidNodeType(input.node_type)) {
+		logger.warn(`Non-canonical node_type: '${input.node_type}' (accepted but not in graph-vocabulary)`);
+	}
+
 	const now = new Date().toISOString();
 	const id = uuid();
 
 	const node: Node = {
 		id,
 		node_type: input.node_type,
-		schema_layer: input.schema_layer || 'pm_core',
+		schema_layer: input.schema_layer || getNodeLayer(input.node_type),
 		title: input.title,
 		description: input.description,
 		status: input.status,
 		metadata: input.metadata,
+		// Provenance
+		source: input.source || 'ui',
+		source_ref: input.source_ref,
+		as_of: input.as_of || now,
+		confidence: input.confidence ?? 1.0,
+		// Lifecycle
 		created_by: input.created_by,
 		created_at: now,
 		updated_at: now,
@@ -312,6 +356,10 @@ export async function getNodeHistory(nodeId: string): Promise<any[]> {
  * Create a new edge
  */
 export async function createEdge(input: CreateEdgeInput): Promise<Edge> {
+	if (!isValidEdgeType(input.edge_type)) {
+		logger.warn(`Non-canonical edge_type: '${input.edge_type}' (accepted but not in graph-vocabulary)`);
+	}
+
 	// Validate: no self-referencing edges
 	if (input.source_node_id === input.target_node_id) {
 		throw new Error('Self-referencing edges are not allowed');
@@ -345,11 +393,17 @@ export async function createEdge(input: CreateEdgeInput): Promise<Edge> {
 		edge_type: input.edge_type,
 		source_node_id: input.source_node_id,
 		target_node_id: input.target_node_id,
-		schema_layer: input.schema_layer || 'pm_core',
-		weight: input.weight ?? 1.0,
+		schema_layer: input.schema_layer || getEdgeLayer(input.edge_type),
+		weight: input.weight ?? getDefaultWeight(input.edge_type),
 		weight_metadata: input.weight_metadata,
 		directionality: input.directionality || 'directed',
 		metadata: input.metadata,
+		// Provenance
+		source: input.source || 'ui',
+		source_ref: input.source_ref,
+		as_of: input.as_of || now,
+		confidence: input.confidence ?? 1.0,
+		// Lifecycle
 		created_by: input.created_by,
 		created_at: now,
 		updated_at: now,

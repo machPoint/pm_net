@@ -58,7 +58,7 @@ export async function registerSETools(configs: any, wss: any): Promise<void> {
           },
           node_filters: {
             type: 'object',
-            description: 'Filters for nodes (type, subsystem, status, ids, external_refs)'
+            description: 'Filters for nodes (type, source, status, ids)'
           },
           edge_filters: {
             type: 'object',
@@ -87,7 +87,7 @@ export async function registerSETools(configs: any, wss: any): Promise<void> {
     // 2. getSystemSlice
     await createTool(configs, wss, {
       name: 'getSystemSlice',
-      description: 'Extract a bounded subgraph around specific nodes or within a subsystem',
+      description: 'Extract a bounded subgraph around specific nodes or within a domain',
       inputSchema: {
         type: 'object',
         properties: {
@@ -95,9 +95,9 @@ export async function registerSETools(configs: any, wss: any): Promise<void> {
             type: 'string',
             description: 'Project identifier (required)'
           },
-          subsystem: {
+          domain: {
             type: 'string',
-            description: 'Extract all nodes in this subsystem'
+            description: 'Extract all nodes in this domain'
           },
           start_node_ids: {
             type: 'array',
@@ -191,7 +191,7 @@ export async function registerSETools(configs: any, wss: any): Promise<void> {
         type: 'object',
         properties: {
           project_id: { type: 'string' },
-          subsystem: { type: 'string' },
+          domain: { type: 'string' },
           requirement_type: { type: 'string' }
         },
         required: ['project_id']
@@ -211,7 +211,7 @@ export async function registerSETools(configs: any, wss: any): Promise<void> {
         type: 'object',
         properties: {
           project_id: { type: 'string' },
-          subsystem: { type: 'string' }
+          domain: { type: 'string' }
         },
         required: ['project_id']
       },
@@ -230,7 +230,7 @@ export async function registerSETools(configs: any, wss: any): Promise<void> {
         type: 'object',
         properties: {
           project_id: { type: 'string' },
-          subsystem: { type: 'string' }
+          domain: { type: 'string' }
         },
         required: ['project_id']
       },
@@ -308,7 +308,7 @@ export async function registerSETools(configs: any, wss: any): Promise<void> {
         type: 'object',
         properties: {
           project_id: { type: 'string' },
-          subsystem: { type: 'string' },
+          domain: { type: 'string' },
           rule_ids: {
             type: 'array',
             items: { type: 'string' },

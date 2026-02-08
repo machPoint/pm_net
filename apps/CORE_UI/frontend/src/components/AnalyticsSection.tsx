@@ -19,7 +19,7 @@ const mockAnalyticsData = {
 			type: "requirement" as const,
 			status: "Active",
 			metadata: { lastUpdated: "2024-03-10" },
-			connections: [{ id: "c1", type: "traces_to", target: "DES-001" }, { id: "c2", type: "traces_to", target: "DES-002" }]
+			connections: [{ id: "c1", type: "depends_on", target: "DES-001" }, { id: "c2", type: "depends_on", target: "DES-002" }]
 		},
 		{
 			id: "DES-001",
@@ -62,7 +62,7 @@ export default function AnalyticsSection() {
 				<RequirementImpactAnalytics
 					analytics={mockAnalyticsData.analytics}
 					impactTree={mockAnalyticsData.impactTree}
-					requirementTitle="Project Overview: Flight Control System"
+					requirementTitle="Project Overview: Agent Task Management"
 					onRefresh={() => console.log("Refresh clicked")}
 					onExport={() => console.log("Export clicked")}
 				/>

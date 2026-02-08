@@ -107,7 +107,7 @@ export default function ToolWindowSection() {
                   item.status === 'draft' ? 'pending' as const : 'active' as const,
           lastUpdated: new Date(item.modified_date).toLocaleDateString(),
           owner: item.modified_by,
-          tags: [item.fields.priority || 'medium', item.fields.safety_level || 'DAL-C'],
+          tags: [item.fields.priority || 'medium', item.fields.safety_level || 'Medium'],
           category: item.item_type
         }));
         
@@ -172,7 +172,7 @@ export default function ToolWindowSection() {
                 item.status === 'draft' ? 'pending' as const : 'active' as const,
         lastUpdated: new Date(item.modified_date).toLocaleDateString(),
         owner: item.modified_by,
-        tags: [item.fields.priority || 'medium', item.fields.safety_level || 'DAL-C'],
+        tags: [item.fields.priority || 'medium', item.fields.safety_level || 'Medium'],
         category: item.item_type
       }));
       
@@ -332,7 +332,7 @@ export default function ToolWindowSection() {
                 <RefreshCw className="w-8 h-8 animate-spin text-muted-foreground mb-4" />
                 <h3 className="text-lg font-medium mb-2">Loading Requirements</h3>
                 <p className="text-muted-foreground text-sm">
-                  Fetching GOES-R requirements from database...
+                  Fetching task requirements from database...
                 </p>
               </div>
             ) : viewMode === "list" ? (

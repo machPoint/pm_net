@@ -111,13 +111,22 @@ export default function SystemGraphPage() {
   }
 
   const relationColors: Record<string, string> = {
-    TRACES_TO: "bg-blue-400",
-    VERIFIED_BY: "bg-green-400",
-    ALLOCATED_TO: "bg-purple-400",
-    INTERFACES_WITH: "bg-yellow-400",
-    BLOCKS: "bg-red-400",
-    DERIVED_FROM: "bg-orange-400",
-    REFERS_TO: "bg-gray-400"
+    depends_on: "bg-blue-400",
+    produces: "bg-green-400",
+    assigned_to: "bg-purple-400",
+    informs: "bg-yellow-400",
+    blocks: "bg-red-400",
+    mitigates: "bg-orange-400",
+    requires_approval: "bg-gray-400",
+    for_task: "bg-teal-400",
+    proposes: "bg-indigo-400",
+    executes_plan: "bg-cyan-400",
+    executed: "bg-emerald-400",
+    checks: "bg-lime-400",
+    evidenced_by: "bg-amber-400",
+    during_run: "bg-rose-400",
+    learned_from: "bg-violet-400",
+    based_on: "bg-fuchsia-400"
   }
 
   return (
