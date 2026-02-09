@@ -199,14 +199,18 @@ import diagnosticsRoutes from './routes/diagnostics';
 import llmAdminRoutes from './routes/llm-admin';
 import chelexAdminRoutes from './routes/chelex-admin';
 import graphApiRoutes from './routes/graph-api';
+import agentOpsRoutes from './routes/agent-ops';
+import promptsRoutes from './routes/prompts';
 
-// Use routes
-app.use('/api', apiRoutes);
+// Use routes (order matters — specific paths before catch-alls)
+app.use('/api/prompts', promptsRoutes);  // Prompt management API (before catch-all apiRoutes)
 app.use('/api/diagnostics', diagnosticsRoutes);
 app.use('/api/llm', llmAdminRoutes);
-app.use('/admin', adminRoutes);
 app.use('/api/chelex', chelexAdminRoutes);  // Legacy - to be removed
+app.use('/api/agent-ops', agentOpsRoutes);  // Agent operations API for UI
 app.use('/api', graphApiRoutes);  // New graph API for Net PM Core
+app.use('/api', apiRoutes);  // Catch-all API routes (admin-api, task-intake, etc.)
+app.use('/admin', adminRoutes);
 
 // Setup complete
 // Static files middleware for the root path

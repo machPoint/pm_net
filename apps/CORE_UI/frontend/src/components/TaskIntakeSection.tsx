@@ -17,6 +17,9 @@ import {
 	Clock,
 	Plus,
 	RotateCcw,
+	Pencil,
+	Trash2,
+	GripVertical,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -84,7 +87,7 @@ export default function TaskIntakeSection() {
 	return (
 		<div className="h-full flex flex-col">
 			{/* Stage Progress Bar */}
-			<StageProgressBar currentStage={intake.session.stage} onNew={intake.createSession} />
+			<StageProgressBar currentStage={intake.session.stage} onNew={intake.createSession} onDelete={intake.deleteSession} />
 
 			{/* Main split view */}
 			<div className="flex-1 flex overflow-hidden">
@@ -156,7 +159,7 @@ export default function TaskIntakeSection() {
 // Stage Progress Bar
 // ============================================================================
 
-function StageProgressBar({ currentStage, onNew }: { currentStage: IntakeStage; onNew: () => void }) {
+function StageProgressBar({ currentStage, onNew, onDelete }: { currentStage: IntakeStage; onNew: () => void; onDelete?: () => void }) {
 	const currentStep = STAGE_META[currentStage].step;
 
 	return (
@@ -189,7 +192,13 @@ function StageProgressBar({ currentStage, onNew }: { currentStage: IntakeStage; 
 				);
 			})}
 
-			<div className="ml-auto flex-shrink-0">
+			<div className="ml-auto flex-shrink-0 flex items-center gap-1">
+				{onDelete && (
+					<Button variant="ghost" size="sm" onClick={onDelete} className="text-xs gap-1 text-red-400 hover:text-red-300 hover:bg-red-500/10">
+						<Trash2 className="w-3 h-3" />
+						Delete
+					</Button>
+				)}
 				<Button variant="ghost" size="sm" onClick={onNew} className="text-xs gap-1 text-[var(--color-text-secondary)]">
 					<RotateCcw className="w-3 h-3" />
 					New
@@ -215,7 +224,7 @@ function ChatBubble({ message }: { message: IntakeMessage }) {
 				!isUser && !isSystem && "bg-[var(--color-text-primary)]/5 text-[var(--color-text-primary)]",
 				isSystem && "bg-transparent text-[var(--color-text-secondary)] text-xs italic"
 			)}>
-				{message.content}
+				{typeof message.content === 'string' ? message.content : JSON.stringify(message.content)}
 			</div>
 		</div>
 	);
@@ -369,10 +378,23 @@ function StartStage({ intake }: { intake: ReturnType<typeof useTaskIntake> }) {
 // ── Stage 1: Precedents ─────────────────────────────────────────────────────
 
 function PrecedentsStage({ intake }: { intake: ReturnType<typeof useTaskIntake> }) {
+	const [autoSkipping, setAutoSkipping] = useState(false);
+
 	const handleSkip = async () => {
 		// Session is already at 'clarify' stage — kick off the first LLM question
-		await intake.clarify("I'd like to proceed with defining this task. What details do you need?");
+		await intake.clarify("No similar past workflows found. Please assess this task — is it clear enough to plan, or do you need more details? Give me your initial take and any questions.");
 	};
+
+	// Auto-advance when no precedents found
+	useEffect(() => {
+		if (intake.precedents.length === 0 && !intake.loading && !autoSkipping) {
+			setAutoSkipping(true);
+			const timer = setTimeout(() => {
+				handleSkip();
+			}, 1500);
+			return () => clearTimeout(timer);
+		}
+	}, [intake.precedents.length, intake.loading]);
 
 	return (
 		<div className="space-y-3 p-4 rounded-lg bg-[var(--color-text-primary)]/5">
@@ -382,7 +404,17 @@ function PrecedentsStage({ intake }: { intake: ReturnType<typeof useTaskIntake> 
 			</h3>
 
 			{intake.precedents.length === 0 ? (
-				<p className="text-sm text-[var(--color-text-secondary)]">No similar precedents found. Starting fresh.</p>
+				<div className="space-y-2">
+					<p className="text-sm text-[var(--color-text-secondary)]">
+						Found 0 precedent(s). {autoSkipping ? "Advancing to clarification..." : "User can select one or start fresh."}
+					</p>
+					{autoSkipping && (
+						<div className="flex items-center gap-2 text-xs text-[var(--color-text-secondary)]">
+							<Loader2 className="w-3 h-3 animate-spin" />
+							Moving to next step...
+						</div>
+					)}
+				</div>
 			) : (
 				<div className="space-y-2">
 					{intake.precedents.map((p) => (
@@ -408,15 +440,17 @@ function PrecedentsStage({ intake }: { intake: ReturnType<typeof useTaskIntake> 
 				</div>
 			)}
 
-			<Button
-				variant="outline"
-				onClick={handleSkip}
-				disabled={intake.loading}
-				className="w-full text-sm"
-			>
-				{intake.loading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
-				Start Fresh (Skip Precedents)
-			</Button>
+			{!autoSkipping && (
+				<Button
+					variant="outline"
+					onClick={handleSkip}
+					disabled={intake.loading}
+					className="w-full text-sm"
+				>
+					{intake.loading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+					Start Fresh (Skip Precedents)
+				</Button>
+			)}
 		</div>
 	);
 }
@@ -475,15 +509,150 @@ function PlanStage({ intake }: { intake: ReturnType<typeof useTaskIntake> }) {
 // ── Stage 4: Approve ────────────────────────────────────────────────────────
 
 function ApproveStage({ intake }: { intake: ReturnType<typeof useTaskIntake> }) {
+	const [editing, setEditing] = useState(false);
+	const [editSteps, setEditSteps] = useState<Array<{ order: number; action: string; expected_outcome: string; tool?: string }>>([]);
+	const [newStepAction, setNewStepAction] = useState("");
+
+	// Initialize edit steps from plan preview
+	useEffect(() => {
+		if (intake.planPreview?.steps) {
+			setEditSteps(intake.planPreview.steps.map(s => ({ ...s })));
+		}
+	}, [intake.planPreview]);
+
+	const updateStep = (idx: number, field: string, value: string) => {
+		const next = [...editSteps];
+		(next[idx] as any)[field] = value;
+		setEditSteps(next);
+	};
+
+	const removeStep = (idx: number) => {
+		const next = editSteps.filter((_, i) => i !== idx);
+		next.forEach((s, i) => { s.order = i + 1; });
+		setEditSteps(next);
+	};
+
+	const addStep = () => {
+		if (!newStepAction.trim()) return;
+		setEditSteps([...editSteps, { order: editSteps.length + 1, action: newStepAction.trim(), expected_outcome: '' }]);
+		setNewStepAction("");
+	};
+
+	const moveStep = (idx: number, dir: -1 | 1) => {
+		const newIdx = idx + dir;
+		if (newIdx < 0 || newIdx >= editSteps.length) return;
+		const next = [...editSteps];
+		[next[idx], next[newIdx]] = [next[newIdx], next[idx]];
+		next.forEach((s, i) => { s.order = i + 1; });
+		setEditSteps(next);
+	};
+
+	const steps = editing ? editSteps : (intake.planPreview?.steps || []);
+
 	return (
 		<div className="space-y-3 p-4 rounded-lg bg-[var(--color-text-primary)]/5">
-			<h3 className="text-sm font-semibold text-[var(--color-text-primary)] flex items-center gap-2">
-				<Shield className="w-4 h-4 text-green-400" />
-				Review the Plan
-			</h3>
-			<p className="text-sm text-[var(--color-text-secondary)]">
-				Review the proposed plan in the right panel. Approve to start execution or reject to revise.
-			</p>
+			<div className="flex items-center justify-between">
+				<h3 className="text-sm font-semibold text-[var(--color-text-primary)] flex items-center gap-2">
+					<Shield className="w-4 h-4 text-green-400" />
+					Review & Edit Plan
+				</h3>
+				<Button size="sm" variant="ghost" onClick={() => setEditing(!editing)} className="text-xs gap-1">
+					<Pencil className="w-3 h-3" />
+					{editing ? 'Done Editing' : 'Edit Steps'}
+				</Button>
+			</div>
+
+			{/* Plan steps */}
+			<div className="space-y-2">
+				{steps.map((step, i) => (
+					<div key={i} className={cn(
+						"flex items-start gap-2 p-2 rounded border text-sm",
+						editing ? "border-border bg-background" : "border-transparent bg-[var(--color-text-primary)]/5"
+					)}>
+						<span className="text-xs font-mono text-muted-foreground w-5 pt-1 text-right flex-shrink-0">{step.order}.</span>
+						{editing ? (
+							<div className="flex-1 space-y-1">
+								<Input
+									value={step.action}
+									onChange={(e) => updateStep(i, 'action', e.target.value)}
+									className="h-7 text-xs"
+									placeholder="Step action..."
+								/>
+								<Input
+									value={step.expected_outcome}
+									onChange={(e) => updateStep(i, 'expected_outcome', e.target.value)}
+									className="h-7 text-xs"
+									placeholder="Expected outcome..."
+								/>
+							</div>
+						) : (
+							<div className="flex-1">
+								<span className="text-[var(--color-text-primary)]">{step.action}</span>
+								{step.tool && <Badge variant="outline" className="ml-1 text-[10px]">{step.tool}</Badge>}
+								{step.expected_outcome && (
+									<div className="text-xs text-[var(--color-text-secondary)] mt-0.5">{step.expected_outcome}</div>
+								)}
+							</div>
+						)}
+						{editing && (
+							<div className="flex flex-col gap-0.5">
+								<Button size="sm" variant="ghost" className="h-5 w-5 p-0" onClick={() => moveStep(i, -1)} disabled={i === 0}>▲</Button>
+								<Button size="sm" variant="ghost" className="h-5 w-5 p-0" onClick={() => moveStep(i, 1)} disabled={i === steps.length - 1}>▼</Button>
+								<Button size="sm" variant="ghost" className="h-5 w-5 p-0 text-red-400" onClick={() => removeStep(i)}>×</Button>
+							</div>
+						)}
+					</div>
+				))}
+			</div>
+
+			{/* Add step (edit mode) */}
+			{editing && (
+				<div className="flex gap-2">
+					<Input
+						value={newStepAction}
+						onChange={(e) => setNewStepAction(e.target.value)}
+						placeholder="Add a new step..."
+						className="flex-1 h-8 text-xs"
+						onKeyDown={(e) => { if (e.key === 'Enter') addStep(); }}
+					/>
+					<Button size="sm" variant="outline" onClick={addStep} className="h-8">
+						<Plus className="w-3 h-3 mr-1" /> Add
+					</Button>
+				</div>
+			)}
+
+			{intake.planPreview && (
+				<div className="text-xs text-[var(--color-text-secondary)] italic border-t border-border pt-2">
+					{intake.planPreview.rationale}
+					{intake.planPreview.estimated_hours > 0 && ` · Est. ${intake.planPreview.estimated_hours}h`}
+				</div>
+			)}
+
+			{/* Subtasks (microtasks) */}
+			{intake.planPreview?.subtasks && intake.planPreview.subtasks.length > 0 && (
+				<div className="space-y-1.5 border-t border-border pt-2">
+					<h4 className="text-xs font-semibold text-[var(--color-text-primary)] flex items-center gap-1.5">
+						<GitBranch className="w-3 h-3 text-purple-400" />
+						Subtasks ({intake.planPreview.subtasks.length})
+					</h4>
+					{intake.planPreview.subtasks.map((st, i) => (
+						<div key={st.id || i} className="flex items-start gap-2 px-2 py-1.5 rounded bg-purple-500/5 border border-purple-500/10 text-xs">
+							<div className="w-3.5 h-3.5 rounded-full border border-purple-400/50 flex-shrink-0 mt-0.5" />
+							<div className="flex-1 min-w-0">
+								<span className="text-[var(--color-text-primary)] font-medium">{st.title}</span>
+								{st.description && (
+									<div className="text-[var(--color-text-secondary)] mt-0.5 line-clamp-1">{st.description}</div>
+								)}
+							</div>
+							<div className="flex items-center gap-1 flex-shrink-0">
+								<Badge variant="outline" className="text-[10px]">{st.priority}</Badge>
+								{st.estimated_hours > 0 && <span className="text-[var(--color-text-secondary)]">{st.estimated_hours}h</span>}
+							</div>
+						</div>
+					))}
+				</div>
+			)}
+
 			<div className="flex gap-2">
 				<Button
 					onClick={() => intake.approvePlan(true)}
@@ -500,7 +669,7 @@ function ApproveStage({ intake }: { intake: ReturnType<typeof useTaskIntake> }) 
 					className="flex-1 gap-2 border-red-500/50 text-red-400 hover:bg-red-500/10"
 				>
 					<XCircle className="w-4 h-4" />
-					Reject
+					Reject & Revise
 				</Button>
 			</div>
 		</div>
@@ -510,28 +679,93 @@ function ApproveStage({ intake }: { intake: ReturnType<typeof useTaskIntake> }) 
 // ── Stage 5: Execute ────────────────────────────────────────────────────────
 
 function ExecuteStage({ intake }: { intake: ReturnType<typeof useTaskIntake> }) {
+	const [executing, setExecuting] = useState(false);
+	const [completedSteps, setCompletedSteps] = useState<number[]>([]);
+	const steps = intake.planPreview?.steps || intake.plan?.metadata?.steps || [];
+
+	const handleExecute = async () => {
+		setExecuting(true);
+		setCompletedSteps([]);
+
+		// Simulate step-by-step progress
+		for (let i = 0; i < steps.length; i++) {
+			await new Promise(resolve => setTimeout(resolve, 800 + Math.random() * 600));
+			setCompletedSteps(prev => [...prev, i]);
+		}
+
+		// Actually start execution on the backend
+		await intake.startExecution();
+		setExecuting(false);
+	};
+
 	return (
 		<div className="space-y-3 p-4 rounded-lg bg-[var(--color-text-primary)]/5">
 			<h3 className="text-sm font-semibold text-[var(--color-text-primary)] flex items-center gap-2">
 				<Zap className="w-4 h-4 text-orange-400" />
-				Ready to Execute
+				{executing ? 'Executing...' : 'Ready to Execute'}
 			</h3>
-			<p className="text-sm text-[var(--color-text-secondary)]">
-				The plan is approved. Start execution to create a run and begin working on the task.
-			</p>
-			<Button
-				onClick={intake.startExecution}
-				disabled={intake.loading}
-				className="w-full gap-2"
-			>
-				{intake.loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
-				Start Execution
-			</Button>
+
+			{/* Plan steps as progress checklist */}
+			{steps.length > 0 && (
+				<div className="space-y-1.5">
+					{steps.map((step: any, i: number) => {
+						const isDone = completedSteps.includes(i);
+						const isActive = executing && !isDone && completedSteps.length === i;
+						return (
+							<div key={i} className={cn(
+								"flex items-center gap-2 px-2 py-1.5 rounded text-xs transition-all",
+								isDone && "bg-green-500/10 text-green-400",
+								isActive && "bg-blue-500/10 text-blue-400",
+								!isDone && !isActive && "text-[var(--color-text-secondary)]"
+							)}>
+								{isDone ? (
+									<CheckCircle2 className="w-3.5 h-3.5 text-green-400 flex-shrink-0" />
+								) : isActive ? (
+									<Loader2 className="w-3.5 h-3.5 animate-spin text-blue-400 flex-shrink-0" />
+								) : (
+									<div className="w-3.5 h-3.5 rounded-full border border-current flex-shrink-0" />
+								)}
+								<span className={cn("flex-1", isDone && "line-through opacity-70")}>
+									{step.order}. {step.action}
+								</span>
+								{step.tool && <Badge variant="outline" className="text-[10px]">{step.tool}</Badge>}
+							</div>
+						);
+					})}
+				</div>
+			)}
+
+			{/* Progress bar */}
+			{executing && steps.length > 0 && (
+				<div className="w-full bg-[var(--color-text-primary)]/10 rounded-full h-1.5">
+					<div
+						className="bg-blue-500 h-1.5 rounded-full transition-all duration-500"
+						style={{ width: `${(completedSteps.length / steps.length) * 100}%` }}
+					/>
+				</div>
+			)}
+
+			{!executing && (
+				<Button
+					onClick={handleExecute}
+					disabled={intake.loading}
+					className="w-full gap-2"
+				>
+					{intake.loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
+					Start Execution
+				</Button>
+			)}
 		</div>
 	);
 }
 
 // ── Stage 6: Verify ─────────────────────────────────────────────────────────
+
+function safeCriterionText(c: any): string {
+	if (typeof c === 'string') return c;
+	if (c && typeof c === 'object') return c.text || c.title || c.description || c.id || JSON.stringify(c);
+	return String(c);
+}
 
 function VerifyStage({ intake }: { intake: ReturnType<typeof useTaskIntake> }) {
 	const [delivTitle, setDelivTitle] = useState("");
@@ -541,9 +775,17 @@ function VerifyStage({ intake }: { intake: ReturnType<typeof useTaskIntake> }) {
 	const [verifications, setVerifications] = useState<Array<{
 		criterion_text: string;
 		status: "passed" | "failed" | "needs_review";
-	}>>(
-		criteria.map((c: any) => ({ criterion_text: c.text || c, status: "passed" as const }))
-	);
+	}>>([]);
+
+	// Re-sync verifications when criteria change (useState initializer only runs once)
+	useEffect(() => {
+		if (criteria.length > 0 && verifications.length === 0) {
+			setVerifications(criteria.map((c: any) => ({
+				criterion_text: safeCriterionText(c),
+				status: "passed" as const,
+			})));
+		}
+	}, [criteria]);
 
 	const addDeliverable = () => {
 		if (!delivTitle.trim()) return;

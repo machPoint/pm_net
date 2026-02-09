@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -26,6 +26,8 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+
+const OPAL_BASE_URL = '/api/opal/proxy';
 
 interface DataSource {
   id: string;
@@ -58,65 +60,41 @@ export default function RelationshipsSection() {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [discoveredRelationships, setDiscoveredRelationships] = useState<DiscoveredRelationship[]>([]);
   const [selectedRelationship, setSelectedRelationship] = useState<DiscoveredRelationship | null>(null);
+  const [dataSources, setDataSources] = useState<DataSource[]>([]);
 
-  // Mock data sources
-  const mockDataSources: DataSource[] = [
-    {
-      id: "task-ingest-001",
-      type: "task",
-      title: "TASK-456: Data Ingestion Pipeline Rate Limiting",
-      content: "Update rate limiting for the data ingestion pipeline. Requirements include processing up to 10k records/sec with backpressure handling and retry logic for failed batches.",
-      metadata: {
-        owner: "Sarah Chen",
-        date: "2024-01-15",
-        system: "Data Processing"
-      }
-    },
-    {
-      id: "task-monitor-002",
-      type: "task",
-      title: "TASK-789: Agent Health Monitoring Requirements",
-      content: "The monitoring agent shall track health of all active agents. Requirements: heartbeat every 30s, automatic restart on 3 consecutive failures, alert escalation to governance layer.",
-      metadata: {
-        owner: "Dr. Michael Rodriguez",
-        date: "2024-01-10",
-        system: "Monitoring"
-      }
-    },
-    {
-      id: "note-review-003",
-      type: "note",
-      title: "Cross-Agent Coordination Review Notes",
-      content: "Discussed shared database connections across ingestion and reporting agents. Lead noted potential connection pool exhaustion under peak load. Action item: verify connection limits and ensure adequate pooling for both agents.",
-      metadata: {
-        owner: "Lead Engineer Lisa Park",
-        date: "2024-01-12",
-        system: "Coordination"
-      }
-    },
-    {
-      id: "task-queue-004",
-      type: "task",
-      title: "TASK-334: Message Queue Capacity Planning",
-      content: "Message queue shall handle burst traffic from ingestion, monitoring alerts, and scheduled report generation. Capacity analysis required for concurrent operations.",
-      metadata: {
-        owner: "James Wilson",
-        date: "2024-01-08",
-        system: "Infrastructure"
-      }
-    },
-    {
-      id: "doc-scaling-005",
-      type: "document",
-      title: "Auto-Scaling Policy Design Document",
-      content: "High ingestion load triggers additional worker agents, which increases monitoring overhead. Scaling policies must account for cascading resource demands across the agent fleet.",
-      metadata: {
-        owner: "Anna Kowalski",
-        date: "2024-01-05",
-        system: "Scaling"
+  // Fetch real data sources from graph API
+  useEffect(() => {
+    async function fetchSources() {
+      try {
+        const res = await fetch(`${OPAL_BASE_URL}/api/nodes`);
+        if (!res.ok) return;
+        const data = await res.json();
+        const nodes = data.nodes || [];
+        const typeMap: Record<string, DataSource['type']> = {
+          task: 'task', note: 'note', risk: 'document', decision: 'document',
+          gate: 'requirement', plan: 'document', resource: 'document',
+        };
+        const sources: DataSource[] = nodes.map((n: any) => {
+          const meta = typeof n.metadata === 'string' ? JSON.parse(n.metadata || '{}') : (n.metadata || {});
+          return {
+            id: n.id,
+            type: typeMap[n.node_type] || 'document',
+            title: n.title,
+            content: n.description || '',
+            metadata: {
+              owner: n.created_by || 'Unknown',
+              date: n.created_at ? new Date(n.created_at).toISOString().split('T')[0] : '',
+              system: n.node_type,
+            },
+          };
+        });
+        setDataSources(sources);
+      } catch (err) {
+        console.error('Failed to fetch data sources:', err);
       }
     }
-  ];
+    fetchSources();
+  }, []);
 
   const handleAnalyzeRelationships = async () => {
     if (selectedSources.length < 2) {
@@ -198,7 +176,7 @@ export default function RelationshipsSection() {
     }
   };
 
-  const filteredSources = mockDataSources.filter(source =>
+  const filteredSources = dataSources.filter(source =>
     source.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
     source.content.toLowerCase().includes(searchQuery.toLowerCase()) ||
     source.metadata.system?.toLowerCase().includes(searchQuery.toLowerCase())

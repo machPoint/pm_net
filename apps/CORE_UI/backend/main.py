@@ -103,7 +103,7 @@ async def health_check():
         "status": "healthy",
         "service": "core-se-api",
         "mode": settings.MODE,
-        "fds_configured": bool(settings.FDS_BASE_URL),
+        "agent_provider": "openclaw",
     }
 
 # Include routers

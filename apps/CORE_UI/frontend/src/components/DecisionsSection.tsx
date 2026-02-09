@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -28,6 +28,7 @@ import { cn } from "@/lib/utils";
 
 interface Decision {
 	id: string;
+	shortId: string;
 	title: string;
 	status: "proposed" | "accepted" | "rejected" | "superseded";
 	date: string;
@@ -36,57 +37,43 @@ interface Decision {
 	description: string;
 }
 
-const mockDecisions: Decision[] = [
-	{
-		id: "ADR-001",
-		title: "Use Next.js for Frontend Framework",
-		status: "accepted",
-		date: "2023-11-15",
-		author: "System Architect",
-		tags: ["frontend", "architecture"],
-		description: "Adopt Next.js 14 for the main application frontend to leverage server components and improved routing."
-	},
-	{
-		id: "ADR-002",
-		title: "Graph Database for Traceability",
-		status: "accepted",
-		date: "2023-12-01",
-		author: "Data Engineer",
-		tags: ["database", "backend"],
-		description: "Implement Neo4j to store complex relationships between requirements, design, and code artifacts."
-	},
-	{
-		id: "ADR-003",
-		title: "Microservices Architecture",
-		status: "rejected",
-		date: "2024-01-10",
-		author: "DevOps",
-		tags: ["architecture", "infrastructure"],
-		description: "Split the backend into microservices. Rejected due to team size and complexity overhead."
-	},
-	{
-		id: "ADR-004",
-		title: "Real-time Collaboration via WebSockets",
-		status: "proposed",
-		date: "2024-02-20",
-		author: "Frontend Lead",
-		tags: ["realtime", "ux"],
-		description: "Implement Socket.io for live updates on impact analysis graphs and chat features."
-	},
-	{
-		id: "ADR-005",
-		title: "Authentication Provider Selection",
-		status: "accepted",
-		date: "2024-01-05",
-		author: "Security Lead",
-		tags: ["security", "auth"],
-		description: "Use Auth0 for identity management to support SSO and diverse login methods."
-	}
-];
+const OPAL_BASE_URL = '/api/opal/proxy';
 
 export default function DecisionsSection() {
 	const [searchQuery, setSearchQuery] = useState("");
-	const [decisions] = useState<Decision[]>(mockDecisions);
+	const [decisions, setDecisions] = useState<Decision[]>([]);
+
+	// Fetch decision nodes from graph API
+	useEffect(() => {
+		async function fetchDecisions() {
+			try {
+				const res = await fetch(`${OPAL_BASE_URL}/api/nodes?node_type=decision`);
+				if (!res.ok) return;
+				const data = await res.json();
+				const nodes = data.nodes || [];
+				const mapped: Decision[] = nodes.map((n: any) => {
+					const meta = typeof n.metadata === 'string' ? JSON.parse(n.metadata) : (n.metadata || {});
+					const statusMap: Record<string, Decision['status']> = {
+						open: 'proposed', decided: 'accepted', revisited: 'superseded',
+					};
+					return {
+						id: n.id,
+						shortId: n.id.substring(0, 8).toUpperCase(),
+						title: n.title,
+						status: statusMap[n.status] || 'proposed',
+						date: n.created_at ? new Date(n.created_at).toISOString().split('T')[0] : '',
+						author: meta.decided_by || n.created_by || 'Unknown',
+						tags: meta.tags || [],
+						description: n.description || '',
+					};
+				});
+				setDecisions(mapped);
+			} catch (err) {
+				console.error('Failed to fetch decisions:', err);
+			}
+		}
+		fetchDecisions();
+	}, []);
 
 	const filteredDecisions = decisions.filter(d =>
 		d.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -164,7 +151,7 @@ export default function DecisionsSection() {
 								{filteredDecisions.length > 0 ? (
 									filteredDecisions.map((decision) => (
 										<TableRow key={decision.id} className="cursor-pointer hover:bg-muted/50">
-											<TableCell className="font-medium font-mono text-xs">{decision.id}</TableCell>
+											<TableCell className="font-medium font-mono text-xs">{decision.shortId}</TableCell>
 											<TableCell>
 												<div className="font-medium">{decision.title}</div>
 												<div className="text-xs text-muted-foreground flex gap-2 mt-1">

@@ -75,6 +75,7 @@ export interface PlanPreview {
 	rationale: string;
 	estimated_hours: number;
 	requires_gate: boolean;
+	subtasks?: Array<{ id: string; title: string; description: string; priority: string; estimated_hours: number }>;
 }
 
 // In-memory session store (MVP; swap for DB later)
@@ -370,18 +371,27 @@ export async function clarify(
 		content: m.content,
 	}));
 
-	const clarifyPrompt = `You are helping refine a task. Current task state:
+	const isFirstRound = session.clarify_count === 0;
+	const clarifyPrompt = `You are an expert project manager AI helping refine a task. Current task state:
 Title: ${task.title}
 Description: ${task.description || 'None'}
 Priority: ${task.metadata?.priority || 'medium'}
 Estimated hours: ${task.metadata?.estimated_hours || 'unknown'}
 Acceptance criteria: ${JSON.stringify(task.metadata?.acceptance_criteria || [])}
+No precedents were found for this task.
 
 The user just said: "${userMessage}"
 
+${isFirstRound ? `This is the FIRST interaction. You MUST:
+1. Start with a brief assessment: Is this task clear, vague, simple, or complex? (1 sentence)
+2. Identify what information is MISSING (scope, constraints, deliverables, timeline, tools needed, etc.)
+3. Ask 2-3 specific, targeted questions to fill the gaps
+4. If the task is very simple and self-explanatory, say so and set ready_for_plan to true
+Be conversational but direct. Don't just say "tell me more" — ask SPECIFIC questions.` : `Continue the conversation. Ask follow-up questions if needed, or confirm you have enough info.`}
+
 Respond with JSON:
 {
-  "reply": "your response to the user (conversational, concise)",
+  "reply": "your response to the user (conversational, concise, with numbered questions if asking)",
   "task_updates": {
     "description": "updated description if changed, or null",
     "priority": "updated priority if changed, or null",
@@ -508,7 +518,7 @@ export async function generatePlan(
 	const task = await graphService.getNode(session.task_id);
 	if (!task) throw new Error(`Task not found: ${session.task_id}`);
 
-	// Ask LLM to generate a plan
+	// Ask LLM to generate a plan with subtasks
 	const planPrompt = `Generate an execution plan for this task:
 Title: ${task.title}
 Description: ${task.description || 'None'}
@@ -521,15 +531,21 @@ Respond with JSON:
   "steps": [
     {"order": 1, "action": "description of step", "expected_outcome": "what this produces", "tool": "optional tool name"}
   ],
+  "subtasks": [
+    {"title": "subtask title", "description": "what this subtask involves", "priority": "high|medium|low", "estimated_hours": number}
+  ],
   "rationale": "why this approach",
   "estimated_hours": number,
   "risks": ["potential risk 1", "potential risk 2"]
-}`;
+}
+
+IMPORTANT: If this is a complex or multi-faceted task, break it into 2-5 subtasks (microtasks) that can be tracked independently. Each subtask should be a concrete, actionable unit of work. For simple tasks, subtasks can be an empty array.`;
 
 	let steps: any[] = [];
 	let rationale = '';
 	let estimatedHours = task.metadata?.estimated_hours || 1;
 	let risks: string[] = [];
+	let subtasks: Array<{ title: string; description: string; priority: string; estimated_hours: number }> = [];
 
 	try {
 		const llmResponse = await callLLM({
@@ -545,6 +561,7 @@ Respond with JSON:
 		rationale = parsed.rationale || '';
 		estimatedHours = parsed.estimated_hours || estimatedHours;
 		risks = parsed.risks || [];
+		subtasks = parsed.subtasks || [];
 	} catch (err: any) {
 		logger.warn(`[TaskIntake] LLM plan generation failed: ${err.message}`);
 		steps = [{ order: 1, action: 'Execute task as described', expected_outcome: 'Task completed', tool: null }];
@@ -628,10 +645,50 @@ Respond with JSON:
 		});
 	}
 
+	// Create subtask (microtask) nodes if any
+	const subtaskIds: string[] = [];
+	for (const st of subtasks) {
+		try {
+			const subtask = await graphService.createNode({
+				node_type: 'task',
+				title: st.title,
+				description: st.description || '',
+				status: 'open',
+				metadata: {
+					priority: st.priority || 'medium',
+					estimated_hours: st.estimated_hours || 1,
+					parent_task_id: session.task_id,
+					is_subtask: true,
+				},
+				created_by: session.agent_id,
+				source: 'agent',
+			});
+			subtaskIds.push(subtask.id);
+
+			// parent_task --parent_of--> subtask
+			await graphService.createEdge({
+				edge_type: 'parent_of',
+				source_node_id: session.task_id,
+				target_node_id: subtask.id,
+				weight: 1.0,
+				created_by: session.agent_id,
+			});
+		} catch (err: any) {
+			logger.warn(`[TaskIntake] Failed to create subtask "${st.title}": ${err.message}`);
+		}
+	}
+
+	if (subtaskIds.length > 0) {
+		// Update parent task metadata with subtask references
+		await graphService.updateNode(session.task_id, {
+			metadata: { ...task.metadata, subtask_ids: subtaskIds, is_macro_task: true },
+		}, session.agent_id);
+	}
+
 	session.plan_id = plan.id;
 	session.gate_id = gateId;
 	session.stage = 'approve';
-	addMessage(session, 'system', `Plan ${plan.id} generated with ${steps.length} step(s).`);
+	addMessage(session, 'system', `Plan ${plan.id} generated with ${steps.length} step(s)${subtaskIds.length > 0 ? ` and ${subtaskIds.length} subtask(s)` : ''}.`);
 	updateSession(session);
 
 	return {
@@ -641,6 +698,7 @@ Respond with JSON:
 			rationale,
 			estimated_hours: estimatedHours,
 			requires_gate: requiresGate,
+			subtasks: subtasks.map((st, i) => ({ ...st, id: subtaskIds[i] || `pending-${i}` })),
 		},
 		session,
 	};
@@ -961,6 +1019,34 @@ export async function createPrecedent(
 	updateSession(session);
 
 	return { precedent_id: precedent.id, session };
+}
+
+// ============================================================================
+// Delete Session + Associated Nodes
+// ============================================================================
+
+export async function deleteSession(sessionId: string): Promise<{ deleted_nodes: string[] }> {
+	const session = getSession(sessionId);
+	if (!session) throw new Error(`Session not found: ${sessionId}`);
+
+	logger.info(`[TaskIntake] Deleting session ${sessionId} and associated nodes`);
+
+	const deletedNodes: string[] = [];
+	const nodeIds = [session.task_id, session.plan_id, session.gate_id, session.run_id, session.precedent_id].filter(Boolean) as string[];
+
+	for (const nodeId of nodeIds) {
+		try {
+			await graphService.deleteNode(nodeId, session.agent_id);
+			deletedNodes.push(nodeId);
+		} catch (err: any) {
+			logger.warn(`[TaskIntake] Failed to delete node ${nodeId}: ${err.message}`);
+		}
+	}
+
+	sessions.delete(sessionId);
+	logger.info(`[TaskIntake] Session ${sessionId} deleted. Removed ${deletedNodes.length} nodes.`);
+
+	return { deleted_nodes: deletedNodes };
 }
 
 // ============================================================================

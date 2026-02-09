@@ -146,21 +146,21 @@ const AdvancedImpactAnalysis: React.FC<AdvancedImpactAnalysisProps> = ({
       status: node.status,
       impactScore: calculateImpactScore(node),
       riskLevel: calculateRiskLevel(node),
-      changeFrequency: Math.random() * 5, // Mock data
+      changeFrequency: node.connections?.length || 0,
       dependencies: node.connections?.map(c => c.target) || [],
       dependents: [], // Would be calculated from reverse connections
       coverage: {
-        design: node.type === 'design' || node.type === 'jama' ? 100 : Math.random() * 100,
-        implementation: node.type === 'code' || node.type === 'jira' ? 100 : Math.random() * 100,
-        testing: node.type === 'test' ? 100 : Math.random() * 100,
-        verification: node.status === 'verified' ? 100 : Math.random() * 100,
+        design: node.type === 'design' || node.type === 'jama' ? 100 : 0,
+        implementation: node.type === 'code' || node.type === 'jira' ? 100 : 0,
+        testing: node.type === 'test' ? 100 : 0,
+        verification: node.status === 'verified' ? 100 : 0,
       },
       metadata: {
         owner: node.metadata?.owner || 'Unknown',
         team: getTeamFromType(node.type),
         lastModified: node.metadata?.lastUpdated || node.metadata?.modifiedDate || 'Recently',
-        effort: Math.floor(Math.random() * 200) + 20,
-        cost: Math.floor(Math.random() * 50000) + 5000,
+        effort: Math.floor(node.connections?.length || 0) * 10,
+        cost: Math.floor(node.connections?.length || 0) * 1000,
       }
     }));
   }, [impactData]);

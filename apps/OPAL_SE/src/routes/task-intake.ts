@@ -182,4 +182,17 @@ router.post('/sessions/:id/learn', async (req: Request, res: Response) => {
 	}
 });
 
+// ── Delete session + associated nodes ───────────────────────────────────────
+
+/** DELETE /sessions/:id — delete session and optionally its graph nodes */
+router.delete('/sessions/:id', async (req: Request, res: Response) => {
+	try {
+		const result = await taskIntake.deleteSession(req.params.id);
+		res.json({ ok: true, ...result });
+	} catch (err: any) {
+		logger.error(`[task-intake] DELETE /sessions/${req.params.id} error:`, err);
+		res.status(400).json({ ok: false, error: err.message });
+	}
+});
+
 export default router;

@@ -26,8 +26,6 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { useDataMode } from "@/contexts/DataModeContext";
-import { generateFakePulseItems, StreamingDataGenerator } from "@/lib/fakeDataGenerators";
 import { useEventStream, ActivityEvent } from "@/hooks/useEventStream";
 
 interface ActivityItem {
@@ -57,10 +55,7 @@ interface ActivityItem {
   };
 }
 
-// Remove mock activities - we'll fetch from FDS
-
 export default function PulseSection() {
-  const { dataMode, isUsingFakeData, isStreaming } = useDataMode();
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedSources, setSelectedSources] = useState<string[]>([]);
   const [selectedTypes, setSelectedTypes] = useState<string[]>([]);
@@ -87,7 +82,7 @@ export default function PulseSection() {
 
   // Merge SSE events into activities when in real mode
   useEffect(() => {
-    if (dataMode !== 'real' || sseEvents.length === 0) return;
+    if (sseEvents.length === 0) return;
 
     const newItems: ActivityItem[] = sseEvents
       .filter((ev: ActivityEvent) => !activities.some(a => a.id === ev.id))
@@ -113,113 +108,42 @@ export default function PulseSection() {
     if (newItems.length > 0) {
       setActivities(prev => [...newItems, ...prev].slice(0, 100));
     }
-  }, [sseEvents, dataMode]);
+  }, [sseEvents]);
 
-  // Fetch activities - respects data mode
+  // Fetch initial activity from Chelex governance feed
   useEffect(() => {
-    async function fetchActivities() {
+    async function fetchActivity() {
       try {
-        setIsLoading(true);
-        
-        let data;
-        
-        if (dataMode === 'real') {
-          // Fetch from real API
-          const response = await fetch('http://localhost:4000/mock/pulse?limit=50');
-          if (!response.ok) throw new Error('Failed to fetch activities');
-          data = await response.json();
-        } else {
-          // Use fake data (both static and streaming modes start with fake data)
-          data = generateFakePulseItems(50);
-        }
-        
-        // Transform pulse data to ActivityItem format
-        const transformed: ActivityItem[] = data.map((item: any) => ({
-          id: item.id,
-          type: item.artifact_ref.type,
-          title: item.artifact_ref.title,
-          description: item.change_summary,
-          timestamp: new Date(item.timestamp).toLocaleString(),
-          user: {
-            name: item.author || 'System',
-            avatar: (item.author || 'SY').split(' ').map((n: string) => n[0]).join('').substring(0, 2)
-          },
-          source: item.artifact_ref.source,
-          isRead: Math.random() > 0.3, // Random read status for demo
-          status: item.artifact_ref.status,
-          changeType: item.change_type,
-          metadata: item.metadata
-        }));
-        
-        setActivities(transformed);
-        setError(null);
+        const res = await fetch('/api/opal/proxy/api/chelex/activity');
+        if (!res.ok) { setIsLoading(false); return; }
+        const data = await res.json();
+        const events = data.events || [];
+        const mapped: ActivityItem[] = events.map((ev: any) => {
+          const typeMap: Record<string, ActivityItem['type']> = {
+            task_created: 'task', plan_submitted: 'change_request', plan_decision: 'validation',
+          };
+          return {
+            id: ev.id,
+            type: typeMap[ev.event_type] || 'notification',
+            title: ev.title || ev.decision || ev.event_type,
+            description: ev.status ? `Status: ${ev.status}` : '',
+            timestamp: ev.timestamp ? new Date(ev.timestamp).toLocaleString() : '',
+            user: { name: ev.approved_by || 'System', avatar: 'SY' },
+            source: 'Chelex',
+            isRead: false,
+            status: ev.status || ev.decision,
+            changeType: ev.event_type,
+          };
+        });
+        setActivities(prev => [...mapped, ...prev].slice(0, 100));
       } catch (err) {
-        console.error('Error fetching activities:', err);
-        
-        // Fallback to fake data on error
-        if (dataMode === 'real') {
-          setError('Failed to load from server. Using fake data instead.');
-          const fakeData = generateFakePulseItems(50);
-          const transformed: ActivityItem[] = fakeData.map((item: any) => ({
-            id: item.id,
-            type: item.artifact_ref.type,
-            title: item.artifact_ref.title,
-            description: item.change_summary,
-            timestamp: new Date(item.timestamp).toLocaleString(),
-            user: {
-              name: item.author || 'System',
-              avatar: (item.author || 'SY').split(' ').map((n: string) => n[0]).join('').substring(0, 2)
-            },
-            source: item.artifact_ref.source,
-            isRead: Math.random() > 0.3,
-            status: item.artifact_ref.status,
-            changeType: item.change_type,
-            metadata: item.metadata
-          }));
-          setActivities(transformed);
-        }
+        console.error('Failed to fetch Chelex activity:', err);
       } finally {
         setIsLoading(false);
       }
     }
-
-    fetchActivities();
-    
-    // Set up streaming if in streaming mode
-    let streamGenerator: StreamingDataGenerator | null = null;
-    
-    if (isStreaming) {
-      streamGenerator = new StreamingDataGenerator();
-      streamGenerator.start((newItem) => {
-        const transformed: ActivityItem = {
-          id: newItem.id,
-          type: newItem.artifact_ref.type as any,
-          title: newItem.artifact_ref.title,
-          description: newItem.change_summary,
-          timestamp: new Date(newItem.timestamp).toLocaleString(),
-          user: {
-            name: newItem.author || 'System',
-            avatar: (newItem.author || 'SY').split(' ').map((n: string) => n[0]).join('').substring(0, 2)
-          },
-          source: newItem.artifact_ref.source,
-          isRead: false, // New items are unread
-          status: newItem.artifact_ref.status,
-          changeType: newItem.change_type,
-          metadata: {} // Streaming items don't have metadata
-        };
-        
-        setActivities((prev) => [transformed, ...prev].slice(0, 100)); // Keep last 100
-        toast.success(`New activity: ${transformed.title}`, { duration: 3000 });
-      }, 5000); // New item every 5 seconds
-    }
-    
-    // Cleanup
-    return () => {
-      if (streamGenerator) {
-        streamGenerator.stop();
-      }
-    };
-  }, [dataMode, isStreaming]);
+    fetchActivity();
+  }, []);
 
   const filteredItems = useMemo(() => {
     return activities.filter(item => {
@@ -402,16 +326,9 @@ export default function PulseSection() {
           <div>
             <div className="flex items-center gap-2">
               <h2 className="text-lg font-semibold">Activity Pulse</h2>
-              {isUsingFakeData && (
-                <Badge variant="outline" className="text-xs">
-                  {isStreaming ? '🔴 Live Demo' : '📊 Demo Data'}
-                </Badge>
-              )}
             </div>
             <p className="text-sm text-muted-foreground">
-              {isStreaming 
-                ? 'Live streaming demo - new items every 5 seconds' 
-                : 'Real-time feed of all project activities'}
+              {'Real-time feed of all project activities'}
             </p>
           </div>
           

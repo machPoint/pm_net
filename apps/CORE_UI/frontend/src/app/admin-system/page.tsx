@@ -35,23 +35,6 @@ interface ServiceStatus {
 export default function AdminSystemPage() {
   const [services, setServices] = useState<ServiceStatus[]>([
     {
-      name: "FDS (Fake Data Service)",
-      url: "http://localhost:4000",
-      port: 4000,
-      status: "checking",
-      icon: <Database className="w-5 h-5" />,
-      color: "rgb(251, 191, 36)", // yellow
-      links: [
-        { label: "Admin Dashboard", url: "http://localhost:4000/admin" },
-        { label: "API Docs", url: "http://localhost:4000/docs" },
-        { label: "Health", url: "http://localhost:4000/health" },
-      ],
-      metrics: [
-        { label: "Data Items", value: "~300" },
-        { label: "Endpoints", value: "12" },
-      ],
-    },
-    {
       name: "OPAL MCP Server",
       url: "http://localhost:7788/",
       proxyUrl: "/api/opal/health",
@@ -353,7 +336,7 @@ export default function AdminSystemPage() {
           </CardHeader>
           <CardContent>
             <div className="flex items-center justify-center gap-4 flex-wrap py-8">
-              {["FDS", "OPAL", "Core Backend", "Dashboard"].map((node, index, arr) => (
+              {["OPAL", "Core Backend", "Dashboard"].map((node, index, arr) => (
                 <div key={node} className="flex items-center gap-4">
                   <div className="text-center">
                     <div
@@ -366,10 +349,9 @@ export default function AdminSystemPage() {
                       {node}
                     </div>
                     <div className="text-xs text-muted-foreground mt-2">
-                      {index === 0 && "Mock Data"}
-                      {index === 1 && "AI Analysis"}
-                      {index === 2 && "API Gateway"}
-                      {index === 3 && "User Interface"}
+                      {index === 0 && "Graph DB + AI"}
+                      {index === 1 && "API Gateway"}
+                      {index === 2 && "User Interface"}
                     </div>
                   </div>
                   {index < arr.length - 1 && (
@@ -424,10 +406,10 @@ export default function AdminSystemPage() {
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
               {[
-                { title: "Sidecar Info", desc: "FDS integration", url: "http://localhost:4000/sidecar/info" },
-                { title: "Health Check", desc: "FDS system health", url: "http://localhost:4000/health" },
-                { title: "Pulse Feed", desc: "Activity stream", url: "http://localhost:4000/mock/pulse?limit=10" },
-                { title: "Sample Data", desc: "Jama requirements", url: "http://localhost:4000/mock/jama/items?size=5" },
+                { title: "OPAL Health", desc: "MCP server status", url: "http://localhost:7788/api/diagnostics/health" },
+                { title: "Graph Nodes", desc: "All graph nodes", url: "http://localhost:7788/api/nodes" },
+                { title: "Graph Edges", desc: "All graph edges", url: "http://localhost:7788/api/edges" },
+                { title: "Backend Health", desc: "Core API status", url: "http://localhost:8000/health" },
               ].map((link) => (
                 <Button
                   key={link.title}

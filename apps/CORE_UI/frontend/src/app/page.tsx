@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Toaster } from "sonner";
 import { ChevronDown, ChevronRight, Bot, Wrench, Info } from "lucide-react";
@@ -22,109 +22,11 @@ import DecisionsSection from "@/components/DecisionsSection";
 import AnalyticsSection from "@/components/AnalyticsSection";
 import TaskIntakeSection from "@/components/TaskIntakeSection";
 import DashboardSection from "@/components/DashboardSection";
+import AgentAdminSection from "@/components/AgentAdminSection";
+import IntegrationMapSection from "@/components/IntegrationMapSection";
+import PromptsSection from "@/components/PromptsSection";
 
-// Generate mock context data
-function generateContextData() {
-  return {
-    relatedItems: [
-      {
-        id: "1",
-        type: "requirement" as const,
-        title: "API Documentation v2.1",
-        owner: "Sarah Chen",
-        lastUpdated: "2 hours ago",
-        sourceColor: "#3b82f6",
-        isReadOnly: false
-      },
-      {
-        id: "2",
-        type: "test" as const,
-        title: "OAuth2 Integration Tests",
-        owner: "Mike Rodriguez",
-        lastUpdated: "4 hours ago",
-        sourceColor: "#10b981",
-        isReadOnly: true
-      },
-      {
-        id: "3",
-        type: "issue" as const,
-        title: "Database Schema Changes",
-        owner: "Alex Kim",
-        lastUpdated: "1 day ago",
-        sourceColor: "#f59e0b",
-        isReadOnly: false
-      }
-    ],
-    aiInsights: [
-      {
-        id: "1",
-        type: "coverage" as const,
-        title: "Test Coverage Analysis",
-        description: "Current test coverage is at 78% across all modules. Consider adding tests for edge cases.",
-        severity: "medium" as const,
-        source: "AI Analysis",
-        timestamp: "1 hour ago",
-        percentage: 78
-      },
-      {
-        id: "2",
-        type: "suggestion" as const,
-        title: "Performance Optimization",
-        description: "Database queries can be optimized by adding proper indexes to user table.",
-        severity: "low" as const,
-        source: "Performance AI",
-        timestamp: "3 hours ago"
-      },
-      {
-        id: "3",
-        type: "risk" as const,
-        title: "Security Vulnerability",
-        description: "Potential SQL injection risk detected in user input validation.",
-        severity: "high" as const,
-        source: "Security AI",
-        timestamp: "5 hours ago"
-      }
-    ]
-  };
-}
-
-// Generate agent list data
-function generateAgentListData() {
-  return [
-    { id: "orchestrator", name: "Orchestrator", layer: "Meta", status: "active", color: "#22c55e" },
-    { id: "query", name: "Query Agent", layer: "Operational", status: "idle", color: "#3b82f6" },
-    { id: "artifact", name: "Artifact Agent", layer: "Operational", status: "idle", color: "#3b82f6" },
-    { id: "network-builder", name: "Network Builder", layer: "Construction", status: "idle", color: "#8b5cf6" },
-    { id: "data-ingestion", name: "Data Ingestion", layer: "Construction", status: "busy", color: "#8b5cf6" },
-    { id: "onboarding", name: "Onboarding", layer: "Schema Gen", status: "idle", color: "#f59e0b" },
-    { id: "schema-builder", name: "Schema Builder", layer: "Schema Gen", status: "idle", color: "#f59e0b" }
-  ];
-}
-
-// Generate agent capabilities data
-function generateCapabilitiesData() {
-  return [
-    { id: "1", capability: "Graph Traversal", agents: ["Query", "Network Builder"], color: "#3b82f6" },
-    { id: "2", capability: "Report Generation", agents: ["Artifact"], color: "#10b981" },
-    { id: "3", capability: "Data Ingestion", agents: ["Data Ingestion"], color: "#8b5cf6" },
-    { id: "4", capability: "Schema Building", agents: ["Schema Builder", "Onboarding"], color: "#f59e0b" },
-    { id: "5", capability: "Agent Routing", agents: ["Orchestrator"], color: "#22c55e" }
-  ];
-}
-
-// Generate system info data
-function generateSystemInfoData() {
-  return {
-    version: "1.0.0-alpha",
-    provider: "OpenClaw",
-    providerVersion: "0.9.x",
-    agentCount: 7,
-    uptime: "2h 34m",
-    graphNodes: "~500",
-    architecture: "5-Layer Agent System",
-    mode: "Development"
-  };
-}
+const OPAL_BASE_URL = '/api/opal/proxy';
 
 function PageContent() {
   const router = useRouter();
@@ -137,9 +39,94 @@ function PageContent() {
   const [useAIChat, setUseAIChat] = useState(true); // Kept for compatibility
   const { baseTheme } = useTheme();
 
-  const agentListData = generateAgentListData();
-  const capabilitiesData = generateCapabilitiesData();
-  const systemInfo = generateSystemInfoData();
+  const [agentListData, setAgentListData] = useState<any[]>([]);
+  const [capabilitiesData, setCapabilitiesData] = useState<any[]>([]);
+  const [systemInfo, setSystemInfo] = useState({
+    version: "1.0.0-alpha",
+    provider: "OpenClaw",
+    providerVersion: "",
+    agentCount: 0,
+    uptime: "",
+    graphNodes: "0",
+    architecture: "5-Layer Agent System",
+    mode: "Development"
+  });
+
+  // Fetch sidebar data from OpenClaw + graph API
+  useEffect(() => {
+    async function fetchSidebarData() {
+      try {
+        const [ocRes, nodesRes, skillsRes] = await Promise.all([
+          fetch('/api/openclaw/status').catch(() => null),
+          fetch(`${OPAL_BASE_URL}/api/nodes?limit=500`).catch(() => null),
+          fetch(`${OPAL_BASE_URL}/api/diagnostics/tools`).catch(() => null),
+        ]);
+
+        // --- Parse responses ---
+        let ocData: any = null;
+        if (ocRes?.ok) {
+          ocData = await ocRes.json();
+        }
+
+        let nodeCount = 0;
+        if (nodesRes?.ok) {
+          const nd = await nodesRes.json();
+          nodeCount = (nd.nodes || []).length;
+        }
+
+        // --- System Info ---
+        const ocAgents = ocData?.health?.agents || ocData?.status?.heartbeat?.agents || [];
+        const providerVersion = ocData?.status?.update?.registry?.latestVersion || '';
+        const model = ocData?.health?.sessions?.defaults?.model || ocData?.status?.sessions?.defaults?.model || '';
+
+        setSystemInfo({
+          version: "1.0.0-alpha",
+          provider: "OpenClaw",
+          providerVersion,
+          agentCount: ocAgents.length,
+          uptime: model ? `Model: ${model}` : '',
+          graphNodes: String(nodeCount),
+          architecture: "5-Layer Agent System",
+          mode: "Development",
+        });
+
+        // --- Agent List (from OpenClaw) ---
+        if (ocAgents.length > 0) {
+          const colors = ['#60a5fa', '#a78bfa', '#34d399', '#fbbf24', '#f87171'];
+          setAgentListData(ocAgents.map((a: any, i: number) => ({
+            id: `oc-${a.agentId}`,
+            name: a.agentId,
+            layer: a.heartbeat?.enabled ? `Every ${a.heartbeat?.every || '?'}` : 'Disabled',
+            status: a.heartbeat?.enabled ? 'active' : 'idle',
+            color: colors[i % colors.length],
+          })));
+        }
+
+        // --- Capabilities (from diagnostics tools) ---
+        if (skillsRes?.ok) {
+          const toolsData = await skillsRes.json();
+          const tools = toolsData.tools || [];
+          const categories = new Map<string, string[]>();
+          for (const t of tools) {
+            const cat = t.category || 'General';
+            if (!categories.has(cat)) categories.set(cat, []);
+            categories.get(cat)!.push(t.name);
+          }
+          const capColors = ['#60a5fa', '#a78bfa', '#34d399', '#fbbf24', '#f87171', '#fb923c'];
+          let ci = 0;
+          setCapabilitiesData(Array.from(categories.entries()).map(([cat, agents]) => ({
+            id: cat.toLowerCase().replace(/\s/g, '-'),
+            capability: cat,
+            agents,
+            color: capColors[ci++ % capColors.length],
+          })));
+        }
+      } catch (err) {
+        console.error('Failed to fetch sidebar data:', err);
+      }
+    }
+    fetchSidebarData();
+  }, []);
 
 
   const renderActiveSection = () => {
@@ -164,6 +151,10 @@ function PageContent() {
         return <TaskIntakeSection />;
       case "dashboard":
         return <DashboardSection />;
+      case "agent-admin":
+        return <AgentAdminSection />;
+      case "integration-map":
+        return <IntegrationMapSection />;
       case "ai-chat":
         return (
           <div className="h-full">
@@ -176,6 +167,8 @@ function PageContent() {
         );
       case "agents":
         return <AgentsSection />;
+      case "prompts":
+        return <PromptsSection />;
       case "system-admin":
         return <SystemAdminSection />;
       default:
@@ -320,7 +313,7 @@ function PageContent() {
                         </span>
                       </div>
                       <div className="flex flex-wrap gap-1 ml-4">
-                        {cap.agents.map((agent, idx) => (
+                        {cap.agents.map((agent: string, idx: number) => (
                           <span key={idx} className="text-[10px] px-1.5 py-0.5 rounded bg-[#2b2b2b] text-[#888]">
                             {agent}
                           </span>

@@ -23,7 +23,7 @@ export interface ConnectionCreateRequest {
 }
 
 class RequirementsConnectionService {
-  private baseUrl = process.env.NEXT_PUBLIC_FDS_API_URL || 'http://localhost:4000';
+  private baseUrl = '/api/opal/proxy';
 
   /**
    * Get all connections for a specific requirement
@@ -105,12 +105,7 @@ class RequirementsConnectionService {
         metadata: connection.metadata || {}
       };
       
-      // TODO: Persist to FDS backend database
-      // const response = await fetch(`${this.baseUrl}/api/connections`, {
-      //   method: 'POST',
-      //   headers: { 'Content-Type': 'application/json' },
-      //   body: JSON.stringify(newConnection)
-      // });
+      // TODO: Persist to graph DB via OPAL API
       
       console.log(`✅ Created connection: ${newConnection.id}`);
       return newConnection;
@@ -162,10 +157,7 @@ class RequirementsConnectionService {
       
       await new Promise(resolve => setTimeout(resolve, 200));
       
-      // TODO: Call FDS backend to delete
-      // await fetch(`${this.baseUrl}/api/connections/${connectionId}`, {
-      //   method: 'DELETE'
-      // });
+      // TODO: Delete via graph DB OPAL API
       
       console.log(`✅ Deleted connection: ${connectionId}`);
       return true;

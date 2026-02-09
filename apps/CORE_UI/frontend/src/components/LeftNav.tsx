@@ -13,7 +13,10 @@ import {
   BarChart3,
   MessageSquare,
   ClipboardList,
-  LayoutDashboard
+  LayoutDashboard,
+  ShieldCheck,
+  Cable,
+  ScrollText
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -37,6 +40,9 @@ const navItems = [
   { id: "analytics", label: "Analytics", icon: BarChart3 },
   { id: "ai-chat", label: "AI Chat", icon: Brain },
   { id: "agents", label: "Agents", icon: Bot },
+  { id: "agent-admin", label: "Agent Admin", icon: ShieldCheck },
+  { id: "integration-map", label: "Integration Map", icon: Cable },
+  { id: "prompts", label: "Prompts", icon: ScrollText },
   { id: "system-admin", label: "System Admin", icon: Monitor },
 ];
 

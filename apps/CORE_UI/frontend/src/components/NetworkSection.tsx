@@ -27,6 +27,134 @@ interface NetworkEdgeData {
 	metadata?: any;
 }
 
+// Build TaskFlow data from graph nodes + edges for the AgentTaskFlow component
+function buildTaskFlows(nodes: NetworkNodeData[], edges: NetworkEdgeData[]) {
+	const nodeMap = new Map(nodes.map(n => [n.id, n]));
+
+	// Find task nodes
+	const taskNodes = nodes.filter(n => n.type === 'task');
+
+	// Build edge lookup: target -> sources, source -> targets
+	const edgesByTarget = new Map<string, NetworkEdgeData[]>();
+	const edgesBySource = new Map<string, NetworkEdgeData[]>();
+	for (const e of edges) {
+		if (!edgesByTarget.has(e.target)) edgesByTarget.set(e.target, []);
+		edgesByTarget.get(e.target)!.push(e);
+		if (!edgesBySource.has(e.source)) edgesBySource.set(e.source, []);
+		edgesBySource.get(e.source)!.push(e);
+	}
+
+	return taskNodes.map(task => {
+		const activities: Array<{
+			id: string; name: string; description: string;
+			status: 'completed' | 'in_progress' | 'pending' | 'failed';
+			agents: Array<{ id: string; name: string; type: string; metadata: any }>;
+			timestamp?: string;
+		}> = [];
+
+		// Find plans for this task (plan --for_task--> task)
+		const planEdges = (edgesByTarget.get(task.id) || []).filter(e => e.type === 'for_task');
+		for (const pe of planEdges) {
+			const plan = nodeMap.get(pe.source);
+			if (!plan || plan.type !== 'plan') continue;
+			const planStatus = plan.metadata?.status === 'approved' ? 'completed'
+				: plan.metadata?.status === 'rejected' ? 'failed'
+				: plan.metadata?.status === 'pending' ? 'pending' : 'in_progress';
+
+			// Find agent that proposed this plan
+			const proposerEdges = (edgesByTarget.get(plan.id) || []).filter(e => e.type === 'proposes');
+			const agents = proposerEdges.map(ae => {
+				const agent = nodeMap.get(ae.source);
+				return agent ? { id: agent.id, name: agent.title, type: agent.type, metadata: agent.metadata || {} } : null;
+			}).filter(Boolean) as any[];
+
+			// Add plan steps as activities
+			const steps = plan.metadata?.steps || [];
+			if (steps.length > 0) {
+				steps.forEach((step: any, i: number) => {
+					activities.push({
+						id: `${plan.id}-step-${i}`,
+						name: `${step.order || i + 1}. ${step.action}`,
+						description: step.expected_outcome || '',
+						status: planStatus as any,
+						agents: agents.length > 0 ? agents : [],
+						timestamp: step.tool || undefined,
+					});
+				});
+			} else {
+				activities.push({
+					id: plan.id,
+					name: `Plan: ${plan.title}`,
+					description: plan.metadata?.description || '',
+					status: planStatus as any,
+					agents,
+				});
+			}
+		}
+
+		// Find runs for this task (run --for_task--> task)
+		const runEdges = (edgesByTarget.get(task.id) || []).filter(e => e.type === 'for_task');
+		for (const re of runEdges) {
+			const run = nodeMap.get(re.source);
+			if (!run || run.type !== 'run') continue;
+			const runStatus = run.metadata?.status === 'completed' ? 'completed'
+				: run.metadata?.status === 'running' ? 'in_progress'
+				: run.metadata?.status === 'failed' ? 'failed' : 'pending';
+
+			const executorEdges = (edgesByTarget.get(run.id) || []).filter(e => e.type === 'executed');
+			const agents = executorEdges.map(ae => {
+				const agent = nodeMap.get(ae.source);
+				return agent ? { id: agent.id, name: agent.title, type: agent.type, metadata: agent.metadata || {} } : null;
+			}).filter(Boolean) as any[];
+
+			activities.push({
+				id: run.id,
+				name: `Run: ${run.title}`,
+				description: run.metadata?.description || '',
+				status: runStatus as any,
+				agents,
+			});
+		}
+
+		// Find gates for this task
+		const gateEdges = (edgesByTarget.get(task.id) || [])
+			.filter(e => e.type === 'requires_approval')
+			.map(e => nodeMap.get(e.source))
+			.filter(n => n && n.type === 'gate');
+
+		for (const gate of gateEdges) {
+			if (!gate) continue;
+			activities.push({
+				id: gate.id,
+				name: `Gate: ${gate.title}`,
+				description: gate.metadata?.gate_type || '',
+				status: gate.metadata?.status === 'approved' ? 'completed'
+					: gate.metadata?.status === 'rejected' ? 'failed' : 'pending' as any,
+				agents: [],
+			});
+		}
+
+		// If no activities found, add a placeholder
+		if (activities.length === 0) {
+			activities.push({
+				id: `${task.id}-placeholder`,
+				name: 'Task created',
+				description: task.metadata?.description || 'No plan generated yet',
+				status: task.metadata?.status === 'done' ? 'completed'
+					: task.metadata?.status === 'in_progress' ? 'in_progress' : 'pending' as any,
+				agents: [],
+			});
+		}
+
+		return {
+			id: task.id,
+			taskName: task.title,
+			description: task.metadata?.description || '',
+			activities,
+		};
+	});
+}
+
 export default function NetworkSection() {
 	const [nodes, setNodes] = useState<NetworkNodeData[]>([]);
 	const [edges, setEdges] = useState<NetworkEdgeData[]>([]);
@@ -86,10 +214,6 @@ export default function NetworkSection() {
 		} catch (err: any) {
 			console.error('Error fetching network topology:', err);
 			setError(err.message);
-
-			// Fallback to mock data for demo
-			setNodes(getMockNetworkNodes());
-			setEdges(getMockNetworkEdges());
 		} finally {
 			setLoading(false);
 		}
@@ -147,7 +271,7 @@ export default function NetworkSection() {
 
 				<TabsContent value="task-flow" className="flex-1 mt-4">
 					<div className="border rounded-lg overflow-hidden bg-background shadow-sm h-full">
-						<AgentTaskFlow taskFlows={getMockTaskFlows()} />
+						<AgentTaskFlow taskFlows={buildTaskFlows(nodes, edges)} />
 					</div>
 				</TabsContent>
 
@@ -240,292 +364,4 @@ export default function NetworkSection() {
 			</Tabs>
 		</div>
 	);
-}
-
-// Mock data fallback for demo
-function getMockNetworkNodes(): NetworkNodeData[] {
-	return [
-		{
-			id: 'net-router-1',
-			type: 'NetworkDevice',
-			title: 'Core Router 1',
-			metadata: {
-				ip: '10.0.1.1',
-				hostname: 'rtr-core-01',
-				vendor: 'Cisco',
-				model: 'ASR9000',
-				status: 'active',
-				position: { x: 400, y: 100 }
-			}
-		},
-		{
-			id: 'net-switch-1',
-			type: 'NetworkDevice',
-			title: 'Access Switch 1',
-			metadata: {
-				ip: '10.0.2.10',
-				hostname: 'sw-access-01',
-				vendor: 'Arista',
-				model: '7050',
-				status: 'active',
-				position: { x: 200, y: 300 }
-			}
-		},
-		{
-			id: 'net-switch-2',
-			type: 'NetworkDevice',
-			title: 'Access Switch 2',
-			metadata: {
-				ip: '10.0.2.11',
-				hostname: 'sw-access-02',
-				vendor: 'Arista',
-				model: '7050',
-				status: 'active',
-				position: { x: 600, y: 300 }
-			}
-		},
-		{
-			id: 'net-fw-1',
-			type: 'NetworkDevice',
-			title: 'Firewall 1',
-			metadata: {
-				ip: '10.0.0.1',
-				hostname: 'fw-perimeter-01',
-				vendor: 'Palo Alto',
-				status: 'active',
-				position: { x: 400, y: 500 }
-			}
-		}
-	];
-}
-
-function getMockNetworkEdges(): NetworkEdgeData[] {
-	return [
-		{
-			id: 'edge-1',
-			source: 'net-router-1',
-			target: 'net-switch-1',
-			type: 'CONNECTED_TO',
-			weight: 1.0,
-			metadata: {
-				bandwidth: '10Gbps',
-				latency: '0.5ms',
-				status: 'up'
-			}
-		},
-		{
-			id: 'edge-2',
-			source: 'net-router-1',
-			target: 'net-switch-2',
-			type: 'CONNECTED_TO',
-			weight: 1.0,
-			metadata: {
-				bandwidth: '10Gbps',
-				latency: '0.5ms',
-				status: 'up'
-			}
-		},
-		{
-			id: 'edge-3',
-			source: 'net-switch-1',
-			target: 'net-fw-1',
-			type: 'ROUTES_TO',
-			weight: 1.2,
-			metadata: {
-				bandwidth: '1Gbps',
-				status: 'up'
-			}
-		},
-		{
-			id: 'edge-4',
-			source: 'net-switch-2',
-			target: 'net-fw-1',
-			type: 'ROUTES_TO',
-			weight: 1.2,
-			metadata: {
-				bandwidth: '1Gbps',
-				status: 'up'
-			}
-		}
-	];
-}
-
-function getMockTaskFlows() {
-	return [
-		{
-			id: 'task-1',
-			taskName: 'Research Competitor Websites',
-			description: 'Analyze competitor websites for pricing and features',
-			activities: [
-				{
-					id: 'activity-1',
-					name: 'Go to Site',
-					description: 'Navigate to competitor website and load homepage',
-					status: 'completed' as const,
-					timestamp: '2026-02-08 00:15:23',
-					agents: [
-						{
-							id: 'agent-1',
-							name: 'Web Navigator',
-							type: 'Browser Agent',
-							metadata: {
-								model: 'gpt-4o',
-								temperature: 0.3,
-								tokens_used: 1250,
-								execution_time: '2.3s',
-								result: 'Successfully loaded https://competitor.com - Status 200',
-								url: 'https://competitor.com',
-								browser: 'Chromium'
-							}
-						}
-					]
-				},
-				{
-					id: 'activity-2',
-					name: 'Scrape Website',
-					description: 'Extract pricing information and feature lists',
-					status: 'completed' as const,
-					timestamp: '2026-02-08 00:15:28',
-					agents: [
-						{
-							id: 'agent-2',
-							name: 'Content Scraper',
-							type: 'Data Extraction',
-							metadata: {
-								model: 'gpt-4o-mini',
-								temperature: 0.1,
-								tokens_used: 3420,
-								execution_time: '4.7s',
-								result: 'Extracted 15 pricing tiers and 47 features',
-								elements_found: 62,
-								data_quality: 'high'
-							}
-						},
-						{
-							id: 'agent-3',
-							name: 'Schema Validator',
-							type: 'Validation',
-							metadata: {
-								model: 'gpt-4o-mini',
-								temperature: 0,
-								tokens_used: 890,
-								execution_time: '1.2s',
-								result: 'All data validated successfully',
-								validation_errors: 0
-							}
-						}
-					]
-				},
-				{
-					id: 'activity-3',
-					name: 'Analyze Data',
-					description: 'Compare extracted data with our offerings',
-					status: 'completed' as const,
-					timestamp: '2026-02-08 00:15:35',
-					agents: [
-						{
-							id: 'agent-4',
-							name: 'Competitive Analyzer',
-							type: 'Analysis Agent',
-							metadata: {
-								model: 'gpt-4o',
-								temperature: 0.7,
-								tokens_used: 5670,
-								execution_time: '8.9s',
-								result: 'Generated competitive analysis report with 12 key insights',
-								insights_count: 12,
-								recommendations: 5
-							}
-						}
-					]
-				},
-				{
-					id: 'activity-4',
-					name: 'Generate Report',
-					description: 'Create formatted report with findings',
-					status: 'completed' as const,
-					timestamp: '2026-02-08 00:15:47',
-					agents: [
-						{
-							id: 'agent-5',
-							name: 'Report Generator',
-							type: 'Document Agent',
-							metadata: {
-								model: 'gpt-4o',
-								temperature: 0.5,
-								tokens_used: 4230,
-								execution_time: '6.1s',
-								result: 'Generated 8-page PDF report with charts and recommendations',
-								pages: 8,
-								charts: 4,
-								format: 'PDF'
-							}
-						}
-					]
-				}
-			]
-		},
-		{
-			id: 'task-2',
-			taskName: 'Customer Sentiment Analysis',
-			description: 'Analyze social media sentiment about our product',
-			activities: [
-				{
-					id: 'activity-5',
-					name: 'Collect Social Posts',
-					description: 'Gather recent social media mentions',
-					status: 'completed' as const,
-					timestamp: '2026-02-08 00:20:12',
-					agents: [
-						{
-							id: 'agent-6',
-							name: 'Social Scraper',
-							type: 'API Agent',
-							metadata: {
-								model: 'gpt-4o-mini',
-								temperature: 0.2,
-								tokens_used: 2100,
-								execution_time: '5.4s',
-								result: 'Collected 347 posts from Twitter, Reddit, LinkedIn',
-								posts_collected: 347,
-								sources: ['Twitter', 'Reddit', 'LinkedIn']
-							}
-						}
-					]
-				},
-				{
-					id: 'activity-6',
-					name: 'Sentiment Classification',
-					description: 'Classify sentiment of each post',
-					status: 'in_progress' as const,
-					timestamp: '2026-02-08 00:20:19',
-					agents: [
-						{
-							id: 'agent-7',
-							name: 'Sentiment Classifier',
-							type: 'ML Agent',
-							metadata: {
-								model: 'gpt-4o',
-								temperature: 0.3,
-								tokens_used: 8950,
-								execution_time: '12.3s',
-								result: 'Processing... 234/347 posts classified',
-								progress: '67%',
-								positive: 156,
-								neutral: 52,
-								negative: 26
-							}
-						}
-					]
-				},
-				{
-					id: 'activity-7',
-					name: 'Trend Analysis',
-					description: 'Identify emerging trends and topics',
-					status: 'pending' as const,
-					agents: []
-				}
-			]
-		}
-	];
 }

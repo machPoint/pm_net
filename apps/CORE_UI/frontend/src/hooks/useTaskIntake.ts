@@ -56,6 +56,7 @@ export interface PlanPreview {
 	rationale: string;
 	estimated_hours: number;
 	requires_gate: boolean;
+	subtasks?: Array<{ id: string; title: string; description: string; priority: string; estimated_hours: number }>;
 }
 
 export interface GraphNode {
@@ -320,6 +321,42 @@ export function useTaskIntake() {
 		}
 	}, [session, refreshState]);
 
+	// Delete session + associated graph nodes
+	const deleteSession = useCallback(async () => {
+		if (!session) return;
+		setLoading(true);
+		setError(null);
+		try {
+			await fetch(`${API_BASE}/sessions/${session.id}`, { method: 'DELETE' });
+			// Reset all state
+			setSession(null);
+			setTask(null);
+			setPlan(null);
+			setGate(null);
+			setRun(null);
+			setPrecedent(null);
+			setPrecedents([]);
+			setPlanPreview(null);
+		} catch (err: any) {
+			setError(err.message);
+		} finally {
+			setLoading(false);
+		}
+	}, [session]);
+
+	// Reset to start a new task (without deleting)
+	const resetSession = useCallback(() => {
+		setSession(null);
+		setTask(null);
+		setPlan(null);
+		setGate(null);
+		setRun(null);
+		setPrecedent(null);
+		setPrecedents([]);
+		setPlanPreview(null);
+		setError(null);
+	}, []);
+
 	return {
 		// State
 		session,
@@ -346,6 +383,8 @@ export function useTaskIntake() {
 		startExecution,
 		completeVerification,
 		createPrecedentFromRun,
+		deleteSession,
+		resetSession,
 		refreshState,
 	};
 }

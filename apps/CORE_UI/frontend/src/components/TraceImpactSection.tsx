@@ -128,352 +128,7 @@ interface ImpactNode {
   };
 }
 
-const mockTraceNodes: TraceNode[] = [
-  {
-    id: "1",
-    type: "requirement",
-    title: "Data Ingestion Pipeline Task",
-    status: "verified",
-    connections: ["2", "3", "4"],
-    metadata: {
-      owner: "Dr. Sarah Mitchell",
-      lastUpdated: "2 hours ago",
-      source: "System",
-      criticality: "Critical"
-    },
-    position: { x: 120, y: 80 },
-    details: {
-      description: "The data ingestion pipeline shall process incoming records within 5 seconds end-to-end. The system shall provide redundant processing paths for critical data streams and implement retry mechanisms to ensure no data loss in case of agent failures.",
-      documentId: "TASK-2024-DIP-001",
-      version: "2.1",
-      approvalStatus: "Approved",
-      certificationBasis: "SLA-001, SLA-002",
-      verificationMethod: "Integration Test + Load Test + Analysis",
-      parentRequirement: "SYS-001 Platform Reliability",
-      childRequirements: ["TASK-2024-DIP-002", "TASK-2024-DIP-003", "TASK-2024-DIP-004"],
-      testCases: ["TC-001", "TC-002", "TC-003"],
-      riskAssessment: "High - Data Loss Critical",
-      complianceStatus: "Compliant",
-      lastReviewDate: "2024-01-15",
-      nextReviewDate: "2024-07-15",
-      stakeholders: ["Platform Engineering", "Data Team", "Operations", "SRE"],
-      tags: ["data-pipeline", "reliability", "Critical", "sla", "redundancy"],
-      changeHistory: [
-        {
-          date: "2024-01-10",
-          author: "Dr. Sarah Mitchell",
-          change: "Updated retry requirements for agent failures",
-          reason: "Incorporation of SRE feedback on reliability targets"
-        },
-        {
-          date: "2023-12-15",
-          author: "James Rodriguez",
-          change: "Added error handling for malformed input records",
-          reason: "Load test results indicated need for enhanced error handling"
-        },
-        {
-          date: "2023-11-20",
-          author: "Lisa Chen",
-          change: "Initial task creation",
-          reason: "Project initiation for next-generation ingestion pipeline"
-        }
-      ]
-    }
-  },
-  {
-    id: "2",
-    type: "design",
-    title: "Pipeline Architecture Design",
-    status: "completed",
-    connections: ["5", "6"],
-    metadata: {
-      owner: "James Rodriguez",
-      lastUpdated: "1 day ago",
-      source: "Design Documents",
-      criticality: "Critical"
-    },
-    position: { x: 280, y: 180 }
-  },
-  {
-    id: "3",
-    type: "component",
-    title: "Ingestion Agent Worker",
-    status: "active",
-    connections: ["7"],
-    metadata: {
-      owner: "Lisa Chen",
-      lastUpdated: "4 hours ago",
-      source: "Graph",
-      criticality: "High"
-    },
-    position: { x: 450, y: 120 }
-  },
-  {
-    id: "4",
-    type: "test",
-    title: "Pipeline Throughput Validation",
-    status: "pending",
-    connections: ["8"],
-    metadata: {
-      owner: "Michael Thompson",
-      lastUpdated: "6 hours ago",
-      source: "Test Suite",
-      criticality: "Critical"
-    },
-    position: { x: 120, y: 280 }
-  },
-  {
-    id: "5",
-    type: "code",
-    title: "Stream Processing Module",
-    status: "active",
-    connections: ["9"],
-    metadata: {
-      owner: "Anna Kowalski",
-      lastUpdated: "1 hour ago",
-      source: "Version Control",
-      criticality: "Critical"
-    },
-    position: { x: 280, y: 340 }
-  },
-  {
-    id: "6",
-    type: "certification",
-    title: "SLA Compliance Verification",
-    status: "pending",
-    connections: [],
-    metadata: {
-      owner: "David Park",
-      lastUpdated: "3 hours ago",
-      source: "Compliance Team",
-      criticality: "Critical"
-    },
-    position: { x: 450, y: 280 }
-  },
-  {
-    id: "7",
-    type: "test",
-    title: "Agent Performance Benchmark",
-    status: "completed",
-    connections: [],
-    metadata: {
-      owner: "Jennifer Williams",
-      lastUpdated: "2 days ago",
-      source: "Test Lab",
-      criticality: "High"
-    },
-    position: { x: 580, y: 180 }
-  },
-  {
-    id: "8",
-    type: "component",
-    title: "Monitoring Instrumentation",
-    status: "verified",
-    connections: [],
-    metadata: {
-      owner: "Robert Johnson",
-      lastUpdated: "5 hours ago",
-      source: "Observability",
-      criticality: "Medium"
-    },
-    position: { x: 30, y: 420 }
-  },
-  {
-    id: "9",
-    type: "certification",
-    title: "Configuration Audit Review",
-    status: "active",
-    connections: [],
-    metadata: {
-      owner: "Maria Garcia",
-      lastUpdated: "1 day ago",
-      source: "Governance",
-      criticality: "Critical"
-    },
-    position: { x: 380, y: 480 }
-  }
-];
-
-const mockImpactAnalysis: ImpactAnalysis[] = [
-  {
-    id: "1",
-    title: "Database Schema Migration Impact",
-    description: "Proposed schema change will affect 12 downstream agents and require revalidation of all queries",
-    severity: "high",
-    affectedItems: 12,
-    estimatedEffort: "6-8 weeks",
-    recommendation: "Coordinate with data team before implementing schema changes. Update all agent query templates."
-  },
-  {
-    id: "2",
-    title: "API Gateway Rate Limit Update",
-    description: "New rate limits will require updates to retry logic and backoff strategies across 8 agents",
-    severity: "medium",
-    affectedItems: 8,
-    estimatedEffort: "3-4 weeks",
-    recommendation: "Update agent configurations and run load tests with new limits"
-  },
-  {
-    id: "3",
-    title: "Message Queue Provider Migration",
-    description: "Queue provider change will impact all event-driven agents and require integration revalidation",
-    severity: "critical",
-    affectedItems: 15,
-    estimatedEffort: "8-12 weeks",
-    recommendation: "Full integration test required. Coordinate with platform team for rollback plan."
-  }
-];
-
-const mockImpactNodes: ImpactNode[] = [
-  {
-    id: "impact-source-1",
-    type: "source",
-    title: "TASK-001 Ingestion Pipeline Update",
-    severity: "high",
-    impactType: "requirement",
-    effort: "2 weeks",
-    status: "analyzing",
-    connections: ["impact-affected-1", "impact-affected-2", "impact-related-1"],
-    metadata: {
-      owner: "Dr. Sarah Mitchell",
-      lastUpdated: "2 hours ago",
-      source: "System",
-      estimatedHours: 80,
-      affectedTeams: ["Data Processing", "Platform"]
-    },
-    position: { x: 150, y: 100 },
-    details: {
-      description: "Updated ingestion pipeline requirements for enhanced throughput",
-      changeDescription: "Added redundancy requirements for primary data streams",
-      riskLevel: "High - Data Loss Critical",
-      mitigation: "Parallel development with existing pipeline as fallback",
-      dependencies: ["Infrastructure provisioning", "Load test scheduling"],
-      timeline: "Q2 2024",
-      approvalRequired: true,
-      costEstimate: "$120K",
-      stakeholders: ["Platform Team", "SRE", "Engineering"]
-    }
-  },
-  {
-    id: "impact-affected-1",
-    type: "affected",
-    title: "Stream Processing Agent",
-    severity: "critical",
-    impactType: "component",
-    effort: "6 weeks",
-    status: "identified",
-    connections: ["impact-downstream-1", "impact-downstream-2"],
-    metadata: {
-      owner: "James Rodriguez",
-      lastUpdated: "4 hours ago",
-      source: "Graph",
-      estimatedHours: 240
-    },
-    position: { x: 400, y: 50 }
-  },
-  {
-    id: "impact-affected-2",
-    type: "affected",
-    title: "Pipeline Orchestration Code",
-    severity: "high",
-    impactType: "code",
-    effort: "4 weeks",
-    status: "planned",
-    connections: ["impact-downstream-3"],
-    metadata: {
-      owner: "Anna Kowalski",
-      lastUpdated: "1 hour ago",
-      source: "Git Repository",
-      estimatedHours: 160
-    },
-    position: { x: 400, y: 150 }
-  },
-  {
-    id: "impact-related-1",
-    type: "related",
-    title: "Integration Test Suite",
-    severity: "medium",
-    impactType: "test",
-    effort: "3 weeks",
-    status: "in-progress",
-    connections: ["impact-downstream-4"],
-    metadata: {
-      owner: "Michael Thompson",
-      lastUpdated: "6 hours ago",
-      source: "Test Management",
-      estimatedHours: 120
-    },
-    position: { x: 150, y: 250 }
-  },
-  {
-    id: "impact-downstream-1",
-    type: "downstream",
-    title: "Queue Consumer Interface",
-    severity: "medium",
-    impactType: "component",
-    effort: "2 weeks",
-    status: "identified",
-    connections: [],
-    metadata: {
-      owner: "Lisa Chen",
-      lastUpdated: "3 hours ago",
-      source: "Architecture",
-      estimatedHours: 80
-    },
-    position: { x: 650, y: 20 }
-  },
-  {
-    id: "impact-downstream-2",
-    type: "downstream",
-    title: "Fallback Processing Logic",
-    severity: "low",
-    impactType: "design",
-    effort: "1 week",
-    status: "completed",
-    connections: [],
-    metadata: {
-      owner: "David Park",
-      lastUpdated: "1 day ago",
-      source: "Design Documents",
-      estimatedHours: 40
-    },
-    position: { x: 650, y: 80 }
-  },
-  {
-    id: "impact-downstream-3",
-    type: "downstream",
-    title: "Runbook & Operations Guide",
-    severity: "low",
-    impactType: "process",
-    effort: "1 week",
-    status: "planned",
-    connections: [],
-    metadata: {
-      owner: "Jennifer Williams",
-      lastUpdated: "2 days ago",
-      source: "Documentation",
-      estimatedHours: 40
-    },
-    position: { x: 650, y: 150 }
-  },
-  {
-    id: "impact-downstream-4",
-    type: "downstream",
-    title: "Compliance Documentation",
-    severity: "high",
-    impactType: "process",
-    effort: "2 weeks",
-    status: "analyzing",
-    connections: [],
-    metadata: {
-      owner: "Robert Johnson",
-      lastUpdated: "5 hours ago",
-      source: "Document Management",
-      estimatedHours: 80
-    },
-    position: { x: 150, y: 400 }
-  }
-];
+const OPAL_BASE_URL = '/api/opal/proxy';
 
 // Additional interfaces for interactive impact analysis
 interface RequirementItem {
@@ -487,60 +142,6 @@ interface RequirementItem {
   description?: string;
 }
 
-// Mock requirements that users can select for impact analysis
-const mockRequirements: RequirementItem[] = [
-  {
-    id: "TASK-001",
-    title: "Data Ingestion Pipeline Task",
-    owner: "Dr. Sarah Mitchell",
-    source: "System",
-    lastUpdated: "2 hours ago",
-    criticality: "Critical",
-    status: "active",
-    description: "Primary data ingestion pipeline throughput and reliability requirements"
-  },
-  {
-    id: "TASK-002",
-    title: "Agent Orchestration Integration",
-    owner: "James Rodriguez",
-    source: "System",
-    lastUpdated: "4 hours ago",
-    criticality: "High",
-    status: "verified",
-    description: "Integration requirements for multi-agent orchestration layer"
-  },
-  {
-    id: "TASK-003",
-    title: "Monitoring & Alerting Setup",
-    owner: "Lisa Chen",
-    source: "System",
-    lastUpdated: "1 day ago",
-    criticality: "Medium",
-    status: "pending",
-    description: "Health monitoring and alert escalation for all active agents"
-  },
-  {
-    id: "TASK-004",
-    title: "API Gateway Configuration",
-    owner: "Michael Thompson",
-    source: "System",
-    lastUpdated: "2 days ago",
-    criticality: "High",
-    status: "active",
-    description: "Rate limiting and authentication for external API endpoints"
-  },
-  {
-    id: "TASK-005",
-    title: "Message Queue Scaling Policy",
-    owner: "Anna Kowalski",
-    source: "System",
-    lastUpdated: "3 hours ago",
-    criticality: "Critical",
-    status: "completed",
-    description: "Auto-scaling policies for message queue under peak load"
-  }
-];
-
 export default function TraceImpactSection() {
   const [activeTab, setActiveTab] = useState<"trace" | "impact">("impact");
   const [searchQuery, setSearchQuery] = useState("");
@@ -548,17 +149,97 @@ export default function TraceImpactSection() {
   const [selectedImpactNode, setSelectedImpactNode] = useState<ImpactNode | null>(null);
   const [showNodeDetails, setShowNodeDetails] = useState(false);
   const [detailNode, setDetailNode] = useState<TraceNode | null>(null);
-  const [traceNodes] = useState(mockTraceNodes);
+  const [traceNodes, setTraceNodes] = useState<TraceNode[]>([]);
   const [impactNodes, setImpactNodes] = useState<ImpactNode[]>([]);
-  const [impactAnalysis] = useState(mockImpactAnalysis);
+  const [impactAnalysis, setImpactAnalysis] = useState<ImpactAnalysis[]>([]);
   const graphRef = useRef<HTMLDivElement>(null);
   
   // New state for interactive impact analysis
   const [selectedRequirement, setSelectedRequirement] = useState<RequirementItem | null>(null);
-  const [requirements] = useState(mockRequirements);
+  const [requirements, setRequirements] = useState<RequirementItem[]>([]);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [showImpactResults, setShowImpactResults] = useState(false);
   const [analysisStep, setAnalysisStep] = useState(0);
+
+  // Fetch requirements (all node types) from graph API for the picker
+  useEffect(() => {
+    async function fetchRequirements() {
+      try {
+        const res = await fetch(`${OPAL_BASE_URL}/api/nodes?limit=200`);
+        if (!res.ok) return;
+        const data = await res.json();
+        const nodes = data.nodes || [];
+        const mapped: RequirementItem[] = nodes.map((n: any) => {
+          const meta = typeof n.metadata === 'string' ? JSON.parse(n.metadata) : (n.metadata || {});
+          return {
+            id: n.id,
+            title: n.title,
+            owner: meta.assignee || n.created_by || 'Unknown',
+            source: n.node_type || 'graph',
+            lastUpdated: n.updated_at ? new Date(n.updated_at).toLocaleDateString() : '',
+            criticality: meta.criticality || (meta.priority === 1 ? 'Critical' : meta.priority === 2 ? 'High' : 'Medium'),
+            status: n.status || 'active',
+            description: n.description || '',
+          };
+        });
+        setRequirements(mapped);
+      } catch (err) {
+        console.error('Failed to fetch requirements for impact picker:', err);
+      }
+    }
+    fetchRequirements();
+  }, []);
+
+  // Fetch trace nodes from graph API for the trace tab
+  useEffect(() => {
+    async function fetchTraceNodes() {
+      try {
+        const [nodesRes, edgesRes] = await Promise.all([
+          fetch(`${OPAL_BASE_URL}/api/nodes?limit=100`),
+          fetch(`${OPAL_BASE_URL}/api/edges?limit=200`),
+        ]);
+        if (!nodesRes.ok) return;
+        const nodesData = (await nodesRes.json()).nodes || [];
+        const edgesData = edgesRes.ok ? ((await edgesRes.json()).edges || []) : [];
+
+        // Build connection map from edges
+        const connectionMap = new Map<string, string[]>();
+        for (const e of edgesData) {
+          const src = e.source_node_id;
+          const tgt = e.target_node_id;
+          connectionMap.set(src, [...(connectionMap.get(src) || []), tgt]);
+        }
+
+        const typeMap: Record<string, TraceNode['type']> = {
+          task: 'requirement', milestone: 'certification', deliverable: 'design',
+          gate: 'certification', risk: 'test', decision: 'requirement',
+          resource: 'component',
+        };
+
+        const mapped: TraceNode[] = nodesData.map((n: any, idx: number) => {
+          const meta = typeof n.metadata === 'string' ? JSON.parse(n.metadata) : (n.metadata || {});
+          return {
+            id: n.id,
+            type: typeMap[n.node_type] || 'component',
+            title: n.title,
+            status: n.status === 'done' ? 'completed' : n.status === 'in_progress' ? 'active' : n.status === 'pending' ? 'pending' : 'active',
+            connections: connectionMap.get(n.id) || [],
+            metadata: {
+              owner: meta.assignee || n.created_by || '',
+              lastUpdated: n.updated_at ? new Date(n.updated_at).toLocaleDateString() : '',
+              source: n.node_type,
+              criticality: meta.criticality || 'Medium',
+            },
+            position: { x: 80 + (idx % 5) * 160, y: 60 + Math.floor(idx / 5) * 140 },
+          };
+        });
+        setTraceNodes(mapped);
+      } catch (err) {
+        console.error('Failed to fetch trace nodes:', err);
+      }
+    }
+    fetchTraceNodes();
+  }, []);
 
   // Hook to fetch real impact data for selected requirement
   const { data: impactData, loading: impactLoading, error: impactError, refetch } = useRequirementImpact(selectedRequirement ? selectedRequirement.id : null);
@@ -568,22 +249,10 @@ export default function TraceImpactSection() {
     if (!selectedRequirement) return;
 
     if (impactError) {
-      console.warn('Impact API failed, falling back to mock data:', impactError);
-      // Fall back to mock data instead of showing error
-      if (impactError.includes('Requirement not found')) {
-        // Create mock impact data for demonstration
-        const mockImpactData = createMockImpactData(selectedRequirement);
-        const nodes = transformMockDataToNodes(mockImpactData, selectedRequirement);
-        setImpactNodes(nodes);
-        setIsAnalyzing(false);
-        setShowImpactResults(true);
-        setAnalysisStep(4);
-        toast.success("Impact analysis loaded (demo data)");
-      } else {
-        toast.error(`Failed to fetch impact: ${impactError}`);
-        setIsAnalyzing(false);
-        setShowImpactResults(false);
-      }
+      console.warn('Impact API error:', impactError);
+      toast.error(`Failed to fetch impact: ${impactError}`);
+      setIsAnalyzing(false);
+      setShowImpactResults(false);
       return;
     }
 
@@ -649,137 +318,6 @@ export default function TraceImpactSection() {
       toast.success("Impact analysis loaded");
     }
   }, [impactData, impactLoading, impactError, selectedRequirement]);
-  
-  // Helper functions for mock data fallback
-  const createMockImpactData = (requirement: RequirementItem) => {
-    return {
-      requirement: {
-        id: requirement.id,
-        name: requirement.title,
-        type: 'requirement' as const,
-        status: requirement.status,
-        metadata: {
-          owner: requirement.owner,
-          source: requirement.source,
-          criticality: requirement.criticality
-        },
-        connections: []
-      },
-      impactTree: [
-        {
-          id: requirement.id,
-          name: requirement.title,
-          type: 'requirement' as const,
-          status: requirement.status,
-          metadata: { owner: requirement.owner, source: requirement.source },
-          connections: []
-        },
-        {
-          id: `design-${requirement.id}`,
-          name: `${requirement.title.split(' ')[0]} Architecture`,
-          type: 'design' as const,
-          status: 'active',
-          metadata: { owner: 'Design Team', source: 'Design Docs' },
-          connections: []
-        },
-        {
-          id: `code-${requirement.id}`,
-          name: `${requirement.title.split(' ')[0]} Implementation`,
-          type: 'code' as const,
-          status: 'active', 
-          metadata: { owner: 'Dev Team', source: 'Repository' },
-          connections: []
-        },
-        {
-          id: `test-${requirement.id}`,
-          name: `${requirement.title.split(' ')[0]} Tests`,
-          type: 'test' as const,
-          status: 'pending',
-          metadata: { owner: 'QA Team', source: 'Test Suite' },
-          connections: []
-        }
-      ]
-    };
-  };
-  
-  const transformMockDataToNodes = (mockData: any, requirement: RequirementItem): ImpactNode[] => {
-    const nodes: ImpactNode[] = [];
-    
-    // Add source node
-    nodes.push({
-      id: `source-${requirement.id}`,
-      type: "source",
-      title: requirement.title,
-      severity: requirement.criticality === "Critical" ? "critical" : requirement.criticality === "High" ? "high" : "medium",
-      impactType: "requirement",
-      effort: "-",
-      status: "analyzing",
-      connections: ["affected-design", "affected-code", "affected-test"],
-      metadata: {
-        owner: requirement.owner,
-        lastUpdated: requirement.lastUpdated,
-        source: requirement.source,
-      },
-      position: { x: 400, y: 200 }
-    });
-    
-    // Add affected nodes
-    nodes.push({
-      id: "affected-design",
-      type: "affected",
-      title: `${requirement.title.split(' ')[0]} Architecture`,
-      severity: "high",
-      impactType: "design",
-      effort: "3-4 weeks",
-      status: "identified",
-      connections: [],
-      metadata: {
-        owner: "Design Team",
-        lastUpdated: "2 days ago",
-        source: "Design Documents",
-        estimatedHours: 120
-      },
-      position: { x: 200, y: 100 }
-    });
-    
-    nodes.push({
-      id: "affected-code",
-      type: "affected", 
-      title: `${requirement.title.split(' ')[0]} Implementation`,
-      severity: "high",
-      impactType: "code",
-      effort: "4-6 weeks",
-      status: "identified",
-      connections: [],
-      metadata: {
-        owner: "Development Team",
-        lastUpdated: "1 day ago",
-        source: "Git Repository",
-        estimatedHours: 160
-      },
-      position: { x: 600, y: 100 }
-    });
-    
-    nodes.push({
-      id: "affected-test",
-      type: "affected",
-      title: `${requirement.title.split(' ')[0]} Test Suite`,
-      severity: "medium",
-      impactType: "test",
-      effort: "2-3 weeks",
-      status: "identified",
-      connections: [],
-      metadata: {
-        owner: "QA Team",
-        lastUpdated: "3 hours ago",
-        source: "Test Framework",
-        estimatedHours: 80
-      },
-      position: { x: 400, y: 350 }
-    });
-    
-    return nodes;
-  };
   
   // Filter requirements based on search
   const filteredRequirements = requirements.filter(req =>

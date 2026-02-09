@@ -117,12 +117,12 @@ function applyArgumentsToMessages(
   return messages.map(message => {
     // Process text content
     if (message.content && typeof message.content === 'string') {
-      let processedContent = message.content;
+      let processedContent: string = message.content as string;
       
       // Replace placeholders with argument values
       for (const [key, value] of Object.entries(args)) {
         const placeholder = `{{${key}}}`;
-        processedContent = processedContent.replace(new RegExp(placeholder, 'g'), value);
+        processedContent = processedContent.replace(new RegExp(placeholder, 'g'), value as string);
       }
       
       return {

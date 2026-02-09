@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -67,202 +67,61 @@ interface LibraryDocument {
   };
 }
 
-const mockDocuments: LibraryDocument[] = [
-  {
-    id: "1",
-    title: "Data Pipeline Requirements Specification",
-    type: "pdf",
-    category: "requirements",
-    description: "Comprehensive requirements specification for the data ingestion and processing pipeline, including throughput targets and failure handling.",
-    author: "Dr. Sarah Mitchell",
-    dateModified: "2024-01-15",
-    fileSize: "2.4 MB",
-    pageCount: 156,
-    tags: ["data-pipeline", "requirements", "Critical", "sla"],
-    isEmbedded: true,
-    summary: "This document defines the functional and performance requirements for the data ingestion pipeline, ensuring compliance with SLA targets. It covers normal operations, failure modes, and recovery procedures for both primary and fallback processing paths.",
-    keyTopics: ["Throughput Targets", "Fallback Systems", "Failure Modes", "Performance Requirements", "Reliability Requirements"],
-    metadata: {
-      classification: "internal",
-      version: "2.1",
-      documentId: "TASK-2024-DIP-001",
-      approvalStatus: "approved",
-      relatedDocs: ["TEST-2024-001", "ARCH-2024-DIP-002"],
-      lastReviewDate: "2024-01-10",
-      nextReviewDate: "2024-07-10"
-    }
-  },
-  {
-    id: "2",
-    title: "Integration Test Procedures Manual",
-    type: "docx",
-    category: "procedures",
-    description: "Detailed procedures for conducting integration tests including pre-test setup, execution steps, and data validation protocols.",
-    author: "James Rodriguez",
-    dateModified: "2024-01-12",
-    fileSize: "1.8 MB",
-    pageCount: 89,
-    tags: ["integration-test", "procedures", "quality", "protocols"],
-    isEmbedded: true,
-    summary: "Comprehensive manual covering all aspects of integration test operations from planning to execution. Includes quality gates, rollback procedures, test execution, and data validation processes.",
-    keyTopics: ["Pre-test Setup", "Test Execution", "Rollback Procedures", "Data Validation", "Post-test Analysis"],
-    metadata: {
-      classification: "internal",
-      version: "3.2",
-      documentId: "TEST-2024-001",
-      approvalStatus: "approved",
-      relatedDocs: ["TASK-2024-DIP-001", "QA-2024-001"],
-      lastReviewDate: "2024-01-05",
-      nextReviewDate: "2024-04-05"
-    }
-  },
-  {
-    id: "3",
-    title: "Agent Platform Architecture Overview",
-    type: "pptx",
-    category: "presentations",
-    description: "Technical presentation covering the multi-agent platform architecture, including orchestration, monitoring, and communication interfaces.",
-    author: "Lisa Chen",
-    dateModified: "2024-01-08",
-    fileSize: "15.6 MB",
-    pageCount: 45,
-    tags: ["platform", "architecture", "agents", "orchestration"],
-    isEmbedded: true,
-    summary: "Detailed overview of the multi-agent platform architecture showing interconnections between orchestration, monitoring, scheduling, and communication layers. Includes interface definitions and data flow diagrams.",
-    keyTopics: ["Agent Orchestration", "Monitoring Layer", "Communication Interfaces", "Event Bus Architecture", "Redundancy Design"],
-    metadata: {
-      classification: "internal",
-      version: "1.4",
-      documentId: "ARCH-2024-PLAT-001",
-      approvalStatus: "approved",
-      relatedDocs: ["ARCH-2024-DIP-002", "ICD-2024-001"],
-      lastReviewDate: "2024-01-01",
-      nextReviewDate: "2024-06-01"
-    }
-  },
-  {
-    id: "4",
-    title: "Platform Governance & Compliance Standards",
-    type: "pdf",
-    category: "regulations",
-    description: "Internal governance guidance for agent development lifecycle, validation activities, and configuration management.",
-    author: "Governance Office",
-    dateModified: "2023-12-01",
-    fileSize: "3.2 MB",
-    pageCount: 248,
-    tags: ["governance", "software", "compliance", "standards"],
-    isEmbedded: true,
-    summary: "Official governance guidance for agent development lifecycle processes, validation activities, and configuration management for platform agents.",
-    keyTopics: ["Agent Lifecycle", "Validation Processes", "Configuration Management", "Audit Data", "Tool Qualification"],
-    metadata: {
-      classification: "internal",
-      version: "Rev C",
-      documentId: "GOV-2024-001",
-      approvalStatus: "approved",
-      relatedDocs: ["QA-2024-001", "SEC-2024-001"],
-      lastReviewDate: "2023-12-01",
-      nextReviewDate: "2026-12-01"
-    }
-  },
-  {
-    id: "5",
-    title: "Agent Performance Benchmark Report",
-    type: "xlsx",
-    category: "reports",
-    description: "Comprehensive analysis of agent performance data from load testing including throughput curves and resource consumption metrics.",
-    author: "Michael Thompson",
-    dateModified: "2024-01-14",
-    fileSize: "4.7 MB",
-    tags: ["agent", "performance", "test-data", "analysis"],
-    isEmbedded: true,
-    summary: "Detailed analysis of agent performance across various load conditions. Includes throughput metrics, latency profiles, and resource consumption trending analysis.",
-    keyTopics: ["Throughput Performance", "Resource Consumption", "Latency Analysis", "Performance Trends", "Scaling Recommendations"],
-    metadata: {
-      classification: "internal",
-      version: "1.0",
-      documentId: "PERF-2024-001",
-      approvalStatus: "review",
-      relatedDocs: ["TEST-2024-001", "OPS-2024-001"],
-      lastReviewDate: "2024-01-10",
-      nextReviewDate: "2024-02-10"
-    }
-  },
-  {
-    id: "6",
-    title: "Agent Operations Runbook",
-    type: "pdf",
-    category: "manuals",
-    description: "Complete operations procedures for agent fleet management including troubleshooting, scaling, and health check protocols.",
-    author: "Jennifer Williams",
-    dateModified: "2024-01-11",
-    fileSize: "5.1 MB",
-    pageCount: 312,
-    tags: ["operations", "runbook", "troubleshooting", "procedures"],
-    isEmbedded: true,
-    summary: "Comprehensive operations runbook covering all aspects of agent fleet management, from routine health checks to incident response. Includes escalation procedures and troubleshooting guides.",
-    keyTopics: ["Health Checks", "Incident Response", "Scaling Procedures", "Troubleshooting", "Escalation Procedures"],
-    metadata: {
-      classification: "internal",
-      version: "4.1",
-      documentId: "OPS-2024-001",
-      approvalStatus: "approved",
-      relatedDocs: ["MON-2024-001", "TASK-2024-OPS-001"],
-      lastReviewDate: "2024-01-01",
-      nextReviewDate: "2024-07-01"
-    }
-  },
-  {
-    id: "7",
-    title: "Platform Roadmap Presentation",
-    type: "pptx",
-    category: "presentations",
-    description: "Executive presentation outlining the platform roadmap, milestones, and compliance approach for the agent program.",
-    author: "Robert Johnson",
-    dateModified: "2024-01-09",
-    fileSize: "8.3 MB",
-    pageCount: 32,
-    tags: ["roadmap", "planning", "milestones", "compliance"],
-    isEmbedded: true,
-    summary: "Strategic overview of the platform roadmap including key milestones, risk mitigation strategies, and resource allocation for achieving production readiness.",
-    keyTopics: ["Platform Strategy", "Compliance Framework", "Key Milestones", "Risk Management", "Resource Planning"],
-    metadata: {
-      classification: "confidential",
-      version: "2.0",
-      documentId: "ROAD-2024-001",
-      approvalStatus: "approved",
-      relatedDocs: ["PLAN-2024-001", "RISK-2024-001"],
-      lastReviewDate: "2024-01-05",
-      nextReviewDate: "2024-03-05"
-    }
-  },
-  {
-    id: "8",
-    title: "Data Schema Design Specifications",
-    type: "pdf",
-    category: "specifications",
-    description: "Detailed specifications for the data schema including entity definitions, relationship constraints, and migration procedures.",
-    author: "Anna Kowalski",
-    dateModified: "2024-01-13",
-    fileSize: "6.8 MB",
-    pageCount: 198,
-    tags: ["schema", "specifications", "data-model", "design"],
-    isEmbedded: true,
-    summary: "Complete schema specification for the graph data model including node types, edge constraints, and migration procedures.",
-    keyTopics: ["Schema Design", "Entity Definitions", "Interface Specifications", "Migration Plan", "Validation Rules"],
-    metadata: {
-      classification: "restricted",
-      version: "1.3",
-      documentId: "LGS-2024-001",
-      approvalStatus: "approved",
-      relatedDocs: ["SRD-2024-LG-001", "STR-2024-001"],
-      lastReviewDate: "2024-01-08",
-      nextReviewDate: "2024-04-08"
-    }
-  }
-];
+const OPAL_BASE_URL = '/api/opal/proxy';
 
 export default function KnowledgeAgentsSection() {
-  const [documents] = useState(mockDocuments);
+  const [documents, setDocuments] = useState<LibraryDocument[]>([]);
+
+  // Fetch deliverable nodes from graph API as library documents
+  useEffect(() => {
+    async function fetchDocuments() {
+      try {
+        const res = await fetch(`${OPAL_BASE_URL}/api/nodes?node_type=deliverable`);
+        if (!res.ok) return;
+        const data = await res.json();
+        const nodes = data.nodes || [];
+        const mapped: LibraryDocument[] = nodes.map((n: any) => {
+          const meta = typeof n.metadata === 'string' ? JSON.parse(n.metadata) : (n.metadata || {});
+          const artifactType = meta.artifact_type || 'document';
+          const typeMap: Record<string, LibraryDocument['type']> = {
+            document: 'pdf', code: 'txt', design: 'pptx', data: 'xlsx', hardware: 'pdf',
+          };
+          const catMap: Record<string, LibraryDocument['category']> = {
+            document: 'specifications', code: 'procedures', design: 'presentations',
+            data: 'reports', hardware: 'manuals',
+          };
+          return {
+            id: n.id,
+            title: n.title,
+            type: typeMap[artifactType] || 'pdf',
+            category: catMap[artifactType] || 'specifications',
+            description: n.description || '',
+            author: meta.owner_id || n.created_by || 'Unknown',
+            dateModified: n.updated_at ? new Date(n.updated_at).toISOString().split('T')[0] : '',
+            fileSize: meta.file_size || '',
+            pageCount: meta.page_count,
+            tags: meta.tags || [],
+            isEmbedded: meta.is_embedded ?? false,
+            summary: meta.summary || '',
+            keyTopics: meta.key_topics || [],
+            metadata: {
+              classification: meta.classification || 'internal',
+              version: meta.version || '1.0',
+              documentId: n.id.substring(0, 12).toUpperCase(),
+              approvalStatus: n.status === 'accepted' ? 'approved' : n.status === 'delivered' ? 'review' : 'draft',
+              relatedDocs: meta.related_docs || [],
+              lastReviewDate: meta.last_review_date || '',
+              nextReviewDate: meta.next_review_date || '',
+            },
+          };
+        });
+        setDocuments(mapped);
+      } catch (err) {
+        console.error('Failed to fetch documents:', err);
+      }
+    }
+    fetchDocuments();
+  }, []);
   const [searchQuery, setSearchQuery] = useState("");
   const [filterCategory, setFilterCategory] = useState<"all" | "requirements" | "procedures" | "manuals" | "specifications" | "reports" | "presentations" | "regulations">("all");
   const [filterType, setFilterType] = useState<"all" | "pdf" | "docx" | "pptx" | "xlsx">("all");

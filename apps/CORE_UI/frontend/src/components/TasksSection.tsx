@@ -21,7 +21,8 @@ import {
   LayoutList,
   Columns3,
   Loader2,
-  RefreshCw
+  RefreshCw,
+  Trash2
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -130,6 +131,24 @@ export default function TasksSection({ onNavigate }: { onNavigate?: (tab: string
     }
   };
 
+  const handleDeleteTask = async (taskId: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    if (!confirm('Delete this task and its associated nodes?')) return;
+    try {
+      const res = await fetch(`${OPAL_BASE_URL}/api/nodes/${taskId}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ changed_by: 'ui-user' }),
+      });
+      if (!res.ok) throw new Error('Failed to delete');
+      setTasks(prev => prev.filter(t => t.id !== taskId));
+      setSelectedTask(null);
+      toast.success('Task deleted');
+    } catch (err: any) {
+      toast.error(`Delete failed: ${err.message}`);
+    }
+  };
+
   const filteredTasks = tasks.filter(task => {
     const matchesSearch = task.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
       task.description.toLowerCase().includes(searchQuery.toLowerCase());
@@ -170,19 +189,39 @@ export default function TasksSection({ onNavigate }: { onNavigate?: (tab: string
     const StatusIcon = getStatusIcon(task.status);
     return (
       <Card
-        className="mb-3 hover:shadow-md transition-shadow cursor-pointer"
+        className="mb-3 hover:shadow-md transition-shadow cursor-pointer group"
         onClick={() => setSelectedTask(task)}
       >
         <CardContent className="p-4">
           <div className="flex items-start justify-between mb-2">
-            <h4 className="font-medium text-sm line-clamp-2">{task.title}</h4>
-            {getPriorityBadge(task.priority)}
+            <h4 className="font-medium text-sm line-clamp-2 flex-1">{task.title}</h4>
+            <div className="flex items-center gap-1 flex-shrink-0">
+              {getPriorityBadge(task.priority)}
+              <button
+                onClick={(e) => handleDeleteTask(task.id, e)}
+                className="p-1 rounded hover:bg-red-500/10 text-muted-foreground/40 hover:text-red-400 transition-all"
+                title="Delete task"
+              >
+                <Trash2 className="w-3 h-3" />
+              </button>
+            </div>
           </div>
 
           {task.description && (
             <p className="text-xs text-muted-foreground mb-3 line-clamp-2">
               {task.description}
             </p>
+          )}
+
+          {/* Subtask indicators */}
+          {task.metadata?.is_macro_task && task.metadata?.subtask_ids?.length > 0 && (
+            <div className="flex items-center gap-1 text-xs text-purple-400 mb-2">
+              <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 3v12"/><path d="M18 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/><path d="M6 21a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/><path d="M18 9c0 6-6 6-6 12"/></svg>
+              {task.metadata.subtask_ids.length} subtask{task.metadata.subtask_ids.length !== 1 ? 's' : ''}
+            </div>
+          )}
+          {task.metadata?.is_subtask && (
+            <div className="text-[10px] text-purple-400/70 mb-2">↳ subtask</div>
           )}
 
           <div className="flex items-center justify-between text-xs text-muted-foreground">
@@ -375,6 +414,14 @@ export default function TasksSection({ onNavigate }: { onNavigate?: (tab: string
                     <Badge variant="outline" className="capitalize">
                       {task.status.replace('_', ' ')}
                     </Badge>
+
+                    <button
+                      onClick={(e) => handleDeleteTask(task.id, e)}
+                      className="p-1 rounded hover:bg-red-500/10 text-muted-foreground/40 hover:text-red-400 transition-all"
+                      title="Delete task"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
                   </div>
                 </div>
               );
@@ -398,6 +445,7 @@ export default function TasksSection({ onNavigate }: { onNavigate?: (tab: string
         task={selectedTask}
         open={!!selectedTask}
         onOpenChange={(open) => !open && setSelectedTask(null)}
+        onTaskUpdated={() => { fetchTasks(); setSelectedTask(null); }}
       />
     </div>
   );

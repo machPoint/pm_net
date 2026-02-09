@@ -29,51 +29,6 @@ import { formatDistanceToNow } from "date-fns";
 
 // Note interface moved to CreateNoteDialog
 
-const mockNotes: Note[] = [
-  {
-    id: "1",
-    title: "Keyword Research Strategy",
-    description: "Target keywords for Q1 SEO campaign",
-    content: "# Keyword Research Strategy\n\nTarget keywords for Q1 SEO campaign:\n\n## Primary Keywords\n- organic search optimization\n- content marketing strategy\n- technical SEO audit\n\n## Long-tail Keywords\n- how to improve website ranking\n- best SEO tools for small business\n- local SEO optimization tips\n\n## Competitor Gap Analysis\n- Identified 15 high-volume keywords competitors rank for that we don't\n- Average search volume: 2,400/mo\n- Estimated traffic potential: 8,500 visits/mo",
-    tags: ["seo", "keywords", "research"],
-    folder: "SEO Strategy",
-    category: "research",
-    author: "Jordan Kim",
-    createdAt: new Date(),
-    updatedAt: new Date(),
-    lastSynced: new Date(),
-    isSourced: false
-  },
-  {
-    id: "2",
-    title: "On-Page SEO Checklist",
-    description: "Essential on-page optimization elements",
-    content: "# On-Page SEO Checklist\n\nEssential elements for every page:\n\n## Title Tags\n- Include primary keyword\n- Keep under 60 characters\n- Make it compelling for CTR\n\n## Meta Descriptions\n- 150-160 characters\n- Include call-to-action\n- Natural keyword usage\n\n## Header Structure\n- Single H1 per page\n- Logical H2/H3 hierarchy\n- Keywords in headers where natural\n\n## Content Optimization\n- Keyword density 1-2%\n- Internal linking (3-5 links)\n- Image alt text optimization",
-    tags: ["seo", "checklist", "on-page"],
-    folder: "SEO Strategy",
-    category: "checklist",
-    author: "Jordan Kim",
-    createdAt: new Date(),
-    updatedAt: new Date(),
-    lastSynced: new Date(),
-    isSourced: false
-  },
-  {
-    id: "3",
-    title: "Backlink Outreach Template",
-    description: "Email template for guest post outreach",
-    content: "# Backlink Outreach Template\n\nEmail template for guest post outreach:\n\n---\n\nSubject: Content collaboration opportunity\n\nHi [Name],\n\nI came across your article on [Topic] and really enjoyed your insights on [Specific Point].\n\nI'm working on a comprehensive guide about [Related Topic] that I think would be valuable for your audience. Would you be interested in:\n\n1. A guest post contribution\n2. Including a mention in your existing content\n3. A content collaboration\n\nHappy to discuss what works best for you.\n\nBest,\n[Your Name]",
-    tags: ["outreach", "backlinks", "templates"],
-    folder: "Link Building",
-    category: "templates",
-    author: "Sam Rivera",
-    createdAt: new Date(),
-    updatedAt: new Date(),
-    lastSynced: new Date(),
-    isSourced: false
-  }
-];
-
 const STORAGE_KEY = "core-se-notes";
 
 export default function NotesSection() {
@@ -107,12 +62,10 @@ export default function NotesSection() {
         }
       } catch (e) {
         console.error("Failed to parse stored notes", e);
-        setNotes(mockNotes);
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(mockNotes));
+        setNotes([]);
       }
     } else {
-      setNotes(mockNotes);
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(mockNotes));
+      setNotes([]);
     }
   }, []);
 

@@ -23,8 +23,6 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import RequirementDetailModal from "./RequirementDetailModal";
-import { useDataMode } from "@/contexts/DataModeContext";
-import { generateFakeJamaItems } from "@/lib/fakeDataGenerators";
 
 interface ToolItem {
   id: string;
@@ -43,37 +41,6 @@ interface ToolItem {
   confidence?: number;
 }
 
-// Mock items for fallback
-const mockItems: ToolItem[] = [
-  {
-    id: "1",
-    title: "User Authentication Requirements",
-    type: "requirement",
-    status: "active",
-    lastUpdated: "2 hours ago",
-    owner: "Sarah Chen",
-    tags: ["security", "auth"]
-  },
-  {
-    id: "2",
-    title: "Dashboard UI Components",
-    type: "design",
-    status: "completed",
-    lastUpdated: "1 day ago", 
-    owner: "Mike Rodriguez",
-    tags: ["ui", "components"]
-  },
-  {
-    id: "3",
-    title: "API Integration Tests",
-    type: "verification",
-    status: "pending",
-    lastUpdated: "3 hours ago",
-    owner: "Alex Kim",
-    tags: ["testing", "api"]
-  }
-];
-
 export default function ToolWindowSection() {
   const [searchQuery, setSearchQuery] = useState("");
   const [filterType, setFilterType] = useState<"all" | "requirement" | "design" | "verification">("all");
@@ -88,51 +55,11 @@ export default function ToolWindowSection() {
   const [selectedRequirement, setSelectedRequirement] = useState<ToolItem | null>(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
 
-  const { dataMode, isUsingFakeData } = useDataMode();
-
   // Function to fetch requirements from API
   const fetchRequirements = useCallback(async (searchTerm: string = "", category: string = "", reset: boolean = false) => {
     try {
       setLoading(true);
       setError(null);
-      
-      // Use fake data if not in real mode
-      if (isUsingFakeData) {
-        const fakeItems = generateFakeJamaItems(50);
-        const transformedItems = fakeItems.map(item => ({
-          id: item.id,
-          title: item.name,
-          type: item.item_type === 'requirement' ? 'requirement' as const : 'verification' as const,
-          status: item.status === 'approved' ? 'completed' as const : 
-                  item.status === 'draft' ? 'pending' as const : 'active' as const,
-          lastUpdated: new Date(item.modified_date).toLocaleDateString(),
-          owner: item.modified_by,
-          tags: [item.fields.priority || 'medium', item.fields.safety_level || 'Medium'],
-          category: item.item_type
-        }));
-        
-        // Apply search filter
-        let filtered = transformedItems;
-        if (searchTerm) {
-          filtered = filtered.filter(item => 
-            item.title.toLowerCase().includes(searchTerm.toLowerCase())
-          );
-        }
-        
-        if (reset) {
-          setItems(filtered);
-          setPage(0);
-        } else {
-          setItems(prev => [...prev, ...filtered]);
-        }
-        
-        setTotal(filtered.length);
-        setHasMore(false);
-        setLoading(false);
-        return;
-      }
-      
-      // Real mode - fetch from API
       const params = new URLSearchParams({
         limit: "50",
         offset: reset ? "0" : (page * 50).toString(),
@@ -162,29 +89,15 @@ export default function ToolWindowSection() {
       console.error('Error fetching requirements:', err);
       setError(err instanceof Error ? err.message : 'Cannot connect to data engine: ' + (err instanceof Error ? err.message : 'fetch failed'));
       
-      // Fallback to fake data on error
-      const fakeItems = generateFakeJamaItems(50);
-      const transformedItems = fakeItems.map(item => ({
-        id: item.id,
-        title: item.name,
-        type: item.item_type === 'requirement' ? 'requirement' as const : 'verification' as const,
-        status: item.status === 'approved' ? 'completed' as const : 
-                item.status === 'draft' ? 'pending' as const : 'active' as const,
-        lastUpdated: new Date(item.modified_date).toLocaleDateString(),
-        owner: item.modified_by,
-        tags: [item.fields.priority || 'medium', item.fields.safety_level || 'Medium'],
-        category: item.item_type
-      }));
-      
       if (reset) {
-        setItems(transformedItems);
-        setTotal(transformedItems.length);
+        setItems([]);
+        setTotal(0);
         setHasMore(false);
       }
     } finally {
       setLoading(false);
     }
-  }, [isUsingFakeData, page]);
+  }, [page]);
 
   // Initial load and search/filter changes
   useEffect(() => {

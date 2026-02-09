@@ -20,7 +20,7 @@
       "enabled": true,
       "gateway_url": "http://localhost:18789",
       "api_key": null,
-      "default_model": "claude-3-5-sonnet-20241022",
+      "default_model": "anthropic/claude-sonnet-4-5",
       "workspace_path": "~/.openclaw/workspace",
       "channels": ["whatsapp", "telegram", "discord"]
     },

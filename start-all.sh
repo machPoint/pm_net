@@ -9,6 +9,35 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LOG_DIR="$ROOT_DIR/.logs"
 mkdir -p "$LOG_DIR"
 
+# Ports used by our services
+PORTS=(3000 3001 7788 8000)
+
+# Kill any processes listening on our ports
+free_ports() {
+  for port in "${PORTS[@]}"; do
+    local pids
+    pids="$(lsof -ti:"$port" 2>/dev/null || true)"
+    if [[ -n "$pids" ]]; then
+      echo "  Killing process(es) on port $port: $pids"
+      echo "$pids" | xargs kill -9 2>/dev/null || true
+    fi
+  done
+}
+
+# Cleanup on exit: kill all service ports so nothing is left behind
+cleanup() {
+  echo
+  echo "========================================"
+  echo " Shutting down services..."
+  echo "========================================"
+  free_ports
+  # Also kill any child processes we spawned
+  kill $(jobs -p) 2>/dev/null || true
+  echo " All services stopped."
+}
+
+trap cleanup INT TERM
+
 require_cmd() {
   local cmd="$1"
   if ! command -v "$cmd" >/dev/null 2>&1; then
@@ -155,6 +184,13 @@ main() {
 
   echo "[CORE_UI/backend] Installing python deps (requirements.txt)..."
   (cd "$ROOT_DIR/apps/CORE_UI/backend" && . "$activate_script" && python3 -m pip install --upgrade pip && pip install -r requirements.txt)
+
+  echo
+  echo "========================================"
+  echo " Freeing busy ports"
+  echo "========================================"
+  free_ports
+  sleep 1
 
   echo
   echo "========================================"

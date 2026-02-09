@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import {
 	AreaChart,
 	Area,
@@ -74,68 +74,29 @@ interface RecentTask {
 type TimeRange = "7d" | "30d" | "90d" | "12m";
 type ChartLayer = "tasks" | "plans" | "runs" | "verifications";
 
+const OPAL_BASE_URL = '/api/opal/proxy';
+
+function timeAgo(date: Date): string {
+	const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
+	if (seconds < 60) return 'just now';
+	const minutes = Math.floor(seconds / 60);
+	if (minutes < 60) return `${minutes}m ago`;
+	const hours = Math.floor(minutes / 60);
+	if (hours < 24) return `${hours}h ago`;
+	const days = Math.floor(hours / 24);
+	return `${days}d ago`;
+}
+
 // ============================================================================
-// Mock data generators (will be replaced with real API calls)
+// Default empty states
 // ============================================================================
 
-function generateChartData(range: TimeRange): ChartDataPoint[] {
-	const points: ChartDataPoint[] = [];
-	const count = range === "7d" ? 7 : range === "30d" ? 30 : range === "90d" ? 12 : 12;
-	const labels =
-		range === "12m"
-			? ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
-			: range === "90d"
-			? ["W1", "W2", "W3", "W4", "W5", "W6", "W7", "W8", "W9", "W10", "W11", "W12"]
-			: Array.from({ length: count }, (_, i) => {
-					const d = new Date();
-					d.setDate(d.getDate() - (count - 1 - i));
-					return `${d.getMonth() + 1}/${d.getDate()}`;
-			  });
-
-	for (let i = 0; i < count; i++) {
-		const base = 10 + Math.floor(Math.random() * 15);
-		points.push({
-			period: labels[i],
-			tasks: base + Math.floor(Math.random() * 20),
-			plans: Math.floor(base * 0.7) + Math.floor(Math.random() * 10),
-			runs: Math.floor(base * 0.5) + Math.floor(Math.random() * 8),
-			verifications: Math.floor(base * 0.3) + Math.floor(Math.random() * 6),
-		});
-	}
-	return points;
-}
-
-function generateKpis(): KpiCard[] {
-	return [
-		{ label: "Active Tasks", value: 47, change: 12, icon: CheckSquare, color: "blue" },
-		{ label: "Pending Approvals", value: 8, change: -3, icon: Shield, color: "amber" },
-		{ label: "Running Plans", value: 12, change: 5, icon: Zap, color: "green" },
-		{ label: "Open Risks", value: 5, change: 2, icon: AlertTriangle, color: "red" },
-	];
-}
-
-function generateApprovals(): PendingApproval[] {
-	return [
-		{ id: "pa-1", title: "Data pipeline migration plan", type: "plan", requestedBy: "Agent: Task Intake", requestedAt: "2h ago", priority: "high" },
-		{ id: "pa-2", title: "API rate limiter deployment gate", type: "gate", requestedBy: "DevOps Agent", requestedAt: "4h ago", priority: "critical" },
-		{ id: "pa-3", title: "Monitoring dashboard verification", type: "verification", requestedBy: "QA Agent", requestedAt: "6h ago", priority: "medium" },
-		{ id: "pa-4", title: "Database schema update plan", type: "plan", requestedBy: "Agent: Task Intake", requestedAt: "1d ago", priority: "high" },
-		{ id: "pa-5", title: "Cache invalidation strategy gate", type: "gate", requestedBy: "Arch Agent", requestedAt: "1d ago", priority: "medium" },
-	];
-}
-
-function generateRecentTasks(): RecentTask[] {
-	return [
-		{ id: "t-1", title: "Implement user authentication flow", status: "in_progress", priority: "high", assignee: "Agent Alpha", updatedAt: "10m ago" },
-		{ id: "t-2", title: "Set up CI/CD pipeline", status: "ready", priority: "critical", assignee: "DevOps Agent", updatedAt: "25m ago" },
-		{ id: "t-3", title: "Design system component library", status: "in_progress", priority: "medium", assignee: "UI Agent", updatedAt: "1h ago" },
-		{ id: "t-4", title: "Database query optimization", status: "review", priority: "high", assignee: "DB Agent", updatedAt: "2h ago" },
-		{ id: "t-5", title: "API documentation update", status: "backlog", priority: "low", assignee: "Docs Agent", updatedAt: "3h ago" },
-		{ id: "t-6", title: "Load testing infrastructure", status: "in_progress", priority: "medium", assignee: "QA Agent", updatedAt: "4h ago" },
-		{ id: "t-7", title: "Error tracking integration", status: "done", priority: "high", assignee: "Agent Alpha", updatedAt: "5h ago" },
-		{ id: "t-8", title: "Feature flag system", status: "ready", priority: "medium", assignee: "Platform Agent", updatedAt: "6h ago" },
-	];
-}
+const DEFAULT_KPIS: KpiCard[] = [
+	{ label: "Active Tasks", value: 0, change: 0, icon: CheckSquare, color: "blue" },
+	{ label: "Pending Approvals", value: 0, change: 0, icon: Shield, color: "amber" },
+	{ label: "Running Plans", value: 0, change: 0, icon: Zap, color: "green" },
+	{ label: "Open Risks", value: 0, change: 0, icon: AlertTriangle, color: "red" },
+];
 
 // ============================================================================
 // Color maps
@@ -182,11 +143,95 @@ export default function DashboardSection() {
 	);
 	const [searchQuery, setSearchQuery] = useState("");
 	const [statusFilter, setStatusFilter] = useState<string>("all");
+	const [loading, setLoading] = useState(true);
 
-	const kpis = useMemo(() => generateKpis(), []);
-	const chartData = useMemo(() => generateChartData(timeRange), [timeRange]);
-	const approvals = useMemo(() => generateApprovals(), []);
-	const allTasks = useMemo(() => generateRecentTasks(), []);
+	const [kpis, setKpis] = useState<KpiCard[]>(DEFAULT_KPIS);
+	const [chartData, setChartData] = useState<ChartDataPoint[]>([]);
+	const [approvals, setApprovals] = useState<PendingApproval[]>([]);
+	const [allTasks, setAllTasks] = useState<RecentTask[]>([]);
+
+	const fetchDashboardData = useCallback(async () => {
+		try {
+			setLoading(true);
+
+			// Fetch all node types in parallel
+			const [tasksRes, gatesRes, milestonesRes, risksRes] = await Promise.all([
+				fetch(`${OPAL_BASE_URL}/api/nodes?node_type=task`),
+				fetch(`${OPAL_BASE_URL}/api/nodes?node_type=gate`),
+				fetch(`${OPAL_BASE_URL}/api/nodes?node_type=milestone`),
+				fetch(`${OPAL_BASE_URL}/api/nodes?node_type=risk`),
+			]);
+
+			const tasks = tasksRes.ok ? (await tasksRes.json()).nodes || [] : [];
+			const gates = gatesRes.ok ? (await gatesRes.json()).nodes || [] : [];
+			const milestones = milestonesRes.ok ? (await milestonesRes.json()).nodes || [] : [];
+			const risks = risksRes.ok ? (await risksRes.json()).nodes || [] : [];
+
+			// --- KPIs ---
+			const activeTasks = tasks.filter((n: any) => ['backlog', 'in_progress', 'review', 'blocked'].includes(n.status));
+			const pendingGates = gates.filter((n: any) => n.status === 'pending');
+			const upcomingMilestones = milestones.filter((n: any) => ['upcoming', 'at_risk'].includes(n.status));
+			const openRisks = risks.filter((n: any) => ['open', 'mitigating', 'identified', 'active'].includes(n.status));
+
+			setKpis([
+				{ label: "Active Tasks", value: activeTasks.length, change: 0, icon: CheckSquare, color: "blue" },
+				{ label: "Pending Approvals", value: pendingGates.length, change: 0, icon: Shield, color: "amber" },
+				{ label: "Milestones", value: upcomingMilestones.length, change: 0, icon: Zap, color: "green" },
+				{ label: "Open Risks", value: openRisks.length, change: 0, icon: AlertTriangle, color: "red" },
+			]);
+
+			// --- Recent Tasks (last 10 by updated_at) ---
+			const sorted = [...tasks].sort((a: any, b: any) =>
+				new Date(b.updated_at || 0).getTime() - new Date(a.updated_at || 0).getTime()
+			).slice(0, 10);
+
+			setAllTasks(sorted.map((n: any) => {
+				const meta = typeof n.metadata === 'string' ? JSON.parse(n.metadata) : (n.metadata || {});
+				const updatedAt = n.updated_at ? timeAgo(new Date(n.updated_at)) : '';
+				return {
+					id: n.id,
+					title: n.title,
+					status: n.status || 'backlog',
+					priority: meta.priority || 'medium',
+					assignee: meta.assignee || n.created_by || '',
+					updatedAt,
+				};
+			}));
+
+			// --- Pending Approvals ---
+			setApprovals(pendingGates.slice(0, 10).map((g: any) => {
+				const meta = typeof g.metadata === 'string' ? JSON.parse(g.metadata) : (g.metadata || {});
+				const createdAt = g.created_at ? timeAgo(new Date(g.created_at)) : '';
+				return {
+					id: g.id,
+					title: g.title,
+					type: (meta.gate_type || 'gate') as PendingApproval['type'],
+					requestedBy: g.created_by || 'System',
+					requestedAt: createdAt,
+					priority: meta.priority || 'medium',
+				};
+			}));
+
+			// --- Chart data (aggregate node counts — placeholder until history endpoint) ---
+			// For now, show a single data point with current counts
+			setChartData([{
+				period: 'Now',
+				tasks: tasks.length,
+				plans: milestones.length,
+				runs: gates.length,
+				verifications: risks.length,
+			}]);
+
+		} catch (err) {
+			console.error('Dashboard fetch error:', err);
+		} finally {
+			setLoading(false);
+		}
+	}, []);
+
+	useEffect(() => {
+		fetchDashboardData();
+	}, [fetchDashboardData]);
 
 	const filteredTasks = useMemo(() => {
 		let tasks = allTasks;

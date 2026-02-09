@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -45,7 +45,12 @@ import {
   FileText,
   Database,
   Mail,
-  Package
+  Package,
+  MessageCircle,
+  Send,
+  Loader2,
+  RotateCcw,
+  Trash
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -79,100 +84,289 @@ interface Agent {
   };
 }
 
-const mockAgents: Agent[] = [
-  {
-    id: "agent-001",
-    name: "Guardrail Compliance Monitor",
-    description: "Continuously monitors tasks for guardrail violations and constraint compliance",
-    type: "monitor",
-    status: "active",
-    systemPrompt: "You are a guardrail compliance specialist. Monitor task execution for constraint violations, identify gaps in acceptance criteria, and flag potential quality issues. Focus on critical guardrails and task boundaries.",
-    model: "gpt-4o",
-    temperature: 0.2,
-    maxTokens: 1000,
-    schedule: {
-      enabled: true,
-      frequency: "hourly",
-    },
-    dataSources: ["Jama", "Jira", "Email"],
-    outputChannels: ["Slack", "Email", "Dashboard"],
-    lastRun: "2 minutes ago",
-    nextRun: "In 58 minutes",
-    runsCount: 247,
-    successRate: 98.4,
-    metadata: {
-      created: "2024-01-05",
-      createdBy: "Sarah Mitchell",
-      lastModified: "2024-01-15",
-      version: "2.1"
-    }
-  },
-  {
-    id: "agent-002",
-    name: "Dependency Analyzer",
-    description: "Analyzes tasks and agents to discover hidden dependencies and coordination points",
-    type: "analyzer",
-    status: "active",
-    systemPrompt: "You are a task dependency expert. Analyze task definitions, agent outputs, and documentation to identify cross-task dependencies, shared resources, and potential coordination issues. Focus on critical path items.",
-    model: "gpt-4o",
-    temperature: 0.3,
-    maxTokens: 1500,
-    schedule: {
-      enabled: true,
-      frequency: "daily",
-      time: "02:00"
-    },
-    dataSources: ["Tasks", "Agents", "Graph", "Logs"],
-    outputChannels: ["Dashboard", "Email"],
-    lastRun: "4 hours ago",
-    nextRun: "Tomorrow at 2:00 AM",
-    runsCount: 89,
-    successRate: 95.5,
-    metadata: {
-      created: "2024-01-08",
-      createdBy: "James Rodriguez",
-      lastModified: "2024-01-14",
-      version: "1.3"
-    }
-  },
-  {
-    id: "agent-003",
-    name: "Test Coverage Validator",
-    description: "Validates that all requirements have adequate test coverage and identifies gaps",
-    type: "validator",
-    status: "paused",
-    systemPrompt: "You are a verification and validation specialist. Analyze requirements and test cases to ensure complete traceability and adequate coverage. Flag untested or inadequately tested requirements.",
-    model: "gpt-4o-mini",
-    temperature: 0.1,
-    maxTokens: 800,
-    schedule: {
-      enabled: false,
-      frequency: "weekly",
-      time: "Monday 09:00"
-    },
-    dataSources: ["Jama", "TestRail", "Jira"],
-    outputChannels: ["Dashboard", "Slack"],
-    lastRun: "3 days ago",
-    nextRun: "Paused",
-    runsCount: 34,
-    successRate: 100,
-    metadata: {
-      created: "2024-01-10",
-      createdBy: "Lisa Chen",
-      lastModified: "2024-01-13",
-      version: "1.1"
-    }
-  }
-];
+const OPAL_BASE_URL = '/api/opal/proxy';
 
 export default function AgentsSection() {
-  const [agents, setAgents] = useState<Agent[]>(mockAgents);
+  const [agents, setAgents] = useState<Agent[]>([]);
+
+  // Fetch agents from OpenClaw status + graph resource nodes
+  useEffect(() => {
+    async function fetchAgents() {
+      try {
+        // Fetch from both sources in parallel
+        const [openclawRes, graphRes] = await Promise.all([
+          fetch('/api/openclaw/status').catch(() => null),
+          fetch(`${OPAL_BASE_URL}/api/nodes?node_type=resource`).catch(() => null),
+        ]);
+
+        const merged: Agent[] = [];
+        const seenIds = new Set<string>();
+        const seenNames = new Set<string>(); // track OC agent names to dedup graph nodes
+
+        // 1. OpenClaw agents (live runtime data)
+        if (openclawRes?.ok) {
+          const oc = await openclawRes.json();
+          const ocAgents = oc.health?.agents || oc.status?.heartbeat?.agents || [];
+          const ocSkills = Array.isArray(oc.skills) ? oc.skills : (oc.skills?.skills || []);
+          const sessionDefaults = oc.health?.sessions?.defaults || oc.status?.sessions?.defaults || {};
+
+          for (const a of ocAgents) {
+            const id = `openclaw-${a.agentId}`;
+            seenIds.add(id);
+            seenNames.add(a.agentId.toLowerCase());
+            seenNames.add(a.agentId.toLowerCase().replace(/-/g, ' '));
+            const eligibleSkills = (ocSkills || []).filter((s: any) => s.eligible).map((s: any) => s.name);
+            const sessionCount = a.sessions?.count || 0;
+            const lastSession = a.sessions?.recent?.[0];
+            const lastActivityAge = lastSession?.age;
+            const lastActivityStr = lastActivityAge
+              ? lastActivityAge < 60000 ? 'just now'
+              : lastActivityAge < 3600000 ? `${Math.round(lastActivityAge / 60000)}m ago`
+              : lastActivityAge < 86400000 ? `${Math.round(lastActivityAge / 3600000)}h ago`
+              : `${Math.round(lastActivityAge / 86400000)}d ago`
+              : '';
+            const heartbeatStr = a.heartbeat?.enabled ? `every ${a.heartbeat.every}` : 'disabled';
+            const descParts = [
+              `Heartbeat: ${heartbeatStr}`,
+              sessionCount > 0 ? `${sessionCount} session${sessionCount > 1 ? 's' : ''}` : 'No sessions',
+              lastActivityStr ? `Last active: ${lastActivityStr}` : '',
+              a.isDefault ? 'Default agent' : '',
+            ].filter(Boolean);
+
+            merged.push({
+              id,
+              name: `OpenClaw: ${a.agentId}`,
+              description: descParts.join(' · '),
+              type: 'integrator',
+              status: a.heartbeat?.enabled ? 'active' : 'stopped',
+              systemPrompt: '',
+              model: (sessionDefaults.model || 'gpt-4o') as Agent['model'],
+              temperature: 0.7,
+              maxTokens: sessionDefaults.contextTokens || 1000,
+              schedule: {
+                enabled: !!a.heartbeat?.enabled,
+                frequency: a.heartbeat?.every?.includes('m') ? 'realtime' : 'hourly',
+              },
+              dataSources: eligibleSkills.slice(0, 8),
+              outputChannels: ['graph-db', 'event-stream'],
+              runsCount: sessionCount,
+              successRate: sessionCount > 0 ? 100 : 0,
+              lastRun: lastActivityStr || undefined,
+              metadata: {
+                created: '',
+                createdBy: 'OpenClaw',
+                lastModified: oc.fetchedAt || '',
+                version: oc.status?.update?.registry?.latestVersion || '1.0',
+              },
+            });
+          }
+        }
+
+        // 2. Graph resource nodes (agent type)
+        if (graphRes?.ok) {
+          const data = await graphRes.json();
+          const nodes = data.nodes || [];
+          for (const n of nodes) {
+            const meta = typeof n.metadata === 'string' ? JSON.parse(n.metadata) : (n.metadata || {});
+            if (meta.resource_type !== 'agent') continue;
+            const id = n.id;
+            if (seenIds.has(id)) continue;
+            // Skip graph nodes that duplicate an OpenClaw agent
+            const normalizedTitle = (n.title || '').toLowerCase().trim();
+            if (seenNames.has(normalizedTitle)) continue;
+            seenIds.add(id);
+            merged.push({
+              id,
+              name: n.title,
+              description: n.description || '',
+              type: meta.agent_type || 'monitor',
+              status: n.status === 'available' ? 'active' : n.status === 'busy' ? 'active' : 'stopped',
+              systemPrompt: meta.system_prompt || '',
+              model: meta.model || 'gpt-4o',
+              temperature: meta.temperature ?? 0.7,
+              maxTokens: meta.max_tokens ?? 1000,
+              schedule: { enabled: false, frequency: 'manual' },
+              dataSources: meta.data_sources || [],
+              outputChannels: meta.output_channels || [],
+              runsCount: meta.runs_count ?? 0,
+              successRate: meta.success_rate ?? 0,
+              metadata: {
+                created: n.created_at || '',
+                createdBy: n.created_by || '',
+                lastModified: n.updated_at || '',
+                version: meta.version || '1.0',
+              },
+            });
+          }
+        }
+
+        setAgents(merged);
+      } catch (err) {
+        console.error('Failed to fetch agents:', err);
+      }
+    }
+    fetchAgents();
+  }, []);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [editingAgent, setEditingAgent] = useState<Agent | null>(null);
-  
+
+  // Workspace editor state
+  const [wsFiles, setWsFiles] = useState<Record<string, string>>({});
+  const [wsActiveFile, setWsActiveFile] = useState<string>("");
+  const [wsEditContent, setWsEditContent] = useState<string>("");
+  const [wsLoading, setWsLoading] = useState(false);
+  const [wsSaving, setWsSaving] = useState(false);
+  const [wsEditing, setWsEditing] = useState(false);
+
+  // Fetch workspace files when an OpenClaw agent is selected
+  useEffect(() => {
+    if (!selectedAgent?.id.startsWith('openclaw-')) {
+      setWsFiles({});
+      setWsActiveFile('');
+      setWsEditing(false);
+      return;
+    }
+    const ocId = selectedAgent.id.replace('openclaw-', '');
+    setWsLoading(true);
+    fetch(`/api/openclaw/agents/${ocId}/workspace`)
+      .then(r => r.json())
+      .then(data => {
+        if (data.ok && data.files) {
+          setWsFiles(data.files);
+          const first = Object.keys(data.files).sort()[0] || '';
+          setWsActiveFile(first);
+          setWsEditContent(data.files[first] || '');
+          setWsEditing(false);
+        }
+      })
+      .catch(() => setWsFiles({}))
+      .finally(() => setWsLoading(false));
+  }, [selectedAgent]);
+
+  const handleWsSave = async () => {
+    if (!selectedAgent?.id.startsWith('openclaw-') || !wsActiveFile) return;
+    const ocId = selectedAgent.id.replace('openclaw-', '');
+    setWsSaving(true);
+    try {
+      const res = await fetch(`/api/openclaw/agents/${ocId}/workspace`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ files: { [wsActiveFile]: wsEditContent } }),
+      });
+      if (res.ok) {
+        setWsFiles(prev => ({ ...prev, [wsActiveFile]: wsEditContent }));
+        setWsEditing(false);
+        toast.success(`Saved ${wsActiveFile}`);
+      } else {
+        toast.error('Failed to save file');
+      }
+    } catch {
+      toast.error('Failed to save file');
+    } finally {
+      setWsSaving(false);
+    }
+  };
+
+  // Chat state
+  interface ChatMessage {
+    role: "user" | "assistant" | "system";
+    content: string;
+    timestamp: string;
+    meta?: Record<string, any>;
+  }
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [chatInput, setChatInput] = useState("");
+  const [chatSending, setChatSending] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
+  const chatEndRef = useRef<HTMLDivElement>(null);
+
+  // Load chat history when an OpenClaw agent is selected
+  useEffect(() => {
+    if (!selectedAgent?.id.startsWith('openclaw-')) {
+      setChatMessages([]);
+      setChatOpen(false);
+      return;
+    }
+    const ocId = selectedAgent.id.replace('openclaw-', '');
+    fetch(`/api/openclaw/agents/${ocId}/chat`)
+      .then(r => r.json())
+      .then(data => {
+        if (data.ok) setChatMessages(data.messages || []);
+      })
+      .catch(() => setChatMessages([]));
+  }, [selectedAgent]);
+
+  // Auto-scroll chat to bottom
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [chatMessages]);
+
+  const handleSendMessage = useCallback(async () => {
+    if (!chatInput.trim() || !selectedAgent?.id.startsWith('openclaw-') || chatSending) return;
+    const ocId = selectedAgent.id.replace('openclaw-', '');
+    const userMsg = chatInput.trim();
+    setChatInput("");
+    setChatSending(true);
+
+    // Optimistic: add user message immediately
+    const now = new Date().toISOString();
+    setChatMessages(prev => [...prev, { role: "user", content: userMsg, timestamp: now }]);
+
+    try {
+      const res = await fetch(`/api/openclaw/agents/${ocId}/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: userMsg }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setChatMessages(prev => [...prev, {
+          role: "assistant",
+          content: data.reply,
+          timestamp: new Date().toISOString(),
+          meta: data.meta,
+        }]);
+        // Refresh workspace files in case the agent modified them
+        if (selectedAgent?.id.startsWith('openclaw-')) {
+          fetch(`/api/openclaw/agents/${ocId}/workspace`)
+            .then(r => r.json())
+            .then(wsData => {
+              if (wsData.ok && wsData.files) {
+                setWsFiles(wsData.files);
+                if (wsActiveFile) setWsEditContent(wsData.files[wsActiveFile] || '');
+              }
+            })
+            .catch(() => {});
+        }
+      } else {
+        setChatMessages(prev => [...prev, {
+          role: "system",
+          content: `Error: ${data.error || 'Unknown error'}`,
+          timestamp: new Date().toISOString(),
+        }]);
+      }
+    } catch (err: any) {
+      setChatMessages(prev => [...prev, {
+        role: "system",
+        content: `Error: ${err.message}`,
+        timestamp: new Date().toISOString(),
+      }]);
+    } finally {
+      setChatSending(false);
+    }
+  }, [chatInput, selectedAgent, chatSending, wsActiveFile]);
+
+  const handleClearChat = async () => {
+    if (!selectedAgent?.id.startsWith('openclaw-')) return;
+    const ocId = selectedAgent.id.replace('openclaw-', '');
+    await fetch(`/api/openclaw/agents/${ocId}/chat`, { method: 'DELETE' });
+    setChatMessages([]);
+    toast.success("Chat history cleared");
+  };
+
   // Filter states
   const [filterLayer, setFilterLayer] = useState<string>("all");
   const [filterStatus, setFilterStatus] = useState<string>("all");
@@ -189,86 +383,171 @@ export default function AgentsSection() {
   const [formScheduleEnabled, setFormScheduleEnabled] = useState(false);
   const [formScheduleFrequency, setFormScheduleFrequency] = useState<Agent["schedule"]["frequency"]>("daily");
 
-  const handleCreateAgent = () => {
-    const newAgent: Agent = {
-      id: `agent-${Date.now()}`,
-      name: formName,
-      description: formDescription,
-      type: formType,
-      status: "stopped",
-      systemPrompt: formSystemPrompt,
-      model: formModel,
-      temperature: formTemperature,
-      maxTokens: formMaxTokens,
-      schedule: {
-        enabled: formScheduleEnabled,
-        frequency: formScheduleFrequency,
-      },
-      dataSources: [],
-      outputChannels: [],
-      runsCount: 0,
-      successRate: 0,
-      metadata: {
-        created: new Date().toISOString(),
-        createdBy: "Current User",
-        lastModified: new Date().toISOString(),
-        version: "1.0"
-      }
-    };
+  const handleCreateAgent = async () => {
+    try {
+      // Derive a CLI-safe agent id from the name
+      const agentId = formName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || `agent-${Date.now()}`;
 
-    setAgents([...agents, newAgent]);
-    setShowCreateDialog(false);
-    resetForm();
-    toast.success("Agent created successfully");
+      // 1. Create OpenClaw agent with workspace files
+      const ocRes = await fetch('/api/openclaw/agents', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: agentId,
+          model: 'anthropic/claude-sonnet-4-5',
+          workspace: {
+            "SOUL.md": `# SOUL.md - ${formName}\n\n${formSystemPrompt || 'You are a helpful agent.'}\n\n## Role\n\nType: ${formType}\n${formDescription ? `\n## Description\n\n${formDescription}\n` : ''}`,
+            "IDENTITY.md": `# IDENTITY.md\n\n- **Name:** ${formName}\n- **Vibe:** ${formType}\n- **Emoji:** 🤖\n`,
+            "USER.md": "# USER.md\n\nYou are helping the PM_NET engineering team.\n",
+          },
+        }),
+      });
+
+      if (!ocRes.ok) {
+        const err = await ocRes.json();
+        throw new Error(err.error || 'Failed to create OpenClaw agent');
+      }
+
+      const newAgent: Agent = {
+        id: `openclaw-${agentId}`,
+        name: `OpenClaw: ${agentId}`,
+        description: formDescription || `${formType} agent`,
+        type: formType,
+        status: "active",
+        systemPrompt: formSystemPrompt,
+        model: 'gpt-4o' as Agent['model'],
+        temperature: formTemperature,
+        maxTokens: formMaxTokens,
+        schedule: {
+          enabled: formScheduleEnabled,
+          frequency: formScheduleFrequency,
+        },
+        dataSources: [],
+        outputChannels: ['graph-db', 'event-stream'],
+        runsCount: 0,
+        successRate: 0,
+        metadata: {
+          created: new Date().toISOString(),
+          createdBy: "OpenClaw",
+          lastModified: new Date().toISOString(),
+          version: "1.0"
+        }
+      };
+
+      setAgents([...agents, newAgent]);
+      setShowCreateDialog(false);
+      resetForm();
+      toast.success(`Agent "${agentId}" created in OpenClaw`);
+    } catch (err: any) {
+      console.error('Failed to create agent:', err);
+      toast.error(err.message || "Failed to create agent");
+    }
   };
 
-  const handleEditAgent = () => {
+  const handleEditAgent = async () => {
     if (!editingAgent) return;
 
-    const updatedAgent = {
-      ...editingAgent,
-      name: formName,
-      description: formDescription,
-      type: formType,
-      systemPrompt: formSystemPrompt,
-      model: formModel,
-      temperature: formTemperature,
-      maxTokens: formMaxTokens,
-      schedule: {
-        ...editingAgent.schedule,
-        enabled: formScheduleEnabled,
-        frequency: formScheduleFrequency,
-      },
-      metadata: {
-        ...editingAgent.metadata,
-        lastModified: new Date().toISOString(),
+    try {
+      // Only update graph nodes (not OpenClaw agents which have openclaw- prefix)
+      if (!editingAgent.id.startsWith('openclaw-')) {
+        await fetch(`${OPAL_BASE_URL}/api/nodes/${editingAgent.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            title: formName,
+            description: formDescription,
+            metadata: {
+              resource_type: 'agent',
+              agent_type: formType,
+              system_prompt: formSystemPrompt,
+              model: formModel,
+              temperature: formTemperature,
+              max_tokens: formMaxTokens,
+              schedule_enabled: formScheduleEnabled,
+              schedule_frequency: formScheduleFrequency,
+            },
+          }),
+        });
       }
-    };
 
-    setAgents(agents.map(a => a.id === editingAgent.id ? updatedAgent : a));
-    setShowEditDialog(false);
-    setEditingAgent(null);
-    resetForm();
-    toast.success("Agent updated successfully");
-  };
+      const updatedAgent = {
+        ...editingAgent,
+        name: formName,
+        description: formDescription,
+        type: formType,
+        systemPrompt: formSystemPrompt,
+        model: formModel,
+        temperature: formTemperature,
+        maxTokens: formMaxTokens,
+        schedule: {
+          ...editingAgent.schedule,
+          enabled: formScheduleEnabled,
+          frequency: formScheduleFrequency,
+        },
+        metadata: {
+          ...editingAgent.metadata,
+          lastModified: new Date().toISOString(),
+        }
+      };
 
-  const handleDeleteAgent = (agentId: string) => {
-    setAgents(agents.filter(a => a.id !== agentId));
-    if (selectedAgent?.id === agentId) {
-      setSelectedAgent(null);
+      setAgents(agents.map(a => a.id === editingAgent.id ? updatedAgent : a));
+      setShowEditDialog(false);
+      setEditingAgent(null);
+      resetForm();
+      toast.success("Agent updated");
+    } catch (err) {
+      console.error('Failed to update agent:', err);
+      toast.error("Failed to update agent");
     }
-    toast.success("Agent deleted");
   };
 
-  const handleToggleAgent = (agentId: string) => {
-    setAgents(agents.map(agent => {
-      if (agent.id === agentId) {
-        const newStatus = agent.status === "active" ? "paused" : "active";
-        return { ...agent, status: newStatus };
+  const handleDeleteAgent = async (agentId: string) => {
+    try {
+      if (agentId.startsWith('openclaw-')) {
+        // Delete from OpenClaw
+        const ocId = agentId.replace('openclaw-', '');
+        if (ocId === 'main') {
+          toast.error("Cannot delete the main agent");
+          return;
+        }
+        const res = await fetch(`/api/openclaw/agents?id=${encodeURIComponent(ocId)}`, { method: 'DELETE' });
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.error || 'Failed to delete OpenClaw agent');
+        }
+      } else {
+        await fetch(`${OPAL_BASE_URL}/api/nodes/${agentId}`, { method: 'DELETE' });
       }
-      return agent;
-    }));
-    toast.success("Agent status updated");
+      setAgents(agents.filter(a => a.id !== agentId));
+      if (selectedAgent?.id === agentId) {
+        setSelectedAgent(null);
+      }
+      toast.success("Agent deleted");
+    } catch (err: any) {
+      console.error('Failed to delete agent:', err);
+      toast.error(err.message || "Failed to delete agent");
+    }
+  };
+
+  const handleToggleAgent = async (agentId: string) => {
+    const agent = agents.find(a => a.id === agentId);
+    if (!agent) return;
+    const newStatus = agent.status === "active" ? "paused" : "active";
+
+    try {
+      if (!agentId.startsWith('openclaw-')) {
+        await fetch(`${OPAL_BASE_URL}/api/nodes/${agentId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: newStatus === 'active' ? 'available' : 'offline' }),
+        });
+      }
+      setAgents(agents.map(a => a.id === agentId ? { ...a, status: newStatus } : a));
+      toast.success(`Agent ${newStatus === 'active' ? 'activated' : 'paused'}`);
+    } catch (err) {
+      console.error('Failed to toggle agent:', err);
+      toast.error("Failed to update agent status");
+    }
   };
 
   const openEditDialog = (agent: Agent) => {
@@ -457,179 +736,325 @@ export default function AgentsSection() {
 
       {/* Main Content - Agent Details */}
       <div className="flex-1 flex flex-col">
-        <div className="p-6 border-b border-border bg-card">
-          <h2 className="text-xl font-semibold mb-2">Agent Control Admin</h2>
-          <p className="text-sm text-muted-foreground">
-            Configure and manage AI agents with specialized prompts, schedules, and operational parameters
-          </p>
+        <div className="px-4 py-3 border-b border-border bg-card flex items-center justify-between">
+          <div>
+            <h2 className="text-base font-semibold">Agent Control Admin</h2>
+            <p className="text-xs text-muted-foreground">Configure and manage AI agents</p>
+          </div>
         </div>
 
-        <div className="flex-1 overflow-auto p-6">
+        <div className="flex-1 overflow-auto p-4">
           {selectedAgent ? (
-            <div className="space-y-6 max-w-4xl">
-              {/* Agent Header */}
-              <div className="flex items-start justify-between">
-                <div>
-                  <h3 className="text-2xl font-semibold mb-2">{selectedAgent.name}</h3>
-                  <p className="text-muted-foreground">{selectedAgent.description}</p>
+            <div className="space-y-3 max-w-4xl">
+              {/* Compact Header */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <h3 className="text-lg font-semibold">{selectedAgent.name}</h3>
+                  <Badge className={cn("text-xs", getStatusColor(selectedAgent.status))}>
+                    {selectedAgent.status}
+                  </Badge>
+                  <Badge variant="secondary" className="text-xs font-mono">
+                    {selectedAgent.model}
+                  </Badge>
                 </div>
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleToggleAgent(selectedAgent.id)}
-                  >
-                    {selectedAgent.status === "active" ? (
-                      <>
-                        <Pause className="w-4 h-4 mr-1" />
-                        Pause
-                      </>
+                <div className="flex items-center gap-1">
+                  <Button variant="ghost" size="sm" onClick={() => handleToggleAgent(selectedAgent.id)}>
+                    {selectedAgent.status === "active" ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+                  </Button>
+                  <Button variant="ghost" size="sm" onClick={() => openEditDialog(selectedAgent)}>
+                    <Edit className="w-4 h-4" />
+                  </Button>
+                  <Button variant="ghost" size="sm" onClick={() => handleDeleteAgent(selectedAgent.id)}>
+                    <Trash2 className="w-4 h-4" />
+                  </Button>
+                </div>
+              </div>
+
+              {/* Compact Info Grid */}
+              <Card>
+                <CardContent className="p-4">
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Type</span>
+                      <span className="font-medium capitalize">{selectedAgent.type}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Schedule</span>
+                      <span className="font-medium">{selectedAgent.schedule.enabled ? selectedAgent.schedule.frequency : 'disabled'}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Temperature</span>
+                      <span className="font-medium">{selectedAgent.temperature}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Max Tokens</span>
+                      <span className="font-medium">{selectedAgent.maxTokens?.toLocaleString()}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Runs</span>
+                      <span className="font-medium">{selectedAgent.runsCount}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Success</span>
+                      <span className="font-medium">{selectedAgent.successRate}%</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Last Active</span>
+                      <span className="font-medium">{selectedAgent.lastRun || '—'}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Provider</span>
+                      <span className="font-medium">{selectedAgent.id.startsWith('openclaw-') ? 'OpenClaw' : 'Graph'}</span>
+                    </div>
+                  </div>
+
+                  {/* Description */}
+                  {selectedAgent.description && (
+                    <p className="text-sm text-muted-foreground mt-3 pt-3 border-t border-border">
+                      {selectedAgent.description}
+                    </p>
+                  )}
+
+                  {/* Skills & Channels row */}
+                  {(selectedAgent.dataSources.length > 0 || selectedAgent.outputChannels.length > 0) && (
+                    <div className="mt-3 pt-3 border-t border-border flex flex-wrap gap-3">
+                      {selectedAgent.dataSources.length > 0 && (
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-xs text-muted-foreground">Skills:</span>
+                          <div className="flex flex-wrap gap-1">
+                            {selectedAgent.dataSources.map((s) => (
+                              <Badge key={s} variant="outline" className="text-[10px] px-1.5 py-0">{s}</Badge>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {selectedAgent.outputChannels.length > 0 && (
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-xs text-muted-foreground">Output:</span>
+                          <div className="flex flex-wrap gap-1">
+                            {selectedAgent.outputChannels.map((c) => (
+                              <Badge key={c} variant="secondary" className="text-[10px] px-1.5 py-0">{c}</Badge>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* System Prompt (only if non-empty) */}
+                  {selectedAgent.systemPrompt && (
+                    <div className="mt-3 pt-3 border-t border-border">
+                      <Label className="text-xs text-muted-foreground mb-1 block">System Prompt</Label>
+                      <div className="p-2 bg-muted/30 rounded text-xs font-mono whitespace-pre-wrap max-h-[100px] overflow-auto">
+                        {selectedAgent.systemPrompt}
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Workspace Document Editor (OpenClaw agents only) */}
+              {selectedAgent.id.startsWith('openclaw-') && (
+                <Card>
+                  <CardHeader className="px-4 py-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <FileText className="w-4 h-4 text-muted-foreground" />
+                        <CardTitle className="text-sm">Workspace Documents</CardTitle>
+                        <span className="text-xs text-muted-foreground">personality, behavior, memory</span>
+                      </div>
+                      {wsEditing && (
+                        <div className="flex items-center gap-1">
+                          <Button size="sm" variant="ghost" onClick={() => {
+                            setWsEditContent(wsFiles[wsActiveFile] || '');
+                            setWsEditing(false);
+                          }}>
+                            Cancel
+                          </Button>
+                          <Button size="sm" onClick={handleWsSave} disabled={wsSaving}>
+                            {wsSaving ? 'Saving...' : 'Save'}
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    {wsLoading ? (
+                      <div className="text-sm text-muted-foreground py-8 text-center">Loading workspace files...</div>
+                    ) : Object.keys(wsFiles).length === 0 ? (
+                      <div className="text-sm text-muted-foreground py-8 text-center">No workspace files found</div>
                     ) : (
-                      <>
-                        <Play className="w-4 h-4 mr-1" />
-                        Activate
-                      </>
+                      <div className="space-y-3">
+                        {/* File tabs */}
+                        <div className="flex flex-wrap gap-1 border-b border-border pb-2">
+                          {Object.keys(wsFiles).sort().map((filename) => (
+                            <button
+                              key={filename}
+                              onClick={() => {
+                                if (wsEditing && wsActiveFile !== filename) {
+                                  if (!confirm('Discard unsaved changes?')) return;
+                                }
+                                setWsActiveFile(filename);
+                                setWsEditContent(wsFiles[filename] || '');
+                                setWsEditing(false);
+                              }}
+                              className={cn(
+                                "px-3 py-1.5 text-xs rounded-md transition-colors",
+                                wsActiveFile === filename
+                                  ? "bg-primary text-primary-foreground"
+                                  : "bg-muted/50 text-muted-foreground hover:bg-muted"
+                              )}
+                            >
+                              {filename}
+                            </button>
+                          ))}
+                        </div>
+
+                        {/* File content */}
+                        {wsActiveFile && (
+                          <div>
+                            {wsEditing ? (
+                              <Textarea
+                                value={wsEditContent}
+                                onChange={(e) => setWsEditContent(e.target.value)}
+                                className="font-mono text-sm min-h-[300px] resize-y"
+                                placeholder="File content..."
+                              />
+                            ) : (
+                              <div
+                                className="p-4 bg-muted/30 rounded-lg text-sm font-mono whitespace-pre-wrap max-h-[400px] overflow-auto cursor-pointer hover:bg-muted/50 transition-colors border border-transparent hover:border-border"
+                                onClick={() => {
+                                  setWsEditContent(wsFiles[wsActiveFile] || '');
+                                  setWsEditing(true);
+                                }}
+                                title="Click to edit"
+                              >
+                                {wsFiles[wsActiveFile] || '(empty)'}
+                              </div>
+                            )}
+                            {!wsEditing && (
+                              <p className="text-xs text-muted-foreground mt-1">Click the content above to edit</p>
+                            )}
+                          </div>
+                        )}
+                      </div>
                     )}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => openEditDialog(selectedAgent)}
-                  >
-                    <Edit className="w-4 h-4 mr-1" />
-                    Edit
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleDeleteAgent(selectedAgent.id)}
-                  >
-                    <Trash2 className="w-4 h-4 mr-1" />
-                    Delete
-                  </Button>
-                </div>
-              </div>
-
-              {/* Status Overview */}
-              <div className="grid grid-cols-4 gap-4">
-                <Card>
-                  <CardContent className="p-4">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm text-muted-foreground">Status</span>
-                      <Badge className={cn("text-xs", getStatusColor(selectedAgent.status))}>
-                        {selectedAgent.status}
-                      </Badge>
-                    </div>
                   </CardContent>
                 </Card>
-                <Card>
-                  <CardContent className="p-4">
-                    <div className="text-sm text-muted-foreground mb-1">Total Runs</div>
-                    <div className="text-2xl font-semibold">{selectedAgent.runsCount}</div>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardContent className="p-4">
-                    <div className="text-sm text-muted-foreground mb-1">Success Rate</div>
-                    <div className="text-2xl font-semibold">{selectedAgent.successRate}%</div>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardContent className="p-4">
-                    <div className="text-sm text-muted-foreground mb-1">Schedule</div>
-                    <div className="text-sm font-medium">{selectedAgent.schedule.frequency}</div>
-                  </CardContent>
-                </Card>
-              </div>
+              )}
 
-              {/* Configuration */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-base">AI Configuration</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div>
-                    <Label className="text-sm font-medium mb-2 block">Model</Label>
-                    <Badge variant="secondary">{selectedAgent.model}</Badge>
-                  </div>
-                  <div>
-                    <Label className="text-sm font-medium mb-2 block">Temperature</Label>
-                    <div className="text-sm">{selectedAgent.temperature}</div>
-                  </div>
-                  <div>
-                    <Label className="text-sm font-medium mb-2 block">Max Tokens</Label>
-                    <div className="text-sm">{selectedAgent.maxTokens}</div>
-                  </div>
-                  <div>
-                    <Label className="text-sm font-medium mb-2 block">System Prompt</Label>
-                    <div className="p-3 bg-muted/50 rounded text-sm font-mono whitespace-pre-wrap">
-                      {selectedAgent.systemPrompt}
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Schedule */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-base">Schedule Configuration</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <Label className="text-sm font-medium">Scheduled Runs</Label>
-                      <p className="text-xs text-muted-foreground">
-                        {selectedAgent.schedule.enabled ? "Enabled" : "Disabled"}
-                      </p>
-                    </div>
-                    <Badge variant="secondary">{selectedAgent.schedule.frequency}</Badge>
-                  </div>
-                  {selectedAgent.lastRun && (
-                    <div>
-                      <Label className="text-sm font-medium mb-1 block">Last Run</Label>
-                      <div className="text-sm text-muted-foreground">{selectedAgent.lastRun}</div>
-                    </div>
-                  )}
-                  {selectedAgent.nextRun && (
-                    <div>
-                      <Label className="text-sm font-medium mb-1 block">Next Run</Label>
-                      <div className="text-sm text-muted-foreground">{selectedAgent.nextRun}</div>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-
-              {/* Data Sources & Output */}
-              <div className="grid grid-cols-2 gap-4">
+              {/* Agent Chat (OpenClaw agents only) */}
+              {selectedAgent.id.startsWith('openclaw-') && (
                 <Card>
-                  <CardHeader>
-                    <CardTitle className="text-base">Data Sources</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="flex flex-wrap gap-2">
-                      {selectedAgent.dataSources.map((source) => (
-                        <Badge key={source} variant="outline" className="text-xs">
-                          {source}
+                  <CardHeader className="px-4 py-3 cursor-pointer" onClick={() => setChatOpen(!chatOpen)}>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <MessageCircle className="w-4 h-4 text-muted-foreground" />
+                        <CardTitle className="text-sm">Chat with {selectedAgent.name.replace('OpenClaw: ', '')}</CardTitle>
+                        <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                          {chatMessages.length} msg
                         </Badge>
-                      ))}
+                        <span className="text-xs text-muted-foreground">reads SOUL.md automatically</span>
+                      </div>
+                      <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                        {chatMessages.length > 0 && (
+                          <Button size="sm" variant="ghost" onClick={handleClearChat} title="Clear history">
+                            <Trash className="w-3.5 h-3.5" />
+                          </Button>
+                        )}
+                        <Button size="sm" variant="ghost" onClick={() => setChatOpen(!chatOpen)}>
+                          {chatOpen ? '▲' : '▼'}
+                        </Button>
+                      </div>
                     </div>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-base">Output Channels</CardTitle>
                   </CardHeader>
-                  <CardContent>
-                    <div className="flex flex-wrap gap-2">
-                      {selectedAgent.outputChannels.map((channel) => (
-                        <Badge key={channel} variant="outline" className="text-xs">
-                          {channel}
-                        </Badge>
-                      ))}
-                    </div>
-                  </CardContent>
+                  {chatOpen && (
+                    <CardContent>
+                      <div className="flex flex-col">
+                        {/* Messages area */}
+                        <div className="h-[400px] overflow-auto border border-border rounded-lg p-3 mb-3 bg-muted/20 space-y-3">
+                          {chatMessages.length === 0 && (
+                            <div className="h-full flex items-center justify-center text-sm text-muted-foreground">
+                              <div className="text-center">
+                                <MessageCircle className="w-8 h-8 mx-auto mb-2 opacity-30" />
+                                <p>No messages yet. Start a conversation!</p>
+                                <p className="text-xs mt-1 opacity-70">The agent will read its SOUL.md and workspace files automatically.</p>
+                              </div>
+                            </div>
+                          )}
+                          {chatMessages.map((msg, i) => (
+                            <div
+                              key={i}
+                              className={cn(
+                                "flex",
+                                msg.role === "user" ? "justify-end" : "justify-start"
+                              )}
+                            >
+                              <div
+                                className={cn(
+                                  "max-w-[80%] rounded-lg px-3 py-2 text-sm",
+                                  msg.role === "user"
+                                    ? "bg-primary text-primary-foreground"
+                                    : msg.role === "system"
+                                    ? "bg-destructive/10 text-destructive border border-destructive/20"
+                                    : "bg-card border border-border"
+                                )}
+                              >
+                                <div className="whitespace-pre-wrap break-words">{msg.content}</div>
+                                <div className={cn(
+                                  "text-[10px] mt-1 opacity-60",
+                                  msg.role === "user" ? "text-right" : "text-left"
+                                )}>
+                                  {new Date(msg.timestamp).toLocaleTimeString()}
+                                  {msg.meta?.model && ` · ${msg.meta.model}`}
+                                  {msg.meta?.durationMs && ` · ${(msg.meta.durationMs / 1000).toFixed(1)}s`}
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                          {chatSending && (
+                            <div className="flex justify-start">
+                              <div className="bg-card border border-border rounded-lg px-3 py-2 text-sm flex items-center gap-2">
+                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                <span className="text-muted-foreground">Agent is thinking...</span>
+                              </div>
+                            </div>
+                          )}
+                          <div ref={chatEndRef} />
+                        </div>
+
+                        {/* Input area */}
+                        <div className="flex gap-2">
+                          <Input
+                            value={chatInput}
+                            onChange={(e) => setChatInput(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' && !e.shiftKey) {
+                                e.preventDefault();
+                                handleSendMessage();
+                              }
+                            }}
+                            placeholder={chatSending ? "Waiting for response..." : "Type a message..."}
+                            disabled={chatSending}
+                            className="flex-1"
+                          />
+                          <Button
+                            onClick={handleSendMessage}
+                            disabled={chatSending || !chatInput.trim()}
+                            size="sm"
+                          >
+                            {chatSending ? (
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                              <Send className="w-4 h-4" />
+                            )}
+                          </Button>
+                        </div>
+                      </div>
+                    </CardContent>
+                  )}
                 </Card>
-              </div>
+              )}
             </div>
           ) : (
             <div className="h-full flex items-center justify-center">

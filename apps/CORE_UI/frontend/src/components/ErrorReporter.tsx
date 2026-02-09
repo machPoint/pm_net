@@ -37,35 +37,12 @@ export const ErrorReporter: React.FC<ErrorReporterProps> = ({ className }) => {
   const [expandedErrors, setExpandedErrors] = useState<Set<string>>(new Set());
   const [filter, setFilter] = useState<'all' | 'error' | 'warning' | 'info'>('all');
 
-  // Mock some errors for demonstration
+  // Start with empty errors — real errors will be added via addError()
   useEffect(() => {
-    const mockErrors: ErrorInfo[] = [
-      {
-        id: '1',
-        type: 'error',
-        title: 'Network Request Failed',
-        message: 'Failed to fetch data from API endpoint',
-        timestamp: new Date(),
-        stack: 'Error: Network request failed\n    at fetchData (api.js:15)\n    at async loadUserData (users.js:23)',
-        component: 'UserDataLoader',
-        dismissed: false
-      },
-      {
-        id: '2',
-        type: 'warning',
-        title: 'Deprecated API Usage',
-        message: 'Using deprecated API method getUserById()',
-        timestamp: new Date(Date.now() - 300000),
-        component: 'UserProfile',
-        dismissed: false
-      }
-    ];
-    
-    if (mockErrors.length > 0) {
-      setErrors(mockErrors);
+    if (errors.length > 0) {
       setIsVisible(true);
     }
-  }, []);
+  }, [errors]);
 
   const filteredErrors = errors.filter(error => {
     if (filter === 'all') return !error.dismissed;
