@@ -145,6 +145,48 @@ router.post('/sessions/:id/execute', async (req: Request, res: Response) => {
 	}
 });
 
+/** POST /sessions/:id/finalize-execution — advance to verify after all steps complete */
+router.post('/sessions/:id/finalize-execution', async (req: Request, res: Response) => {
+	try {
+		const result = await taskIntake.finalizeExecution(req.params.id);
+		res.json({ ok: true, ...result });
+	} catch (err: any) {
+		logger.error(`[task-intake] POST /sessions/${req.params.id}/finalize-execution error:`, err);
+		res.status(400).json({ ok: false, error: err.message });
+	}
+});
+
+/** POST /sessions/:id/execute-step — execute a single plan step via AI agent */
+router.post('/sessions/:id/execute-step', async (req: Request, res: Response) => {
+	try {
+		const { step_order, action, tool, expected_outcome } = req.body;
+		if (!action) {
+			return res.status(400).json({ ok: false, error: 'Missing action' });
+		}
+		const result = await taskIntake.executeStep(req.params.id, {
+			step_order: step_order || 1,
+			action,
+			tool: tool || null,
+			expected_outcome: expected_outcome || '',
+		});
+		res.json({ ok: true, ...result });
+	} catch (err: any) {
+		logger.error(`[task-intake] POST /sessions/${req.params.id}/execute-step error:`, err);
+		res.status(400).json({ ok: false, error: err.message });
+	}
+});
+
+/** GET /sessions/:id/execution-results — fetch step outputs from the completed run */
+router.get('/sessions/:id/execution-results', async (req: Request, res: Response) => {
+	try {
+		const result = await taskIntake.getExecutionResults(req.params.id);
+		res.json({ ok: true, ...result });
+	} catch (err: any) {
+		logger.error(`[task-intake] GET /sessions/${req.params.id}/execution-results error:`, err);
+		res.status(400).json({ ok: false, error: err.message });
+	}
+});
+
 /** POST /sessions/:id/decision-trace — log a decision trace during execution */
 router.post('/sessions/:id/decision-trace', async (req: Request, res: Response) => {
 	try {
@@ -191,6 +233,80 @@ router.delete('/sessions/:id', async (req: Request, res: Response) => {
 		res.json({ ok: true, ...result });
 	} catch (err: any) {
 		logger.error(`[task-intake] DELETE /sessions/${req.params.id} error:`, err);
+		res.status(400).json({ ok: false, error: err.message });
+	}
+});
+
+// ============================================================================
+// Task Library — Reusable Templates
+// ============================================================================
+
+/** GET /library — list all task templates */
+router.get('/library', async (_req: Request, res: Response) => {
+	try {
+		const templates = await taskIntake.listTaskTemplates();
+		res.json({ ok: true, templates });
+	} catch (err: any) {
+		logger.error('[task-intake] GET /library error:', err);
+		res.status(500).json({ ok: false, error: err.message });
+	}
+});
+
+/** POST /library — create a new template */
+router.post('/library', async (req: Request, res: Response) => {
+	try {
+		const { title } = req.body;
+		if (!title) {
+			return res.status(400).json({ ok: false, error: 'title required' });
+		}
+		const template = await taskIntake.createTemplate(req.body);
+		res.json({ ok: true, template });
+	} catch (err: any) {
+		logger.error('[task-intake] POST /library error:', err);
+		res.status(400).json({ ok: false, error: err.message });
+	}
+});
+
+/** PUT /library/:id — update a template */
+router.put('/library/:id', async (req: Request, res: Response) => {
+	try {
+		const template = await taskIntake.updateTemplate(req.params.id, req.body);
+		res.json({ ok: true, template });
+	} catch (err: any) {
+		logger.error(`[task-intake] PUT /library/${req.params.id} error:`, err);
+		res.status(400).json({ ok: false, error: err.message });
+	}
+});
+
+/** DELETE /library/:id — delete a template */
+router.delete('/library/:id', async (req: Request, res: Response) => {
+	try {
+		await taskIntake.deleteTemplate(req.params.id);
+		res.json({ ok: true });
+	} catch (err: any) {
+		logger.error(`[task-intake] DELETE /library/${req.params.id} error:`, err);
+		res.status(400).json({ ok: false, error: err.message });
+	}
+});
+
+/** POST /library/:id/save-from-task — save an existing task as a template */
+router.post('/library/:id/save-from-task', async (req: Request, res: Response) => {
+	try {
+		const template = await taskIntake.saveAsTemplate(req.params.id, req.body);
+		res.json({ ok: true, template });
+	} catch (err: any) {
+		logger.error(`[task-intake] POST /library/${req.params.id}/save-from-task error:`, err);
+		res.status(400).json({ ok: false, error: err.message });
+	}
+});
+
+/** POST /library/:id/run — clone a template into a new live task */
+router.post('/library/:id/run', async (req: Request, res: Response) => {
+	try {
+		const result = await taskIntake.runFromTemplate(req.params.id, req.body);
+		res.json({ ok: true, ...result });
+	} catch (err: any) {
+		logger.error(`[task-intake] POST /library/${req.params.id}/run error:`, err);
 		res.status(400).json({ ok: false, error: err.message });
 	}
 });

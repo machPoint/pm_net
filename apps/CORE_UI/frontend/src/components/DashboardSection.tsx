@@ -26,6 +26,7 @@ import {
 	Zap,
 	BarChart3,
 	Loader2,
+	Target,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -154,30 +155,25 @@ export default function DashboardSection() {
 		try {
 			setLoading(true);
 
-			// Fetch all node types in parallel
-			const [tasksRes, gatesRes, milestonesRes, risksRes] = await Promise.all([
+			// Fetch projects and tasks in parallel
+			const [tasksRes, projectsRes] = await Promise.all([
 				fetch(`${OPAL_BASE_URL}/api/nodes?node_type=task`),
-				fetch(`${OPAL_BASE_URL}/api/nodes?node_type=gate`),
-				fetch(`${OPAL_BASE_URL}/api/nodes?node_type=milestone`),
-				fetch(`${OPAL_BASE_URL}/api/nodes?node_type=risk`),
+				fetch(`${OPAL_BASE_URL}/api/nodes?node_type=project`),
 			]);
 
 			const tasks = tasksRes.ok ? (await tasksRes.json()).nodes || [] : [];
-			const gates = gatesRes.ok ? (await gatesRes.json()).nodes || [] : [];
-			const milestones = milestonesRes.ok ? (await milestonesRes.json()).nodes || [] : [];
-			const risks = risksRes.ok ? (await risksRes.json()).nodes || [] : [];
+			const projects = projectsRes.ok ? (await projectsRes.json()).nodes || [] : [];
 
 			// --- KPIs ---
 			const activeTasks = tasks.filter((n: any) => ['backlog', 'in_progress', 'review', 'blocked'].includes(n.status));
-			const pendingGates = gates.filter((n: any) => n.status === 'pending');
-			const upcomingMilestones = milestones.filter((n: any) => ['upcoming', 'at_risk'].includes(n.status));
-			const openRisks = risks.filter((n: any) => ['open', 'mitigating', 'identified', 'active'].includes(n.status));
+			const doneTasks = tasks.filter((n: any) => ['done', 'complete'].includes(n.status));
+			const inProgressTasks = tasks.filter((n: any) => n.status === 'in_progress' || n.status === 'active');
 
 			setKpis([
-				{ label: "Active Tasks", value: activeTasks.length, change: 0, icon: CheckSquare, color: "blue" },
-				{ label: "Pending Approvals", value: pendingGates.length, change: 0, icon: Shield, color: "amber" },
-				{ label: "Milestones", value: upcomingMilestones.length, change: 0, icon: Zap, color: "green" },
-				{ label: "Open Risks", value: openRisks.length, change: 0, icon: AlertTriangle, color: "red" },
+				{ label: "Projects", value: projects.length, change: 0, icon: Target, color: "blue" },
+				{ label: "Active Tasks", value: activeTasks.length, change: 0, icon: CheckSquare, color: "green" },
+				{ label: "In Progress", value: inProgressTasks.length, change: 0, icon: Zap, color: "amber" },
+				{ label: "Tasks Done", value: doneTasks.length, change: 0, icon: Activity, color: "green" },
 			]);
 
 			// --- Recent Tasks (last 10 by updated_at) ---
@@ -198,28 +194,28 @@ export default function DashboardSection() {
 				};
 			}));
 
-			// --- Pending Approvals ---
-			setApprovals(pendingGates.slice(0, 10).map((g: any) => {
+			// --- Pending Approvals (tasks needing review) ---
+			const reviewTasks = tasks.filter((n: any) => n.status === 'review' || n.status === 'pending_approval' || (typeof n.metadata === 'object' && n.metadata?.needs_approval));
+			setApprovals(reviewTasks.slice(0, 10).map((g: any) => {
 				const meta = typeof g.metadata === 'string' ? JSON.parse(g.metadata) : (g.metadata || {});
 				const createdAt = g.created_at ? timeAgo(new Date(g.created_at)) : '';
 				return {
 					id: g.id,
 					title: g.title,
-					type: (meta.gate_type || 'gate') as PendingApproval['type'],
-					requestedBy: g.created_by || 'System',
+					type: 'gate' as PendingApproval['type'],
+					requestedBy: g.created_by || 'AI Agent',
 					requestedAt: createdAt,
 					priority: meta.priority || 'medium',
 				};
 			}));
 
-			// --- Chart data (aggregate node counts — placeholder until history endpoint) ---
-			// For now, show a single data point with current counts
+			// --- Chart data (aggregate counts) ---
 			setChartData([{
 				period: 'Now',
 				tasks: tasks.length,
-				plans: milestones.length,
-				runs: gates.length,
-				verifications: risks.length,
+				plans: projects.length,
+				runs: inProgressTasks.length,
+				verifications: doneTasks.length,
 			}]);
 
 		} catch (err) {

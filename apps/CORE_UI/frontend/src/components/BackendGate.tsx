@@ -1,48 +1,42 @@
 "use client";
 
+import { ReactNode } from "react";
 import { useBackendStatus } from "@/contexts/BackendStatusContext";
-import { Button } from "@/components/ui/button";
-import { Loader2, RefreshCw } from "lucide-react";
+import { Loader2 } from "lucide-react";
 
-interface BackendGateProps {
-  children: React.ReactNode;
-}
+export default function BackendGate({ children }: { children: ReactNode }) {
+  const { status, isReady, detail } = useBackendStatus();
 
-export default function BackendGate({ children }: BackendGateProps) {
-  const { status, isReady, detail, lastChecked, refresh } = useBackendStatus();
-
-  if (isReady) {
-    return <>{children}</>;
+  if (status === "initializing" || status === "retrying") {
+    return (
+      <div className="h-screen flex items-center justify-center bg-[var(--color-background)]">
+        <div className="text-center space-y-3">
+          <Loader2 className="w-8 h-8 animate-spin mx-auto text-[var(--color-text-secondary)]" />
+          <p className="text-sm text-[var(--color-text-secondary)]">
+            {status === "initializing" ? "Connecting to backend..." : "Retrying connection..."}
+          </p>
+          {detail && <p className="text-xs text-[var(--color-text-secondary)]">{detail}</p>}
+        </div>
+      </div>
+    );
   }
 
-  const statusLabel =
-    status === "initializing"
-      ? "Starting CORE-SE Engine"
-      : status === "retrying"
-        ? "Waiting for backend"
-        : "Backend unavailable";
-
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-background text-center p-8">
-      <div className="space-y-6 max-w-md">
-        <Loader2 className="w-10 h-10 animate-spin mx-auto text-primary" />
-        <div>
-          <h2 className="text-2xl font-semibold mb-2">{statusLabel}</h2>
-          <p className="text-muted-foreground">
-            The local CORE-SE engine is starting. This usually takes a few seconds.
-            {detail ? ` (${detail})` : ""}
+  if (status === "error") {
+    return (
+      <div className="h-screen flex items-center justify-center bg-[var(--color-background)]">
+        <div className="text-center space-y-3 max-w-sm">
+          <div className="w-12 h-12 rounded-full bg-red-500/10 flex items-center justify-center mx-auto">
+            <span className="text-2xl">⚠️</span>
+          </div>
+          <h2 className="text-lg font-semibold text-[var(--color-text-primary)]">Backend Unavailable</h2>
+          <p className="text-sm text-[var(--color-text-secondary)]">
+            Cannot connect to the backend server. Please ensure the services are running.
           </p>
-          {lastChecked && (
-            <p className="text-xs text-muted-foreground mt-2">
-              Last check: {new Date(lastChecked).toLocaleTimeString()}
-            </p>
-          )}
+          {detail && <p className="text-xs text-[var(--color-text-secondary)]">{detail}</p>}
         </div>
-        <Button variant="outline" onClick={refresh} className="gap-2">
-          <RefreshCw className="w-4 h-4" />
-          Retry now
-        </Button>
       </div>
-    </div>
-  );
+    );
+  }
+
+  return <>{children}</>;
 }

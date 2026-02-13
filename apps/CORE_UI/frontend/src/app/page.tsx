@@ -11,20 +11,19 @@ import TopBar from "@/components/TopBar";
 import LeftNav from "@/components/LeftNav";
 import AIChatPanel from "@/components/AIChatPanel";
 import NotesSection from "@/components/NotesSection";
-import PulseSection from "@/components/PulseSection";
 import TasksSection from "@/components/TasksSection";
 import AgentsSection from "@/components/AgentsSection";
 import SystemAdminSection from "@/components/SystemAdminSection";
-import NetworkSection from "@/components/NetworkSection";
 import GanttSection from "@/components/GanttSection";
-import RisksSection from "@/components/RisksSection";
-import DecisionsSection from "@/components/DecisionsSection";
+import ApprovalsSection from "@/components/ApprovalsSection";
 import AnalyticsSection from "@/components/AnalyticsSection";
-import TaskIntakeSection from "@/components/TaskIntakeSection";
+import ProjectIntakeSection from "@/components/ProjectIntakeSection";
 import DashboardSection from "@/components/DashboardSection";
 import AgentAdminSection from "@/components/AgentAdminSection";
 import IntegrationMapSection from "@/components/IntegrationMapSection";
 import PromptsSection from "@/components/PromptsSection";
+import TaskLibrarySection from "@/components/TaskLibrarySection";
+import ProjectsSection from "@/components/ProjectsSection";
 
 const OPAL_BASE_URL = '/api/opal/proxy';
 
@@ -133,24 +132,22 @@ function PageContent() {
     switch (activeTab) {
       case "notes":
         return <NotesSection />;
-      case "pulse":
-        return <PulseSection />;
-      case "network":
-        return <NetworkSection />;
       case "gantt":
         return <GanttSection />;
-      case "risks":
-        return <RisksSection />;
-      case "decisions":
-        return <DecisionsSection />;
+      case "approvals":
+        return <ApprovalsSection />;
       case "analytics":
         return <AnalyticsSection />;
       case "tasks":
         return <TasksSection onNavigate={setActiveTab} />;
-      case "task-intake":
-        return <TaskIntakeSection />;
+      case "project-intake":
+        return <ProjectIntakeSection />;
+      case "task-library":
+        return <TaskLibrarySection />;
       case "dashboard":
         return <DashboardSection />;
+      case "projects":
+        return <ProjectsSection />;
       case "agent-admin":
         return <AgentAdminSection />;
       case "integration-map":
@@ -398,9 +395,9 @@ function PageContent() {
 
           {/* Central Content Area - Now full width */}
           <Panel defaultSize={88} minSize={60} className="bg-[var(--color-main-panel)]">
-            <ScrollArea className="h-full">
+            <div className="h-full overflow-auto">
               {renderActiveSection()}
-            </ScrollArea>
+            </div>
           </Panel>
 
 

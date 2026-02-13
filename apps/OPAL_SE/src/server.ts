@@ -201,8 +201,10 @@ import chelexAdminRoutes from './routes/chelex-admin';
 import graphApiRoutes from './routes/graph-api';
 import agentOpsRoutes from './routes/agent-ops';
 import promptsRoutes from './routes/prompts';
+import hierarchyRoutes from './routes/hierarchy';
 
 // Use routes (order matters — specific paths before catch-alls)
+app.use('/api/hierarchy', hierarchyRoutes);  // Mission hierarchy API
 app.use('/api/prompts', promptsRoutes);  // Prompt management API (before catch-all apiRoutes)
 app.use('/api/diagnostics', diagnosticsRoutes);
 app.use('/api/llm', llmAdminRoutes);
@@ -739,11 +741,20 @@ function findSessionByWs(ws: WebSocket): Session | undefined {
 
 // --- Server Startup ---
 const startServer = () => {
-  httpServer.listen(MCP_PORT, () => {
+  httpServer.listen(MCP_PORT, async () => {
     logger.info(`OPAL Server is running on port ${MCP_PORT}`);
     logger.info(`MCP Protocol Version: ${MCP_VERSION}`);
     logger.info(`Server Info: ${JSON.stringify(SERVER_INFO)}`);
     logger.info(`Server Capabilities: ${JSON.stringify(constants.SERVER_CAPABILITIES)}`);
+
+    // Ensure default mission hierarchy exists for backward compatibility
+    try {
+      const { ensureDefaultHierarchy } = await import('./services/hierarchyService');
+      await ensureDefaultHierarchy();
+      logger.info('Default mission hierarchy verified');
+    } catch (err: any) {
+      logger.warn(`Could not ensure default hierarchy: ${err.message}`);
+    }
 
     console.log(`\nOPAL Server is running!`);
     console.log(`- HTTP: http://localhost:${MCP_PORT}/mcp`);

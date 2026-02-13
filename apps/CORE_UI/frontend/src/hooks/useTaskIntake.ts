@@ -50,6 +50,17 @@ export interface PrecedentMatch {
 	plan_template: Record<string, any>;
 }
 
+export interface TaskTemplate {
+	id: string;
+	title: string;
+	description: string;
+	priority: string;
+	acceptance_criteria: any[];
+	estimated_hours: number;
+	tags: string[];
+	is_template: boolean;
+}
+
 export interface PlanPreview {
 	plan_id: string;
 	steps: Array<{ order: number; action: string; expected_outcome: string; tool?: string }>;
@@ -104,7 +115,24 @@ export function useTaskIntake() {
 
 	// Stage-specific state
 	const [precedents, setPrecedents] = useState<PrecedentMatch[]>([]);
+	const [libraryTemplates, setLibraryTemplates] = useState<TaskTemplate[]>([]);
 	const [planPreview, setPlanPreview] = useState<PlanPreview | null>(null);
+	const [executionResults, setExecutionResults] = useState<{
+		steps: Array<{
+			step_order: number;
+			action: string;
+			tool: string | null;
+			output: string;
+			success: boolean;
+			duration_ms: number;
+			source: string;
+			tool_calls: string[];
+			model?: string;
+		}>;
+		total_duration_ms: number;
+		success_count: number;
+		failure_count: number;
+	} | null>(null);
 
 	const clearError = useCallback(() => setError(null), []);
 
@@ -136,6 +164,7 @@ export function useTaskIntake() {
 			setRun(null);
 			setPrecedent(null);
 			setPrecedents([]);
+			setLibraryTemplates([]);
 			setPlanPreview(null);
 			return data.session as IntakeSession;
 		} catch (err: any) {
@@ -153,6 +182,7 @@ export function useTaskIntake() {
 		priority?: string;
 		estimated_hours?: number;
 		acceptance_criteria?: string[];
+		category?: string;
 	}) => {
 		if (!session) return;
 		setLoading(true);
@@ -167,6 +197,7 @@ export function useTaskIntake() {
 				const precData = await api(`/sessions/${data.session.id}/precedents`, {});
 				setSession(precData.session);
 				setPrecedents(precData.precedents || []);
+				setLibraryTemplates(precData.library_templates || []);
 			}
 		} catch (err: any) {
 			setError(err.message);
@@ -184,6 +215,7 @@ export function useTaskIntake() {
 			const data = await api(`/sessions/${session.id}/precedents`, {});
 			setSession(data.session);
 			setPrecedents(data.precedents || []);
+			setLibraryTemplates(data.library_templates || []);
 		} catch (err: any) {
 			setError(err.message);
 		} finally {
@@ -207,12 +239,12 @@ export function useTaskIntake() {
 		}
 	}, [session, refreshState]);
 
-	// Stage 1b: Skip precedent (start fresh) — session is already at 'clarify' after lookupPrecedents
+	// Stage 1b: Skip precedent (start fresh) — advance to clarify stage
 	const skipPrecedent = useCallback(async () => {
 		if (!session) return;
-		// Refresh to pick up the clarify stage and trigger a re-render
-		await refreshState(session.id);
-	}, [session, refreshState]);
+		// The clarify endpoint accepts stage='precedents' and auto-advances to clarify
+		setSession({ ...session, stage: 'clarify' });
+	}, [session]);
 
 	// Stage 2: Clarify
 	const clarify = useCallback(async (message: string): Promise<string | null> => {
@@ -270,13 +302,40 @@ export function useTaskIntake() {
 		}
 	}, [session, refreshState]);
 
-	// Stage 5: Execute
+	// Stage 5: Fetch execution results (for VerifyStage)
+	const fetchExecutionResults = useCallback(async () => {
+		if (!session) return;
+		try {
+			const data = await api(`/sessions/${session.id}/execution-results`);
+			setExecutionResults(data);
+		} catch (err: any) {
+			// Non-fatal — results may not exist yet
+			console.warn('Failed to fetch execution results:', err.message);
+		}
+	}, [session]);
+
+	// Stage 5: Start execution (creates run node, stays at execute stage)
 	const startExecution = useCallback(async () => {
 		if (!session) return;
 		setLoading(true);
 		setError(null);
 		try {
 			const data = await api(`/sessions/${session.id}/execute`, {});
+			setSession(data.session);
+		} catch (err: any) {
+			setError(err.message);
+		} finally {
+			setLoading(false);
+		}
+	}, [session]);
+
+	// Stage 5b: Finalize execution (advance to verify after all steps complete)
+	const finalizeExecution = useCallback(async () => {
+		if (!session) return;
+		setLoading(true);
+		setError(null);
+		try {
+			const data = await api(`/sessions/${session.id}/finalize-execution`, {});
 			setSession(data.session);
 			await refreshState(session.id);
 		} catch (err: any) {
@@ -353,7 +412,9 @@ export function useTaskIntake() {
 		setRun(null);
 		setPrecedent(null);
 		setPrecedents([]);
+		setLibraryTemplates([]);
 		setPlanPreview(null);
+		setExecutionResults(null);
 		setError(null);
 	}, []);
 
@@ -368,7 +429,9 @@ export function useTaskIntake() {
 		run,
 		precedent,
 		precedents,
+		libraryTemplates,
 		planPreview,
+		executionResults,
 
 		// Actions
 		clearError,
@@ -381,6 +444,8 @@ export function useTaskIntake() {
 		generatePlan,
 		approvePlan,
 		startExecution,
+		finalizeExecution,
+		fetchExecutionResults,
 		completeVerification,
 		createPrecedentFromRun,
 		deleteSession,

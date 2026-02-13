@@ -10,7 +10,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { Bot, User, Calendar, Clock, CheckCircle2, Circle, AlertCircle, Loader2, Trash2 } from "lucide-react";
+import { Bot, User, Calendar, Clock, CheckCircle2, Circle, AlertCircle, Loader2, Trash2, FolderKanban } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
@@ -40,11 +40,17 @@ interface TaskDetailDialogProps {
 	onTaskUpdated?: () => void;
 }
 
+interface ParentProject {
+	id: string;
+	title: string;
+}
+
 export default function TaskDetailDialog({ task, open, onOpenChange, onTaskUpdated }: TaskDetailDialogProps) {
 	const [availableAgents, setAvailableAgents] = useState<AvailableAgent[]>([]);
 	const [assigning, setAssigning] = useState(false);
 	const [showAgentPicker, setShowAgentPicker] = useState(false);
 	const [deleting, setDeleting] = useState(false);
+	const [parentProject, setParentProject] = useState<ParentProject | null>(null);
 
 	const handleDelete = async () => {
 		if (!task || !confirm('Delete this task?')) return;
@@ -65,6 +71,18 @@ export default function TaskDetailDialog({ task, open, onOpenChange, onTaskUpdat
 			setDeleting(false);
 		}
 	};
+
+	// Fetch parent project when dialog opens
+	useEffect(() => {
+		if (!open || !task) { setParentProject(null); return; }
+		fetch(`${OPAL_BASE_URL}/api/traverse?from_id=${task.id}&edge_type=contains&direction=incoming`)
+			.then(r => r.ok ? r.json() : null)
+			.then(data => {
+				const project = (data?.nodes || []).find((n: any) => n.node_type === 'project');
+				if (project) setParentProject({ id: project.id, title: project.title });
+			})
+			.catch(() => {});
+	}, [open, task?.id]);
 
 	// Fetch available agents when dialog opens
 	useEffect(() => {
@@ -153,6 +171,14 @@ export default function TaskDetailDialog({ task, open, onOpenChange, onTaskUpdat
 	return (
 		<Dialog open={open} onOpenChange={onOpenChange}>
 			<DialogContent className="max-w-lg">
+				{/* Parent Project */}
+				{parentProject && (
+					<div className="flex items-center gap-1.5 text-xs text-muted-foreground pb-1 -mb-2">
+						<FolderKanban className="w-3 h-3 flex-shrink-0" />
+						<span className="truncate">{parentProject.title}</span>
+					</div>
+				)}
+
 				<DialogHeader>
 					<div className="flex items-start gap-3">
 						<StatusIcon className={cn("w-6 h-6 mt-1 flex-shrink-0", getStatusColor(task.status))} />

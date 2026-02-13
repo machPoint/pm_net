@@ -37,6 +37,7 @@ import {
   getNodeContext,
   findNodesByType
 } from './agentGraphTools';
+import * as hierarchyService from '../hierarchyService';
 
 /**
  * Register all SE MCP tools
@@ -464,7 +465,56 @@ export async function registerSETools(configs: any, wss: any): Promise<void> {
       }
     });
 
-    logger.info('Successfully registered 23 OPAL_SE MCP tools (incl. Chelex + Graph Navigation)');
+    // ============================================================================
+    // Hierarchy Context Tool
+    // ============================================================================
+
+    // 24. getWorkContext — provides full hierarchy breadcrumb for a work package
+    await createTool(configs, wss, {
+      name: 'getWorkContext',
+      description: 'Get the full mission hierarchy context for a work package (task). Returns the mission, program, project, and phase that contain this work package, plus sibling work packages in the same phase. Use this to understand where a task fits in the strategic hierarchy.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          task_id: {
+            type: 'string',
+            description: 'The work package (task) ID to get hierarchy context for'
+          }
+        },
+        required: ['task_id']
+      },
+      _internal: {
+        method: 'POST',
+        path: '/hierarchy/get-work-context',
+        processor: async (params: any) => {
+          try {
+            const ctx = await hierarchyService.getWorkPackageContext(params.task_id);
+            const siblings = ctx.phase
+              ? await hierarchyService.listWorkPackages(ctx.phase.id)
+              : [];
+            return {
+              content: [{
+                type: 'text',
+                text: JSON.stringify({
+                  hierarchy: {
+                    mission: ctx.mission ? { id: ctx.mission.id, title: ctx.mission.title, wbs: ctx.mission.metadata?.wbs_number, status: ctx.mission.status } : null,
+                    program: ctx.program ? { id: ctx.program.id, title: ctx.program.title, wbs: ctx.program.metadata?.wbs_number, status: ctx.program.status } : null,
+                    project: ctx.project ? { id: ctx.project.id, title: ctx.project.title, wbs: ctx.project.metadata?.wbs_number, status: ctx.project.status } : null,
+                    phase: ctx.phase ? { id: ctx.phase.id, title: ctx.phase.title, wbs: ctx.phase.metadata?.wbs_number, status: ctx.phase.status } : null,
+                  },
+                  work_package: { id: ctx.work_package.id, title: ctx.work_package.title, wbs: ctx.work_package.metadata?.wbs_number, status: ctx.work_package.status },
+                  sibling_work_packages: siblings.map(s => ({ id: s.id, title: s.title, status: s.status, wbs: s.metadata?.wbs_number })),
+                }, null, 2)
+              }]
+            };
+          } catch (error: any) {
+            return { content: [{ type: 'text', text: JSON.stringify({ error: error.message }, null, 2) }] };
+          }
+        }
+      }
+    });
+
+    logger.info('Successfully registered 24 OPAL_SE MCP tools (incl. Chelex + Graph Navigation + Hierarchy)');
   } catch (error: any) {
     logger.error('Error registering SE tools:', error);
     throw error;

@@ -11,8 +11,8 @@
  *                       │
  *   ┌───────────────────▼─────────────────────────────────┐
  *   │  BASE PM LAYER (Universal Project Concepts)         │
- *   │  task, milestone, deliverable, gate, risk,          │
- *   │  decision, resource                                 │
+ *   │  mission, program, project, phase, task, milestone, │
+ *   │  deliverable, gate, risk, decision, resource        │
  *   └─────────────────────────────────────────────────────┘
  *
  * Design principles:
@@ -35,11 +35,19 @@ export const SCHEMA_LAYERS = {
 export type SchemaLayer = (typeof SCHEMA_LAYERS)[keyof typeof SCHEMA_LAYERS];
 
 // ============================================================================
-// Node Types — BASE PM LAYER (7 types)
+// Node Types — BASE PM LAYER (11 types)
 // ============================================================================
 
 export const PM_NODE_TYPES = {
-  /** Atomic unit of work with clear completion criteria */
+  /** Strategic intent / top-level goal (1-3 year horizon) */
+  mission: 'mission',
+  /** Major initiative under a mission (3-12 months) */
+  program: 'program',
+  /** Bounded deliverable with defined scope (1-4 months) */
+  project: 'project',
+  /** Stage within a project, ends with a gate review (2-6 weeks) */
+  phase: 'phase',
+  /** Atomic unit of work ("Work Package") with clear completion criteria */
   task: 'task',
   /** Time-based checkpoint with no work content (zero duration) */
   milestone: 'milestone',
@@ -73,7 +81,7 @@ export const GOV_NODE_TYPES = {
 } as const;
 
 // ============================================================================
-// Combined Node Types (12 total)
+// Combined Node Types (16 total)
 // ============================================================================
 
 export const NODE_TYPES = {
@@ -94,10 +102,12 @@ export function getNodeLayer(nodeType: string): SchemaLayer {
 }
 
 // ============================================================================
-// Edge Types — BASE PM LAYER (7 types)
+// Edge Types — BASE PM LAYER (8 types)
 // ============================================================================
 
 export const PM_EDGE_TYPES = {
+  /** Hierarchy: mission→program, program→project, project→phase, phase→task */
+  contains: 'contains',
   /** task/milestone → task/milestone: "Cannot start until dependency is done" */
   depends_on: 'depends_on',
   /** task/risk → task/milestone: "Actively prevents start" */
@@ -140,7 +150,7 @@ export const GOV_EDGE_TYPES = {
 } as const;
 
 // ============================================================================
-// Combined Edge Types (16 total)
+// Combined Edge Types (17 total)
 // ============================================================================
 
 export const EDGE_TYPES = {
@@ -180,6 +190,7 @@ export function getEdgeLayer(edgeType: string): SchemaLayer {
  */
 export const DEFAULT_WEIGHTS: Record<string, number> = {
   // PM edges
+  [EDGE_TYPES.contains]: 1.0,
   [EDGE_TYPES.depends_on]: 0.5,
   [EDGE_TYPES.blocks]: 0.9,
   [EDGE_TYPES.assigned_to]: 1.0,
@@ -204,6 +215,18 @@ export const DEFAULT_WEIGHTS: Record<string, number> = {
 // ============================================================================
 
 // --- PM Layer statuses ---
+
+export const MISSION_STATUSES = ['planning', 'active', 'on_hold', 'complete', 'cancelled'] as const;
+export type MissionStatus = (typeof MISSION_STATUSES)[number];
+
+export const PROGRAM_STATUSES = ['planning', 'active', 'on_hold', 'complete', 'cancelled'] as const;
+export type ProgramStatus = (typeof PROGRAM_STATUSES)[number];
+
+export const PROJECT_STATUSES = ['planning', 'active', 'on_hold', 'complete', 'cancelled'] as const;
+export type ProjectStatus = (typeof PROJECT_STATUSES)[number];
+
+export const PHASE_STATUSES = ['not_started', 'in_progress', 'at_gate', 'complete', 'cancelled'] as const;
+export type PhaseStatus = (typeof PHASE_STATUSES)[number];
 
 export const TASK_STATUSES = ['backlog', 'blocked', 'ready', 'in_progress', 'review', 'done'] as const;
 export type TaskStatus = (typeof TASK_STATUSES)[number];
@@ -246,6 +269,10 @@ export type PrecedentStatus = (typeof PRECEDENT_STATUSES)[number];
 /** Map node type → allowed statuses */
 export const STATUS_BY_NODE_TYPE: Record<string, readonly string[]> = {
   // PM layer
+  [NODE_TYPES.mission]: MISSION_STATUSES,
+  [NODE_TYPES.program]: PROGRAM_STATUSES,
+  [NODE_TYPES.project]: PROJECT_STATUSES,
+  [NODE_TYPES.phase]: PHASE_STATUSES,
   [NODE_TYPES.task]: TASK_STATUSES,
   [NODE_TYPES.milestone]: MILESTONE_STATUSES,
   [NODE_TYPES.deliverable]: DELIVERABLE_STATUSES,
@@ -271,6 +298,7 @@ export const STATUS_BY_NODE_TYPE: Record<string, readonly string[]> = {
  */
 export const EDGE_CONSTRAINTS: Record<string, { from: string[] | null; to: string[] | null }> = {
   // PM edges
+  [EDGE_TYPES.contains]: { from: ['mission', 'program', 'project', 'phase'], to: ['program', 'project', 'phase', 'task', 'milestone'] },
   [EDGE_TYPES.depends_on]: { from: ['task', 'milestone'], to: ['task', 'milestone'] },
   [EDGE_TYPES.blocks]: { from: ['task', 'risk'], to: ['task', 'milestone'] },
   [EDGE_TYPES.assigned_to]: { from: ['task'], to: ['resource'] },
