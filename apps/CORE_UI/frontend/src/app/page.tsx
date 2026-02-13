@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Toaster } from "sonner";
-import { ChevronDown, ChevronRight, Bot, Wrench, Info } from "lucide-react";
+import { ChevronDown, ChevronRight, Bot, Wrench, Info, Settings, ShieldCheck, Cable, ScrollText, Monitor } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { ThemeProvider, useTheme } from "@/hooks/use-theme";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
@@ -35,6 +35,7 @@ function PageContent() {
   const [agentListCollapsed, setAgentListCollapsed] = useState(true);
   const [capabilitiesCollapsed, setCapabilitiesCollapsed] = useState(true);
   const [systemInfoCollapsed, setSystemInfoCollapsed] = useState(true);
+  const [adminCollapsed, setAdminCollapsed] = useState(true);
   const [useAIChat, setUseAIChat] = useState(true); // Kept for compatibility
   const { baseTheme } = useTheme();
 
@@ -219,6 +220,60 @@ function PageContent() {
               </div>
             </div>
 
+            {/* Admin Panel */}
+            <div className="border-b border-border/50">
+              <div className="flex items-center justify-between p-4">
+                <h3 className="text-sm font-medium text-[var(--color-text-primary)] flex items-center gap-2">
+                  <Settings className="w-4 h-4" />
+                  Admin
+                </h3>
+                <button
+                  onClick={() => setAdminCollapsed(!adminCollapsed)}
+                  className="p-1 hover:bg-muted rounded transition-colors"
+                >
+                  {adminCollapsed ? (
+                    <ChevronRight className="w-4 h-4 text-[var(--color-text-primary)]" />
+                  ) : (
+                    <ChevronDown className="w-4 h-4 text-[var(--color-text-primary)]" />
+                  )}
+                </button>
+              </div>
+
+              <div className={`transition-all duration-200 overflow-hidden ${adminCollapsed ? "h-0" : "h-auto"
+                }`}>
+                <div className="px-4 pb-4 space-y-1">
+                  {[
+                    { id: "agent-admin", label: "Agent Admin", icon: ShieldCheck },
+                    { id: "integration-map", label: "Integration Map", icon: Cable },
+                    { id: "prompts", label: "Prompts", icon: ScrollText },
+                    { id: "system-admin", label: "System Admin", icon: Monitor },
+                  ].map((item) => {
+                    const Icon = item.icon;
+                    return (
+                      <div
+                        key={item.id}
+                        onClick={() => setActiveTab(item.id)}
+                        className={`flex items-center gap-2 p-2 rounded cursor-pointer group ${
+                          activeTab === item.id
+                            ? "bg-[#2b2b2b] text-white"
+                            : "hover:bg-[#2b2b2b]"
+                        }`}
+                      >
+                        <Icon className="w-3.5 h-3.5 text-[var(--color-text-secondary)] group-hover:text-[var(--color-text-primary)]" />
+                        <span className={`text-xs ${
+                          activeTab === item.id
+                            ? "text-[var(--color-text-primary)] font-medium"
+                            : "text-[var(--color-text-secondary)] group-hover:text-[var(--color-text-primary)]"
+                        }`}>
+                          {item.label}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+
             {/* Agent List Panel */}
             <div className="border-b border-border/50">
               <div className="flex items-center justify-between p-4">
@@ -395,7 +450,7 @@ function PageContent() {
 
           {/* Central Content Area - Now full width */}
           <Panel defaultSize={88} minSize={60} className="bg-[var(--color-main-panel)]">
-            <div className="h-full overflow-auto">
+            <div className="h-full overflow-hidden">
               {renderActiveSection()}
             </div>
           </Panel>

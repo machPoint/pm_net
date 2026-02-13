@@ -249,17 +249,30 @@ function ChatInput({ value, onChange, onSend, loading, placeholder }: {
 	loading: boolean;
 	placeholder: string;
 }) {
+	const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+	// Auto-resize textarea
+	useEffect(() => {
+		const el = textareaRef.current;
+		if (el) {
+			el.style.height = 'auto';
+			el.style.height = Math.min(el.scrollHeight, 160) + 'px';
+		}
+	}, [value]);
+
 	return (
-		<div className="p-3 border-t border-border flex gap-2">
-			<Input
+		<div className="p-3 border-t border-border flex gap-2 items-end">
+			<textarea
+				ref={textareaRef}
 				value={value}
 				onChange={(e) => onChange(e.target.value)}
 				onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); onSend(); } }}
 				placeholder={placeholder}
 				disabled={loading}
-				className="flex-1"
+				rows={2}
+				className="flex-1 resize-none rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
 			/>
-			<Button onClick={onSend} disabled={loading || !value.trim()} size="icon">
+			<Button onClick={onSend} disabled={loading || !value.trim()} size="icon" className="flex-shrink-0">
 				{loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
 			</Button>
 		</div>
@@ -749,6 +762,21 @@ function ApproveStage({ intake }: { intake: ReturnType<typeof useTaskIntake> }) 
 		setNewStepAction("");
 	};
 
+	const addApprovalGate = (afterIdx?: number) => {
+		const gate = { order: 0, action: '🛡️ APPROVAL GATE — Pause for human review before continuing', expected_outcome: 'Human approval received', tool: 'approval_gate' };
+		const next = [...editSteps];
+		if (afterIdx !== undefined) {
+			next.splice(afterIdx + 1, 0, gate);
+		} else {
+			next.push(gate);
+		}
+		next.forEach((s, i) => { s.order = i + 1; });
+		setEditSteps(next);
+	};
+
+	const isGateStep = (step: { action: string; tool?: string }) =>
+		step.tool === 'approval_gate' || step.action.includes('APPROVAL GATE');
+
 	const moveStep = (idx: number, dir: -1 | 1) => {
 		const newIdx = idx + dir;
 		if (newIdx < 0 || newIdx >= editSteps.length) return;
@@ -778,58 +806,89 @@ function ApproveStage({ intake }: { intake: ReturnType<typeof useTaskIntake> }) 
 			{/* Plan steps */}
 			<div className="space-y-2">
 				{steps.map((step, i) => (
-					<div key={i} className={cn(
-						"flex items-start gap-2 p-2 rounded border text-sm",
-						editing ? "border-border bg-background" : "border-transparent bg-[var(--color-text-primary)]/5"
-					)}>
-						<span className="text-xs font-mono text-muted-foreground w-5 pt-1 text-right flex-shrink-0">{step.order}.</span>
-						{editing ? (
-							<div className="flex-1 space-y-1">
-								<Input
-									value={step.action}
-									onChange={(e) => updateStep(i, 'action', e.target.value)}
-									className="h-7 text-xs"
-									placeholder="Step action..."
-								/>
-								<Input
-									value={step.expected_outcome}
-									onChange={(e) => updateStep(i, 'expected_outcome', e.target.value)}
-									className="h-7 text-xs"
-									placeholder="Expected outcome..."
-								/>
-							</div>
-						) : (
-							<div className="flex-1">
-								<span className="text-[var(--color-text-primary)]">{step.action}</span>
-								{step.tool && <Badge variant="outline" className="ml-1 text-[10px]">{step.tool}</Badge>}
-								{step.expected_outcome && (
-									<div className="text-xs text-[var(--color-text-secondary)] mt-0.5">{step.expected_outcome}</div>
-								)}
-							</div>
-						)}
-						{editing && (
-							<div className="flex flex-col gap-0.5">
-								<Button size="sm" variant="ghost" className="h-5 w-5 p-0" onClick={() => moveStep(i, -1)} disabled={i === 0}>▲</Button>
-								<Button size="sm" variant="ghost" className="h-5 w-5 p-0" onClick={() => moveStep(i, 1)} disabled={i === steps.length - 1}>▼</Button>
-								<Button size="sm" variant="ghost" className="h-5 w-5 p-0 text-destructive" onClick={() => removeStep(i)}>×</Button>
+					<div key={i}>
+						<div className={cn(
+							"flex items-start gap-2 p-2 rounded border text-sm",
+							isGateStep(step)
+								? "border-amber-500/40 bg-amber-500/10"
+								: editing ? "border-border bg-background" : "border-transparent bg-[var(--color-text-primary)]/5"
+						)}>
+							<span className="text-xs font-mono text-muted-foreground w-5 pt-1 text-right flex-shrink-0">{step.order}.</span>
+							{editing && !isGateStep(step) ? (
+								<div className="flex-1 space-y-1">
+									<Input
+										value={step.action}
+										onChange={(e) => updateStep(i, 'action', e.target.value)}
+										className="h-7 text-xs"
+										placeholder="Step action..."
+									/>
+									<Input
+										value={step.expected_outcome}
+										onChange={(e) => updateStep(i, 'expected_outcome', e.target.value)}
+										className="h-7 text-xs"
+										placeholder="Expected outcome..."
+									/>
+								</div>
+							) : isGateStep(step) ? (
+								<div className="flex-1 flex items-center gap-2">
+									<Shield className="w-4 h-4 text-amber-500 flex-shrink-0" />
+									<span className="text-amber-400 font-medium text-xs">APPROVAL GATE — Pause for human review</span>
+								</div>
+							) : (
+								<div className="flex-1">
+									<span className="text-[var(--color-text-primary)]">{step.action}</span>
+									{step.tool && <Badge variant="outline" className="ml-1 text-[10px]">{step.tool}</Badge>}
+									{step.expected_outcome && (
+										<div className="text-xs text-[var(--color-text-secondary)] mt-0.5">{step.expected_outcome}</div>
+									)}
+								</div>
+							)}
+							{editing && (
+								<div className="flex flex-col gap-0.5">
+									<Button size="sm" variant="ghost" className="h-5 w-5 p-0" onClick={() => moveStep(i, -1)} disabled={i === 0}>▲</Button>
+									<Button size="sm" variant="ghost" className="h-5 w-5 p-0" onClick={() => moveStep(i, 1)} disabled={i === steps.length - 1}>▼</Button>
+									<Button size="sm" variant="ghost" className="h-5 w-5 p-0 text-destructive" onClick={() => removeStep(i)}>×</Button>
+								</div>
+							)}
+						</div>
+						{/* Insert gate after this step */}
+						{editing && !isGateStep(step) && (
+							<div className="flex justify-center py-0.5">
+								<button
+									onClick={() => addApprovalGate(i)}
+									className="text-[10px] text-amber-500/60 hover:text-amber-400 transition-colors px-2 py-0.5 rounded hover:bg-amber-500/10"
+									title="Insert approval gate after this step"
+								>
+									+ insert gate here
+								</button>
 							</div>
 						)}
 					</div>
 				))}
 			</div>
 
-			{/* Add step (edit mode) */}
+			{/* Add step / approval gate (edit mode) */}
 			{editing && (
-				<div className="flex gap-2">
-					<Input
-						value={newStepAction}
-						onChange={(e) => setNewStepAction(e.target.value)}
-						placeholder="Add a new step..."
-						className="flex-1 h-8 text-xs"
-						onKeyDown={(e) => { if (e.key === 'Enter') addStep(); }}
-					/>
-					<Button size="sm" variant="outline" onClick={addStep} className="h-8">
-						<Plus className="w-3 h-3 mr-1" /> Add
+				<div className="space-y-2">
+					<div className="flex gap-2">
+						<Input
+							value={newStepAction}
+							onChange={(e) => setNewStepAction(e.target.value)}
+							placeholder="Add a new step..."
+							className="flex-1 h-8 text-xs"
+							onKeyDown={(e) => { if (e.key === 'Enter') addStep(); }}
+						/>
+						<Button size="sm" variant="outline" onClick={addStep} className="h-8">
+							<Plus className="w-3 h-3 mr-1" /> Add
+						</Button>
+					</div>
+					<Button
+						size="sm"
+						variant="outline"
+						onClick={() => addApprovalGate()}
+						className="h-8 w-full gap-1.5 border-amber-500/40 text-amber-500 hover:bg-amber-500/10 hover:text-amber-400"
+					>
+						<Shield className="w-3 h-3" /> Add Approval Gate
 					</Button>
 				</div>
 			)}
