@@ -32,11 +32,17 @@ async function proxyRequest(request: NextRequest, { params }: { params: Promise<
     }
 
     const response = await fetch(url, fetchOptions);
-    const data = await response.text();
 
-    return new NextResponse(data, {
+    const responseHeaders = new Headers();
+    const contentType = response.headers.get('content-type');
+    if (contentType) responseHeaders.set('Content-Type', contentType);
+
+    const mcpSessionId = response.headers.get('mcp-session-id');
+    if (mcpSessionId) responseHeaders.set('Mcp-Session-Id', mcpSessionId);
+
+    return new NextResponse(response.body, {
       status: response.status,
-      headers: { 'Content-Type': response.headers.get('content-type') || 'application/json' },
+      headers: responseHeaders,
     });
   } catch (error: any) {
     return NextResponse.json(

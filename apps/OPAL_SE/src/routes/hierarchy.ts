@@ -24,6 +24,32 @@ router.get('/missions', async (_req: Request, res: Response) => {
 	}
 });
 
+/** DELETE /hierarchy/work-packages/:id — cascade delete a work package and owned artifacts */
+router.delete('/work-packages/:id', async (req: Request, res: Response) => {
+	try {
+		const changedBy = (req.body?.changed_by as string) || (req.query.changed_by as string) || 'user';
+		const changeReason = (req.body?.change_reason as string) || 'User deleted work package';
+		const result = await hierarchyService.deleteWorkPackageCascade(req.params.id, changedBy, changeReason);
+		res.json({ ok: true, ...result });
+	} catch (err: any) {
+		logger.error(`[hierarchy] DELETE /work-packages/${req.params.id} error:`, err);
+		res.status(400).json({ ok: false, error: err.message });
+	}
+});
+
+/** DELETE /hierarchy/projects/:id — cascade delete project and owned hierarchy/artifacts */
+router.delete('/projects/:id', async (req: Request, res: Response) => {
+	try {
+		const changedBy = (req.body?.changed_by as string) || (req.query.changed_by as string) || 'user';
+		const changeReason = (req.body?.change_reason as string) || 'User requested project cleanup';
+		const result = await hierarchyService.deleteProjectCascade(req.params.id, changedBy, changeReason);
+		res.json({ ok: true, ...result });
+	} catch (err: any) {
+		logger.error(`[hierarchy] DELETE /projects/${req.params.id} error:`, err);
+		res.status(400).json({ ok: false, error: err.message });
+	}
+});
+
 /** POST /hierarchy/missions — create a mission */
 router.post('/missions', async (req: Request, res: Response) => {
 	try {
@@ -104,6 +130,27 @@ router.post('/missions/:id/programs', async (req: Request, res: Response) => {
 });
 
 // ── Projects ────────────────────────────────────────────────────────────────
+
+/** POST /hierarchy/projects — quick project create (same model as regular project) */
+router.post('/projects', async (req: Request, res: Response) => {
+	try {
+		const { title, description, program_id, deliverables, status, category, created_by } = req.body;
+		if (!title) return res.status(400).json({ ok: false, error: 'Missing title' });
+		const project = await hierarchyService.createQuickProject({
+			title,
+			description,
+			program_id,
+			deliverables,
+			status,
+			category,
+			created_by,
+		});
+		res.json({ ok: true, project });
+	} catch (err: any) {
+		logger.error('[hierarchy] POST /projects error:', err);
+		res.status(400).json({ ok: false, error: err.message });
+	}
+});
 
 /** GET /hierarchy/programs/:id/projects — list projects under a program */
 router.get('/programs/:id/projects', async (req: Request, res: Response) => {

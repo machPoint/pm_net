@@ -206,6 +206,52 @@ async function getChildren(
 	return children;
 }
 
+async function getParentByContains(childId: string): Promise<graphService.Node | null> {
+	const parentEdges = await graphService.listEdges({
+		edge_type: 'contains',
+		target_node_id: childId,
+		limit: 1,
+	});
+	if (parentEdges.length === 0) return null;
+	return graphService.getNode(parentEdges[0].source_node_id);
+}
+
+async function getConnectedEdges(nodeId: string): Promise<graphService.Edge[]> {
+	const [outgoing, incoming] = await Promise.all([
+		graphService.listEdges({ source_node_id: nodeId, limit: 1000 }),
+		graphService.listEdges({ target_node_id: nodeId, limit: 1000 }),
+	]);
+
+	const seen = new Set<string>();
+	const all: graphService.Edge[] = [];
+	for (const edge of [...outgoing, ...incoming]) {
+		if (seen.has(edge.id)) continue;
+		seen.add(edge.id);
+		all.push(edge);
+	}
+	return all;
+}
+
+async function collectContainsSubtreeNodeIds(rootId: string): Promise<string[]> {
+	const visited = new Set<string>();
+	const queue = [rootId];
+	const all: string[] = [];
+
+	while (queue.length > 0) {
+		const current = queue.shift()!;
+		if (visited.has(current)) continue;
+		visited.add(current);
+		all.push(current);
+
+		const children = await getChildren(current);
+		for (const child of children) {
+			if (!visited.has(child.id)) queue.push(child.id);
+		}
+	}
+
+	return all;
+}
+
 // ============================================================================
 // Mission CRUD
 // ============================================================================
@@ -230,6 +276,46 @@ export async function createMission(input: CreateMissionInput): Promise<graphSer
 		},
 		created_by: input.created_by,
 	});
+}
+
+export async function createQuickProject(input: CreateQuickProjectInput): Promise<graphService.Node> {
+	let targetProgramId = input.program_id;
+
+	if (targetProgramId) {
+		const program = await graphService.getNode(targetProgramId);
+		if (!program || program.node_type !== 'program') {
+			throw new Error(`Program not found: ${targetProgramId}`);
+		}
+	} else {
+		const defaults = await ensureDefaultHierarchy();
+		targetProgramId = defaults.program.id;
+	}
+
+	const created = await createProject({
+		program_id: targetProgramId!,
+		title: input.title,
+		description: input.description,
+		deliverables: input.deliverables,
+		created_by: input.created_by,
+	});
+
+	const desiredStatus = input.status || created.status || 'planning';
+	const currentMetadata = created.metadata || {};
+	const desiredMetadata = {
+		...currentMetadata,
+		...(input.category ? { category: input.category } : {}),
+	};
+
+	if (desiredStatus !== created.status || JSON.stringify(desiredMetadata) !== JSON.stringify(currentMetadata)) {
+		const updated = await graphService.updateNode(
+			created.id,
+			{ status: desiredStatus, metadata: desiredMetadata, change_reason: 'Apply quick project attributes' },
+			input.created_by || 'system'
+		);
+		if (updated) return updated;
+	}
+
+	return created;
 }
 
 export async function listMissions(): Promise<graphService.Node[]> {
@@ -294,6 +380,16 @@ export interface CreateProjectInput {
 	program_id: string;
 	title: string;
 	description?: string;
+	deliverables?: Array<{ name: string; description: string; acceptance_criteria?: string[] }>;
+	created_by?: string;
+}
+
+export interface CreateQuickProjectInput {
+	title: string;
+	description?: string;
+	program_id?: string;
+	status?: string;
+	category?: string;
 	deliverables?: Array<{ name: string; description: string; acceptance_criteria?: string[] }>;
 	created_by?: string;
 }
@@ -366,6 +462,11 @@ export async function addWorkPackageToPhase(
 	const task = await graphService.getNode(taskId);
 	if (!task || task.node_type !== 'task') throw new Error(`Task not found: ${taskId}`);
 
+	// Resolve hierarchy chain so the task is tightly linked to its owning hierarchy
+	const project = await getParentByContains(phaseId);
+	const program = project ? await getParentByContains(project.id) : null;
+	const mission = program ? await getParentByContains(program.id) : null;
+
 	// Generate WBS for the work package under this phase
 	const wbs = await generateWBS(phaseId, 'task');
 
@@ -375,6 +476,9 @@ export async function addWorkPackageToPhase(
 			...task.metadata,
 			wbs_number: wbs,
 			phase_id: phaseId,
+			project_id: project?.id,
+			program_id: program?.id,
+			mission_id: mission?.id,
 		},
 	}, createdBy);
 
@@ -392,6 +496,244 @@ export async function addWorkPackageToPhase(
 
 export async function listWorkPackages(phaseId: string): Promise<graphService.Node[]> {
 	return getChildren(phaseId, 'task');
+}
+
+export async function deleteWorkPackageCascade(
+	taskId: string,
+	changedBy: string = 'user',
+	changeReason: string = 'Cascade delete work package and owned artifacts'
+): Promise<{
+	deleted_node_ids: string[];
+	deleted_edge_ids: string[];
+	deleted_artifact_ids: string[];
+}> {
+	const task = await graphService.getNode(taskId);
+	if (!task || task.node_type !== 'task') {
+		throw new Error(`Work package not found: ${taskId}`);
+	}
+
+	const artifactTypes = new Set([
+		'plan',
+		'run',
+		'verification',
+		'decision_trace',
+		'precedent',
+		'deliverable',
+		'gate',
+		'risk',
+		'decision',
+		'milestone',
+	]);
+
+	const artifactCandidates = new Set<string>();
+	const taskEdges = await getConnectedEdges(taskId);
+	for (const edge of taskEdges) {
+		const otherId = edge.source_node_id === taskId ? edge.target_node_id : edge.source_node_id;
+		const otherNode = await graphService.getNode(otherId);
+		if (otherNode && artifactTypes.has(otherNode.node_type)) {
+			artifactCandidates.add(otherId);
+		}
+	}
+
+	// Expand artifact set transitively (task -> run -> decision_trace etc.)
+	const queue = [...artifactCandidates];
+	while (queue.length > 0) {
+		const currentId = queue.shift()!;
+		const edges = await getConnectedEdges(currentId);
+		for (const edge of edges) {
+			const otherId = edge.source_node_id === currentId ? edge.target_node_id : edge.source_node_id;
+			if (otherId === taskId || artifactCandidates.has(otherId)) continue;
+			const otherNode = await graphService.getNode(otherId);
+			if (otherNode && artifactTypes.has(otherNode.node_type)) {
+				artifactCandidates.add(otherId);
+				queue.push(otherId);
+			}
+		}
+	}
+
+	const deleteSet = new Set<string>([taskId]);
+	const deletedArtifactIds: string[] = [];
+
+	for (const candidateId of artifactCandidates) {
+		const edges = await getConnectedEdges(candidateId);
+		const hasExternalReference = edges.some((edge) => {
+			const otherId = edge.source_node_id === candidateId ? edge.target_node_id : edge.source_node_id;
+			return !deleteSet.has(otherId) && !artifactCandidates.has(otherId);
+		});
+
+		if (!hasExternalReference) {
+			deleteSet.add(candidateId);
+			deletedArtifactIds.push(candidateId);
+		}
+	}
+
+	const nodeIdsToDelete = Array.from(deleteSet);
+	const edgeIdsToDelete = new Set<string>();
+	for (const nodeId of nodeIdsToDelete) {
+		const edges = await getConnectedEdges(nodeId);
+		for (const edge of edges) {
+			edgeIdsToDelete.add(edge.id);
+		}
+	}
+
+	for (const edgeId of edgeIdsToDelete) {
+		await graphService.deleteEdge(edgeId, changedBy, changeReason);
+	}
+
+	for (const nodeId of nodeIdsToDelete) {
+		await graphService.deleteNode(nodeId, changedBy, changeReason);
+	}
+
+	eventBus.emit({
+		id: uuid(),
+		event_type: 'deleted',
+		entity_type: 'Task',
+		entity_id: taskId,
+		summary: `Work package deleted with cascade: ${task.title}`,
+		source: 'ui',
+		timestamp: new Date().toISOString(),
+		metadata: {
+			task_id: taskId,
+			deleted_nodes: nodeIdsToDelete.length,
+			deleted_edges: edgeIdsToDelete.size,
+			deleted_artifacts: deletedArtifactIds.length,
+		},
+	});
+
+	logger.info(`[Hierarchy] Cascade deleted work package ${taskId}: ${nodeIdsToDelete.length} nodes, ${edgeIdsToDelete.size} edges`);
+
+	return {
+		deleted_node_ids: nodeIdsToDelete,
+		deleted_edge_ids: Array.from(edgeIdsToDelete),
+		deleted_artifact_ids: deletedArtifactIds,
+	};
+}
+
+export async function deleteProjectCascade(
+	projectId: string,
+	changedBy: string = 'user',
+	changeReason: string = 'Cascade delete project and owned hierarchy'
+): Promise<{
+	deleted_node_ids: string[];
+	deleted_edge_ids: string[];
+	deleted_task_ids: string[];
+	deleted_artifact_ids: string[];
+}> {
+	const project = await graphService.getNode(projectId);
+	if (!project || project.node_type !== 'project') {
+		throw new Error(`Project not found: ${projectId}`);
+	}
+
+	const hierarchyNodeIds = await collectContainsSubtreeNodeIds(projectId);
+	const hierarchySet = new Set(hierarchyNodeIds);
+
+	const hierarchyNodes = await Promise.all(hierarchyNodeIds.map((id) => graphService.getNode(id)));
+	const taskIds = hierarchyNodes
+		.filter((n): n is graphService.Node => Boolean(n))
+		.filter((n) => n.node_type === 'task')
+		.map((n) => n.id);
+
+	const artifactTypes = new Set([
+		'plan',
+		'run',
+		'verification',
+		'decision_trace',
+		'precedent',
+		'deliverable',
+		'gate',
+		'risk',
+		'decision',
+		'milestone',
+	]);
+
+	const artifactCandidates = new Set<string>();
+	for (const taskId of taskIds) {
+		const taskEdges = await getConnectedEdges(taskId);
+		for (const edge of taskEdges) {
+			const otherId = edge.source_node_id === taskId ? edge.target_node_id : edge.source_node_id;
+			if (hierarchySet.has(otherId)) continue;
+			const otherNode = await graphService.getNode(otherId);
+			if (otherNode && artifactTypes.has(otherNode.node_type)) {
+				artifactCandidates.add(otherId);
+			}
+		}
+	}
+
+	// Expand artifact candidates transitively (e.g., task -> run -> decision_trace)
+	const queue = [...artifactCandidates];
+	while (queue.length > 0) {
+		const currentId = queue.shift()!;
+		const edges = await getConnectedEdges(currentId);
+		for (const edge of edges) {
+			const otherId = edge.source_node_id === currentId ? edge.target_node_id : edge.source_node_id;
+			if (hierarchySet.has(otherId) || artifactCandidates.has(otherId)) continue;
+			const otherNode = await graphService.getNode(otherId);
+			if (otherNode && artifactTypes.has(otherNode.node_type)) {
+				artifactCandidates.add(otherId);
+				queue.push(otherId);
+			}
+		}
+	}
+
+	const deleteSet = new Set<string>(hierarchyNodeIds);
+	const deletedArtifactIds: string[] = [];
+
+	for (const candidateId of artifactCandidates) {
+		const edges = await getConnectedEdges(candidateId);
+		const hasExternalReference = edges.some((edge) => {
+			const otherId = edge.source_node_id === candidateId ? edge.target_node_id : edge.source_node_id;
+			return !deleteSet.has(otherId) && !artifactCandidates.has(otherId);
+		});
+
+		if (!hasExternalReference) {
+			deleteSet.add(candidateId);
+			deletedArtifactIds.push(candidateId);
+		}
+	}
+
+	const allDeleteNodeIds = Array.from(deleteSet);
+	const edgeIdsToDelete = new Set<string>();
+
+	for (const nodeId of allDeleteNodeIds) {
+		const edges = await getConnectedEdges(nodeId);
+		for (const edge of edges) {
+			edgeIdsToDelete.add(edge.id);
+		}
+	}
+
+	for (const edgeId of edgeIdsToDelete) {
+		await graphService.deleteEdge(edgeId, changedBy, changeReason);
+	}
+
+	for (const nodeId of allDeleteNodeIds) {
+		await graphService.deleteNode(nodeId, changedBy, changeReason);
+	}
+
+	eventBus.emit({
+		id: uuid(),
+		event_type: 'deleted',
+		entity_type: 'Project',
+		entity_id: projectId,
+		summary: `Project deleted with cascade: ${project.title}`,
+		source: 'ui',
+		timestamp: new Date().toISOString(),
+		metadata: {
+			project_id: projectId,
+			deleted_nodes: allDeleteNodeIds.length,
+			deleted_edges: edgeIdsToDelete.size,
+			deleted_tasks: taskIds.length,
+			deleted_artifacts: deletedArtifactIds.length,
+		},
+	});
+
+	logger.info(`[Hierarchy] Cascade deleted project ${projectId}: ${allDeleteNodeIds.length} nodes, ${edgeIdsToDelete.size} edges`);
+
+	return {
+		deleted_node_ids: allDeleteNodeIds,
+		deleted_edge_ids: Array.from(edgeIdsToDelete),
+		deleted_task_ids: taskIds,
+		deleted_artifact_ids: deletedArtifactIds,
+	};
 }
 
 // ============================================================================

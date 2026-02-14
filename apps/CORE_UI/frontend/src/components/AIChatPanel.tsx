@@ -6,6 +6,8 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { 
   MessageCircle, 
   Send, 
@@ -31,6 +33,23 @@ interface ChatMessage {
   role: 'user' | 'assistant' | 'system';
   content: string;
   timestamp: Date;
+  meta?: Record<string, any>;
+}
+
+interface OpenClawAgent {
+  id: string;
+  label: string;
+  status?: string;
+}
+
+interface ContextSearchResult {
+  id: string;
+  title: string;
+  status?: string;
+  category?: string;
+  criticality?: string;
+  description?: string;
+  type: string;
 }
 
 interface ChatContext {
@@ -42,16 +61,6 @@ interface ChatContext {
     category?: string;
     criticality?: string;
   };
-}
-
-interface ContextSearchResult {
-  id: string;
-  title: string;
-  status?: string;
-  category?: string;
-  criticality?: string;
-  description?: string;
-  type: string;
 }
 
 interface AIChatPanelProps {
@@ -85,6 +94,11 @@ export default function AIChatPanel({ selectedRequirement, onContextChange }: AI
   const [filterAgentStatus, setFilterAgentStatus] = useState<string>('all');
   const [filterAgentCapability, setFilterAgentCapability] = useState<string>('all');
   
+  // OpenClaw agent state
+  const [openClawAgents, setOpenClawAgents] = useState<OpenClawAgent[]>([]);
+  const [selectedAgentId, setSelectedAgentId] = useState<string>('main');
+  const [loadingAgents, setLoadingAgents] = useState(false);
+  
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -92,6 +106,12 @@ export default function AIChatPanel({ selectedRequirement, onContextChange }: AI
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  const buildWelcomeMessage = (agentId: string): ChatMessage => ({
+    role: 'assistant',
+    content: `Hello! You're now chatting with OpenClaw agent **${agentId}**. Ask anything and I will return the agent's markdown output directly.`,
+    timestamp: new Date(),
+  });
 
   // Update context when selected requirement changes
   useEffect(() => {
@@ -106,46 +126,120 @@ export default function AIChatPanel({ selectedRequirement, onContextChange }: AI
     }
   }, [selectedRequirement, onContextChange]);
 
-  // Initialize with welcome message
+  // Load available OpenClaw agents (same source used by the Agents page)
   useEffect(() => {
-    if (messages.length === 0) {
-      setMessages([
-        {
-          role: 'assistant',
-          content: 'Hello! I\'m your AI assistant for the CORE-SE requirements traceability system. I can help you with requirements analysis, database queries, and system insights. How can I assist you today?',
-          timestamp: new Date()
+    let cancelled = false;
+
+    const loadAgents = async () => {
+      setLoadingAgents(true);
+      try {
+        const statusRes = await fetch('/api/openclaw/status');
+        if (!statusRes.ok) throw new Error('Failed to fetch OpenClaw status');
+        const statusData = await statusRes.json();
+
+        const runtimeAgents = statusData?.health?.agents || statusData?.status?.heartbeat?.agents || [];
+        const normalized: OpenClawAgent[] = runtimeAgents.map((a: any) => ({
+          id: String(a.agentId),
+          label: `OpenClaw: ${a.agentId}`,
+          status: a?.heartbeat?.enabled ? 'active' : 'stopped',
+        }));
+
+        if (!cancelled) {
+          setOpenClawAgents(normalized);
+
+          const hasMain = normalized.some((a) => a.id === 'main');
+          const nextAgentId = hasMain ? 'main' : (normalized[0]?.id || 'main');
+          setSelectedAgentId(nextAgentId);
         }
-      ]);
-    }
-  }, [messages.length]);
+      } catch {
+        if (!cancelled) {
+          setOpenClawAgents([{ id: 'main', label: 'OpenClaw: main', status: 'unknown' }]);
+          setSelectedAgentId('main');
+        }
+      } finally {
+        if (!cancelled) setLoadingAgents(false);
+      }
+    };
+
+    loadAgents();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Load per-agent chat history
+  useEffect(() => {
+    if (!selectedAgentId) return;
+
+    let cancelled = false;
+    const loadHistory = async () => {
+      try {
+        const res = await fetch(`/api/openclaw/agents/${selectedAgentId}/chat`);
+        const data = await res.json();
+
+        if (cancelled) return;
+
+        if (data.ok && Array.isArray(data.messages) && data.messages.length > 0) {
+          setMessages(
+            data.messages.map((m: any) => ({
+              role: m.role,
+              content: String(m.content || ''),
+              timestamp: new Date(m.timestamp || Date.now()),
+              meta: m.meta || undefined,
+            }))
+          );
+          return;
+        }
+
+        setMessages([buildWelcomeMessage(selectedAgentId)]);
+      } catch {
+        if (!cancelled) {
+          setMessages([buildWelcomeMessage(selectedAgentId)]);
+        }
+      }
+    };
+
+    loadHistory();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedAgentId]);
 
   const sendMessage = async () => {
-    if (!inputMessage.trim() || isLoading) return;
+    if (!inputMessage.trim() || isLoading || !selectedAgentId) return;
+
+    const rawUserInput = inputMessage.trim();
+    const contextInfo = [
+      `context_type: ${context.type}`,
+      context.id ? `context_id: ${context.id}` : null,
+      context.includeRequirements ? 'include_requirements: true' : null,
+    ].filter(Boolean).join('\n');
+
+    const messageForAgent = context.type === 'general' && !context.id
+      ? rawUserInput
+      : `[PM_NET Chat Context]\n${contextInfo}\n\n${rawUserInput}`;
 
     const userMessage: ChatMessage = {
       role: 'user',
-      content: inputMessage,
+      content: rawUserInput,
       timestamp: new Date()
     };
 
     setMessages(prev => [...prev, userMessage]);
     setInputMessage('');
+
     setIsLoading(true);
     setError(null);
 
     try {
-      const response = await fetch('/api/ai/chat', {
+      const response = await fetch(`/api/openclaw/agents/${selectedAgentId}/chat`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          message: inputMessage,
-          history: messages,
-          context_type: context.type,
-          context_id: context.id,
-          include_requirements: context.includeRequirements,
-          requirement_filters: context.requirementFilters
+          message: messageForAgent,
+          sessionId: `pmnet-ai-chat-${selectedAgentId}`,
         })
       });
 
@@ -157,8 +251,9 @@ export default function AIChatPanel({ selectedRequirement, onContextChange }: AI
 
       const assistantMessage: ChatMessage = {
         role: 'assistant',
-        content: data.message,
-        timestamp: new Date(data.timestamp)
+        content: data.reply_markdown || data.reply || data.message || '(empty response)',
+        timestamp: new Date(),
+        meta: data.meta || undefined,
       };
 
       setMessages(prev => [...prev, assistantMessage]);
@@ -175,62 +270,6 @@ export default function AIChatPanel({ selectedRequirement, onContextChange }: AI
     }
   };
 
-  const searchContext = async () => {
-    if (!searchQuery.trim()) return;
-
-    setIsSearching(true);
-    try {
-      const response = await fetch('/api/ai/search-context', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          query: searchQuery,
-          context_type: 'requirement',
-          filters: context.requirementFilters,
-          limit: 20
-        })
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const data = await response.json();
-      setSearchResults(data.results);
-
-    } catch (err) {
-      console.error('Error searching context:', err);
-      setError('Failed to search requirements. Please try again.');
-    } finally {
-      setIsSearching(false);
-    }
-  };
-
-  const selectContextItem = (item: ContextSearchResult) => {
-    const newContext: ChatContext = {
-      type: 'requirement',
-      id: item.id,
-      includeRequirements: false
-    };
-    setContext(newContext);
-    onContextChange?.(newContext);
-    
-    // Add context message
-    const contextMessage: ChatMessage = {
-      role: 'assistant',
-      content: `I've loaded the context for requirement ${item.id}: "${item.title}". How can I help you with this requirement?`,
-      timestamp: new Date()
-    };
-    setMessages(prev => [...prev, contextMessage]);
-  };
-
-  const applySuggestion = (suggestion: string) => {
-    setInputMessage(suggestion);
-    inputRef.current?.focus();
-  };
-
   const copyMessage = (content: string, messageIndex: number) => {
     navigator.clipboard.writeText(content);
     setCopied(`msg-${messageIndex}`);
@@ -238,13 +277,10 @@ export default function AIChatPanel({ selectedRequirement, onContextChange }: AI
   };
 
   const clearChat = () => {
-    setMessages([
-      {
-        role: 'assistant',
-        content: 'Chat cleared. How can I help you?',
-        timestamp: new Date()
-      }
-    ]);
+    if (selectedAgentId) {
+      fetch(`/api/openclaw/agents/${selectedAgentId}/chat`, { method: 'DELETE' }).catch(() => {});
+    }
+    setMessages([buildWelcomeMessage(selectedAgentId || 'main')]);
     setSuggestions([]);
     setError(null);
   };
@@ -257,8 +293,6 @@ export default function AIChatPanel({ selectedRequirement, onContextChange }: AI
     }).format(timestamp);
   };
 
-
-  // Get placeholder text for number input based on context type
   const getNumberPlaceholder = (type: ChatContext['type']) => {
     switch (type) {
       case 'jira': return 'Jira ticket (e.g. CORE-123)';
@@ -272,65 +306,81 @@ export default function AIChatPanel({ selectedRequirement, onContextChange }: AI
     }
   };
 
-  // Generate automatic title for saved chat
-  const generateChatTitle = () => {
-    const date = new Date().toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric'
-    });
-    
-    // Try to extract topic from recent messages
-    let topic = 'General Discussion';
-    if (messages.length > 1) {
-      const lastUserMessage = messages.filter(m => m.role === 'user').slice(-1)[0];
-      if (lastUserMessage) {
-        // Take first few words of the last user message as topic
-        const words = lastUserMessage.content.split(' ').slice(0, 4).join(' ');
-        topic = words.length > 30 ? words.substring(0, 30) + '...' : words;
-      }
-    }
-    
-    const contextLabel = context.type.charAt(0).toUpperCase() + context.type.slice(1);
-    const numberPart = contextNumber ? ` (${contextNumber})` : '';
-    
-    return `${date} - ${contextLabel}${numberPart}: ${topic}`;
+  const applySuggestion = (suggestion: string) => {
+    setInputMessage(suggestion);
+    inputRef.current?.focus();
   };
 
-  // Save current chat with automatic title
-  const saveCurrentChat = () => {
-    if (messages.length <= 1) {
-      console.log('No conversation to save');
-      return;
+  const searchContext = async () => {
+    if (!searchQuery.trim()) return;
+    setIsSearching(true);
+    try {
+      const response = await fetch('/api/ai/search-context', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          query: searchQuery,
+          context_type: 'requirement',
+          filters: context.requirementFilters,
+          limit: 20,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      setSearchResults(Array.isArray(data.results) ? data.results : []);
+    } catch {
+      setError('Failed to search requirements. Please try again.');
+    } finally {
+      setIsSearching(false);
     }
-    
+  };
+
+  const selectContextItem = (item: ContextSearchResult) => {
+    const newContext: ChatContext = {
+      type: 'requirement',
+      id: item.id,
+      includeRequirements: false,
+    };
+    setContext(newContext);
+    onContextChange?.(newContext);
+
+    setMessages((prev) => [
+      ...prev,
+      {
+        role: 'assistant',
+        content: `Loaded context for requirement ${item.id}: **${item.title}**`,
+        timestamp: new Date(),
+      },
+    ]);
+  };
+
+  const saveCurrentChat = () => {
+    if (messages.length <= 1) return;
     const chatData = {
       id: `chat_${Date.now()}`,
-      title: generateChatTitle(),
-      context: context,
-      contextNumber: contextNumber,
-      messages: messages,
-      suggestions: suggestions,
+      context,
+      contextNumber,
+      messages,
       createdAt: new Date().toISOString(),
-      messageCount: messages.filter(m => m.role !== 'system').length
+      messageCount: messages.filter((m) => m.role !== 'system').length,
     };
-    
-    setSavedChats(prev => [chatData, ...prev]);
-    console.log('Chat saved:', chatData.title);
-    
-    // In a real implementation, you'd save to a database or local storage
-    // localStorage.setItem('savedChats', JSON.stringify([chatData, ...savedChats]));
+    setSavedChats((prev) => [chatData, ...prev]);
   };
 
-  // Export chat history
   const exportChatHistory = () => {
     const chatData = {
-      context: context,
-      messages: messages,
+      context,
+      messages,
       timestamp: new Date().toISOString(),
-      suggestions: suggestions
+      suggestions,
     };
-    
+
     const blob = new Blob([JSON.stringify(chatData, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -342,24 +392,14 @@ export default function AIChatPanel({ selectedRequirement, onContextChange }: AI
     URL.revokeObjectURL(url);
   };
 
-  // Show saved chat history
   const showChatHistory = () => {
-    console.log('Saved chats:', savedChats);
-    // In a real implementation, you'd open a modal or sidebar with saved chat history
-    // For now, just log the saved chats with their titles and info
-    if (savedChats.length > 0) {
-      console.log('Recent saved chats:');
-      savedChats.slice(0, 5).forEach((chat, index) => {
-        console.log(`${index + 1}. ${chat.title} (${chat.messageCount} messages)`);
-      });
-    } else {
-      console.log('No saved chats yet. Start a conversation and click Save to create your first saved chat.');
-    }
+    setChatHistory((prev) => [...prev, messages]);
   };
 
   return (
-    <div className="h-full flex flex-col bg-[var(--color-right-panel)]">
-      <div className="flex-1 flex flex-col">
+    <div className="h-full min-h-0 flex flex-col bg-[var(--color-right-panel)]">
+      <div className="flex-1 min-h-0 flex flex-col">
+
         {/* Chat Header with Dropdown and Functions */}
         <div className="px-4 py-3 border-b border-border">
           <div className="space-y-3">
@@ -375,57 +415,57 @@ export default function AIChatPanel({ selectedRequirement, onContextChange }: AI
                   <SelectTrigger className="w-full">
                     <SelectValue />
                   </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="general">
-                    <div className="flex items-center gap-2">
-                      <MessageCircle className="w-4 h-4" />
-                      General Chat
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="jira">
-                    <div className="flex items-center gap-2">
-                      <FileText className="w-4 h-4" />
-                      Jira Issues
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="jama">
-                    <div className="flex items-center gap-2">
-                      <Database className="w-4 h-4" />
-                      Jama Requirements
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="email">
-                    <div className="flex items-center gap-2">
-                      <MessageCircle className="w-4 h-4" />
-                      Email Context
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="outlook">
-                    <div className="flex items-center gap-2">
-                      <MessageCircle className="w-4 h-4" />
-                      Outlook Integration
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="agent">
-                    <div className="flex items-center gap-2">
-                      <Settings className="w-4 h-4" />
-                      Agent Context
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="requirement">
-                    <div className="flex items-center gap-2">
-                      <FileText className="w-4 h-4" />
-                      Specific Requirement
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="database">
-                    <div className="flex items-center gap-2">
-                      <Database className="w-4 h-4" />
-                      Database Query
-                    </div>
-                  </SelectItem>
-                </SelectContent>
-              </Select>
+                  <SelectContent>
+                    <SelectItem value="general">
+                      <div className="flex items-center gap-2">
+                        <MessageCircle className="w-4 h-4" />
+                        General Chat
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="jira">
+                      <div className="flex items-center gap-2">
+                        <FileText className="w-4 h-4" />
+                        Jira Issues
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="jama">
+                      <div className="flex items-center gap-2">
+                        <Database className="w-4 h-4" />
+                        Jama Requirements
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="email">
+                      <div className="flex items-center gap-2">
+                        <MessageCircle className="w-4 h-4" />
+                        Email Context
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="outlook">
+                      <div className="flex items-center gap-2">
+                        <MessageCircle className="w-4 h-4" />
+                        Outlook Integration
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="agent">
+                      <div className="flex items-center gap-2">
+                        <Settings className="w-4 h-4" />
+                        Agent Context
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="requirement">
+                      <div className="flex items-center gap-2">
+                        <FileText className="w-4 h-4" />
+                        Specific Requirement
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="database">
+                      <div className="flex items-center gap-2">
+                        <Database className="w-4 h-4" />
+                        Database Query
+                      </div>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
               
               {/* Context Number Input */}
@@ -441,6 +481,29 @@ export default function AIChatPanel({ selectedRequirement, onContextChange }: AI
                 />
               </div>
             </div>
+          </div>
+          
+          {/* OpenClaw Agent Selector */}
+          <div className="w-64">
+            <Select
+              value={selectedAgentId}
+              onValueChange={setSelectedAgentId}
+              disabled={loadingAgents || openClawAgents.length === 0}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder={loadingAgents ? 'Loading agents...' : 'Select agent'} />
+              </SelectTrigger>
+              <SelectContent>
+                {openClawAgents.map((agent) => (
+                  <SelectItem key={agent.id} value={agent.id}>
+                    <div className="flex items-center justify-between gap-2 w-full">
+                      <span>{agent.label}</span>
+                      {agent.status ? <Badge variant="outline" className="text-[10px] px-1 py-0 h-4">{agent.status}</Badge> : null}
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           
           {/* Agent Filter Dropdowns */}
@@ -651,116 +714,137 @@ export default function AIChatPanel({ selectedRequirement, onContextChange }: AI
         </div>
 
         {/* Chat Messages */}
-        <div className="flex-1 overflow-y-auto px-4 space-y-4 dark-scrollbar">
-              {messages.map((message, index) => (
-                <div
-                  key={index}
-                  className={`flex gap-3 ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
-                >
-                  {message.role === 'assistant' && (
-                    <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center flex-shrink-0">
-                      <Bot className="w-4 h-4 text-white" />
-                    </div>
-                  )}
-                  
-                  <div className={`max-w-[80%] group ${message.role === 'user' ? 'order-first' : ''}`}>
-                    <div
-                      className={`rounded-lg px-3 py-2 text-sm ${
-                        message.role === 'user'
-                          ? 'bg-blue-500 text-white ml-auto'
-                          : 'bg-muted'
-                      }`}
-                    >
-                      <div>{message.content}</div>
-                      <div className="flex items-center justify-between mt-1 gap-2">
-                        <span className={`text-xs opacity-70 ${message.role === 'user' ? 'text-blue-100' : 'text-muted-foreground'}`}>
-                          {formatTimestamp(message.timestamp)}
-                        </span>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="opacity-0 group-hover:opacity-100 h-6 w-6 p-1"
-                          onClick={() => copyMessage(message.content, index)}
-                        >
-                          {copied === `msg-${index}` ? (
-                            <CheckCircle2 className="w-3 h-3" />
-                          ) : (
-                            <Copy className="w-3 h-3" />
-                          )}
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  {message.role === 'user' && (
-                    <div className="w-8 h-8 rounded-full bg-green-500 flex items-center justify-center flex-shrink-0">
-                      <User className="w-4 h-4 text-white" />
-                    </div>
-                  )}
-                </div>
-              ))}
-              
-              {isLoading && (
-                <div className="flex gap-3 justify-start">
-                  <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center flex-shrink-0">
-                    <Bot className="w-4 h-4 text-white" />
-                  </div>
-                  <div className="bg-muted rounded-lg px-3 py-2 text-sm">
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  </div>
+        <div className="flex-1 min-h-0 overflow-y-scroll px-4 pr-2 space-y-4 themed-scrollbar">
+          {messages.map((message, index) => (
+            <div
+              key={index}
+              className={`flex gap-3 ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
+            >
+              {message.role === 'assistant' && (
+                <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center flex-shrink-0">
+                  <Bot className="w-4 h-4 text-white" />
                 </div>
               )}
               
-              <div ref={messagesEndRef} />
-            </div>
+              <div className={`max-w-[80%] group ${message.role === 'user' ? 'order-first' : ''}`}>
+                <div
+                  className={`rounded-lg px-3 py-2 text-sm ${
+                    message.role === 'user'
+                      ? 'bg-blue-500 text-white ml-auto'
+                      : 'bg-muted'
+                  }`}
+                >
+                  {message.role === 'assistant' || message.role === 'system' ? (
+                    <div className="prose prose-sm max-w-none dark:prose-invert prose-p:my-1 prose-pre:my-2 prose-code:text-xs">
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
+                    </div>
+                  ) : (
+                    <div className="whitespace-pre-wrap break-words">{message.content}</div>
+                  )}
 
-            {/* Error Display */}
-            {error && (
-              <div className="px-4">
-                <Alert>
-                  <AlertDescription>{error}</AlertDescription>
-                </Alert>
-              </div>
-            )}
+                  {message.role === 'assistant' && message.meta?.consoleMarkdown ? (
+                    <details className="mt-2">
+                      <summary className="text-xs cursor-pointer opacity-80">OpenClaw Console JSON</summary>
+                      <div className="mt-2 prose prose-sm max-w-none dark:prose-invert prose-pre:my-0 prose-code:text-xs">
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>{String(message.meta.consoleMarkdown)}</ReactMarkdown>
+                      </div>
+                    </details>
+                  ) : null}
 
-            {/* Suggestions */}
-            {suggestions.length > 0 && (
-              <div className="px-4 py-2">
-                <div className="text-xs text-muted-foreground mb-2">Suggestions:</div>
-                <div className="flex flex-wrap gap-1">
-                  {suggestions.map((suggestion, index) => (
+                  <div className="flex items-center justify-between mt-1 gap-2">
+                    <span className={`text-xs opacity-70 ${message.role === 'user' ? 'text-blue-100' : 'text-muted-foreground'}`}>
+                      {formatTimestamp(message.timestamp)}
+                    </span>
                     <Button
-                      key={index}
                       size="sm"
-                      variant="outline"
-                      className="text-xs h-7"
-                      onClick={() => applySuggestion(suggestion)}
+                      variant="ghost"
+                      className="opacity-0 group-hover:opacity-100 h-6 w-6 p-1"
+                      onClick={() => copyMessage(message.content, index)}
                     >
-                      {suggestion}
+                      {copied === `msg-${index}` ? (
+                        <CheckCircle2 className="w-3 h-3" />
+                      ) : (
+                        <Copy className="w-3 h-3" />
+                      )}
                     </Button>
-                  ))}
+                  </div>
                 </div>
               </div>
-            )}
 
-            {/* Chat Input */}
-            <div className="p-4 border-t">
-              <div className="flex gap-2">
-                <Input
-                  ref={inputRef}
-                  placeholder="Ask about requirements, database, or analysis..."
-                  value={inputMessage}
-                  onChange={(e) => setInputMessage(e.target.value)}
-                  onKeyPress={(e) => e.key === 'Enter' && !e.shiftKey && sendMessage()}
-                  disabled={isLoading}
-                />
-                <Button onClick={sendMessage} disabled={!inputMessage.trim() || isLoading}>
-                  {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-                </Button>
-                <Button variant="outline" onClick={clearChat} size="icon">
-                  <Trash2 className="w-4 h-4" />
-                </Button>
+              {message.role === 'user' && (
+                <div className="w-8 h-8 rounded-full bg-green-500 flex items-center justify-center flex-shrink-0">
+                  <User className="w-4 h-4 text-white" />
+                </div>
+              )}
+            </div>
+          ))}
+
+          {isLoading && (
+            <div className="flex gap-3 justify-start">
+              <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center flex-shrink-0">
+                <Bot className="w-4 h-4 text-white" />
               </div>
+              <div className="bg-muted rounded-lg px-3 py-2 text-sm">
+                <Loader2 className="w-4 h-4 animate-spin" />
+              </div>
+            </div>
+          )}
+
+          <div ref={messagesEndRef} />
+        </div>
+
+        {/* Error Display */}
+        {error && (
+          <div className="px-4 py-2">
+            <Alert>
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          </div>
+        )}
+
+        {/* Suggestions */}
+        {suggestions.length > 0 && (
+          <div className="px-4 py-2">
+            <div className="text-xs text-muted-foreground mb-2">Suggestions:</div>
+            <div className="flex flex-wrap gap-1">
+              {suggestions.map((suggestion, index) => (
+                <Button
+                  key={index}
+                  size="sm"
+                  variant="outline"
+                  className="text-xs h-7"
+                  onClick={() => applySuggestion(suggestion)}
+                >
+                  {suggestion}
+                </Button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Chat Input */}
+        <div className="p-4 border-t">
+          <div className="flex gap-2">
+            <Input
+              ref={inputRef}
+              placeholder="Message OpenClaw agent..."
+              value={inputMessage}
+              onChange={(e) => setInputMessage(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  sendMessage();
+                }
+              }}
+              disabled={isLoading}
+            />
+            <Button onClick={sendMessage} disabled={!inputMessage.trim() || isLoading}>
+              {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+            </Button>
+            <Button variant="outline" onClick={clearChat} size="icon">
+              <Trash2 className="w-4 h-4" />
+            </Button>
+          </div>
         </div>
       </div>
     </div>

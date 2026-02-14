@@ -61,9 +61,19 @@ export interface TaskTemplate {
 	is_template: boolean;
 }
 
+export type PlanStepType = "task" | "approval_gate";
+
+export interface PlanStep {
+	order: number;
+	action: string;
+	expected_outcome: string;
+	tool?: string | null;
+	step_type?: PlanStepType;
+}
+
 export interface PlanPreview {
 	plan_id: string;
-	steps: Array<{ order: number; action: string; expected_outcome: string; tool?: string }>;
+	steps: PlanStep[];
 	rationale: string;
 	estimated_hours: number;
 	requires_gate: boolean;
@@ -283,13 +293,32 @@ export function useTaskIntake() {
 		}
 	}, [session, refreshState]);
 
-	// Stage 4: Approve/Reject
-	const approvePlan = useCallback(async (approved: boolean) => {
+	// Stage 4a: Persist edited plan steps
+	const savePlanSteps = useCallback(async (steps: PlanStep[]) => {
 		if (!session) return;
 		setLoading(true);
 		setError(null);
 		try {
-			const data = await api(`/sessions/${session.id}/approve`, { approved });
+			const data = await api(`/sessions/${session.id}/plan-steps`, { steps });
+			setSession(data.session);
+			setPlanPreview(data.plan || null);
+			await refreshState(session.id);
+		} catch (err: any) {
+			setError(err.message);
+		} finally {
+			setLoading(false);
+		}
+	}, [session, refreshState]);
+
+	// Stage 4b: Approve/Reject
+	const approvePlan = useCallback(async (approved: boolean, steps?: PlanStep[]) => {
+		if (!session) return;
+		setLoading(true);
+		setError(null);
+		try {
+			const payload: { approved: boolean; steps?: PlanStep[] } = { approved };
+			if (Array.isArray(steps) && steps.length > 0) payload.steps = steps;
+			const data = await api(`/sessions/${session.id}/approve`, payload);
 			setSession(data.session);
 			await refreshState(session.id);
 			if (!approved) {
@@ -442,6 +471,7 @@ export function useTaskIntake() {
 		skipPrecedent,
 		clarify,
 		generatePlan,
+		savePlanSteps,
 		approvePlan,
 		startExecution,
 		finalizeExecution,

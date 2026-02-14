@@ -24,6 +24,9 @@ import IntegrationMapSection from "@/components/IntegrationMapSection";
 import PromptsSection from "@/components/PromptsSection";
 import TaskLibrarySection from "@/components/TaskLibrarySection";
 import ProjectsSection from "@/components/ProjectsSection";
+import MessagesSection from "@/components/MessagesSection";
+import ExecutionConsoleSection from "@/components/ExecutionConsoleSection";
+import SchedulerSection from "@/components/SchedulerSection";
 
 const OPAL_BASE_URL = '/api/opal/proxy';
 
@@ -135,6 +138,8 @@ function PageContent() {
         return <NotesSection />;
       case "gantt":
         return <GanttSection />;
+      case "scheduler":
+        return <SchedulerSection />;
       case "approvals":
         return <ApprovalsSection />;
       case "analytics":
@@ -142,9 +147,13 @@ function PageContent() {
       case "tasks":
         return <TasksSection onNavigate={setActiveTab} />;
       case "project-intake":
-        return <ProjectIntakeSection />;
+        return <ProjectIntakeSection onNavigateToExecution={() => setActiveTab("execution-console")} />;
+      case "execution-console":
+        return <ExecutionConsoleSection />;
       case "task-library":
         return <TaskLibrarySection />;
+      case "messages":
+        return <MessagesSection />;
       case "dashboard":
         return <DashboardSection />;
       case "projects":

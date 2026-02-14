@@ -16,6 +16,8 @@ import { callLLM } from './agentGateway';
 import { eventBus } from './eventBus';
 import * as hierarchyService from './hierarchyService';
 import logger from '../logger';
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
+import path from 'path';
 
 // ============================================================================
 // Types
@@ -84,11 +86,21 @@ export interface ClarifyResult {
 
 export interface PlanPreview {
 	plan_id: string;
-	steps: Array<{ order: number; action: string; expected_outcome: string; tool?: string }>;
+	steps: PlanStep[];
 	rationale: string;
 	estimated_hours: number;
 	requires_gate: boolean;
 	subtasks?: Array<{ id: string; title: string; description: string; priority: string; estimated_hours: number }>;
+}
+
+export type PlanStepType = 'task' | 'approval_gate';
+
+export interface PlanStep {
+	order: number;
+	action: string;
+	expected_outcome: string;
+	tool?: string | null;
+	step_type?: PlanStepType;
 }
 
 // In-memory session store (MVP; swap for DB later)
@@ -205,6 +217,33 @@ function addMessage(session: IntakeSession, role: IntakeMessage['role'], content
 		timestamp: new Date().toISOString(),
 		metadata,
 	});
+}
+
+function normalizePlanStep(raw: any, index: number): PlanStep {
+	const isGate = raw?.step_type === 'approval_gate' || raw?.tool === 'approval_gate';
+	const step_type: PlanStepType = isGate ? 'approval_gate' : 'task';
+	if (step_type === 'approval_gate') {
+		return {
+			order: index + 1,
+			action: raw?.action || 'Approval Gate — Pause for human review before continuing',
+			expected_outcome: raw?.expected_outcome || 'Human approval received',
+			tool: 'approval_gate',
+			step_type,
+		};
+	}
+
+	return {
+		order: index + 1,
+		action: String(raw?.action || '').trim() || `Step ${index + 1}`,
+		expected_outcome: String(raw?.expected_outcome || '').trim(),
+		tool: raw?.tool || null,
+		step_type,
+	};
+}
+
+function normalizePlanSteps(steps: any[]): PlanStep[] {
+	if (!Array.isArray(steps)) return [];
+	return steps.map((s, i) => normalizePlanStep(s, i));
 }
 
 // ============================================================================
@@ -581,10 +620,11 @@ export async function generatePlan(
 		if (existingPlan) {
 			session.stage = 'approve';
 			updateSession(session);
+			const normalizedExistingSteps = normalizePlanSteps(existingPlan.metadata?.steps || []);
 			return {
 				plan: {
 					plan_id: existingPlan.id,
-					steps: existingPlan.metadata?.steps || [],
+					steps: normalizedExistingSteps,
 					rationale: existingPlan.description || '',
 					estimated_hours: existingPlan.metadata?.estimated_hours || 0,
 					requires_gate: requiresGate,
@@ -637,7 +677,7 @@ Respond with JSON:
 
 For complex tasks, break into 2-5 subtasks. For simple tasks, subtasks can be empty.`;
 
-	let steps: any[] = [];
+	let steps: PlanStep[] = [];
 	let rationale = '';
 	let estimatedHours = task.metadata?.estimated_hours || 1;
 	let risks: string[] = [];
@@ -653,14 +693,14 @@ For complex tasks, break into 2-5 subtasks. For simple tasks, subtasks can be em
 		});
 
 		const parsed = JSON.parse(llmResponse.content);
-		steps = parsed.steps || [];
+		steps = normalizePlanSteps(parsed.steps || []);
 		rationale = parsed.rationale || '';
 		estimatedHours = parsed.estimated_hours || estimatedHours;
 		risks = parsed.risks || [];
 		subtasks = parsed.subtasks || [];
 	} catch (err: any) {
 		logger.warn(`[TaskIntake] LLM plan generation failed: ${err.message}`);
-		steps = [{ order: 1, action: 'Execute task as described', expected_outcome: 'Task completed', tool: null }];
+		steps = [{ order: 1, action: 'Execute task as described', expected_outcome: 'Task completed', tool: null, step_type: 'task' }];
 		rationale = 'Default single-step plan (LLM unavailable)';
 	}
 
@@ -800,27 +840,77 @@ For complex tasks, break into 2-5 subtasks. For simple tasks, subtasks can be em
 	};
 }
 
+export async function updatePlanSteps(
+	sessionId: string,
+	steps: any[]
+): Promise<{ plan: PlanPreview; session: IntakeSession }> {
+	const session = getSession(sessionId);
+	if (!session) throw new Error(`Session not found: ${sessionId}`);
+	if (session.stage !== 'approve') throw new Error(`Invalid stage for editing plan: ${session.stage}`);
+	if (!session.plan_id) throw new Error('No plan_id in session');
+
+	const plan = await graphService.getNode(session.plan_id);
+	if (!plan) throw new Error(`Plan not found: ${session.plan_id}`);
+
+	const normalizedSteps = normalizePlanSteps(steps || []);
+	if (normalizedSteps.length === 0) throw new Error('Plan must contain at least one step');
+
+	const nextMeta: Record<string, any> = {
+		...(plan.metadata || {}),
+		steps: normalizedSteps,
+		edited_at: new Date().toISOString(),
+		edited_by: session.agent_id,
+	};
+
+	await graphService.updateNode(session.plan_id, {
+		metadata: nextMeta,
+	}, session.agent_id);
+
+	addMessage(session, 'system', `Plan steps updated (${normalizedSteps.length} step(s)).`);
+	updateSession(session);
+
+	return {
+		plan: {
+			plan_id: plan.id,
+			steps: normalizedSteps,
+			rationale: plan.description || '',
+			estimated_hours: nextMeta.estimated_hours || 0,
+			requires_gate: session.gate_id !== null,
+		},
+		session,
+	};
+}
+
 // ============================================================================
 // Stage 4: Approve / Reject
 // ============================================================================
 
 export async function approvePlan(
 	sessionId: string,
-	approved: boolean
+	approved: boolean,
+	editedSteps?: any[]
 ): Promise<{ status: string; session: IntakeSession }> {
 	const session = getSession(sessionId);
 	if (!session) throw new Error(`Session not found: ${sessionId}`);
 	if (session.stage !== 'approve') throw new Error(`Invalid stage: ${session.stage}`);
 	if (!session.plan_id) throw new Error('No plan_id in session');
+	const plan = await graphService.getNode(session.plan_id);
+	if (!plan) throw new Error(`Plan not found: ${session.plan_id}`);
 
 	logger.info(`[TaskIntake] Stage 4: ${approved ? 'Approving' : 'Rejecting'} plan for session ${sessionId}`);
 
 	const now = new Date().toISOString();
 
 	if (approved) {
+		let mergedMeta = { ...(plan.metadata || {}) };
+		if (Array.isArray(editedSteps) && editedSteps.length > 0) {
+			mergedMeta.steps = normalizePlanSteps(editedSteps);
+			mergedMeta.edited_at = now;
+			mergedMeta.edited_by = session.agent_id;
+		}
 		await graphService.updateNode(session.plan_id, {
 			status: 'approved',
-			metadata: { approved_at: now },
+			metadata: { ...mergedMeta, approved_at: now },
 		}, session.agent_id);
 		if (session.gate_id) {
 			await graphService.updateNode(session.gate_id, { status: 'approved' }, session.agent_id);
@@ -935,6 +1025,7 @@ export async function startExecution(
 
 /**
  * Finalize execution — advance session from execute to verify after all steps complete.
+ * Also: mark task done, ensure hierarchy linkage, auto-save library template.
  */
 export async function finalizeExecution(
 	sessionId: string
@@ -943,30 +1034,145 @@ export async function finalizeExecution(
 	if (!session) throw new Error(`Session not found: ${sessionId}`);
 	if (!session.run_id) throw new Error('No active run');
 
-	// Update run status to completed
+	// 1. Update run status to completed
 	await graphService.updateNode(session.run_id, { status: 'completed' }, session.agent_id);
+
+	// 2. Mark the task node as done
+	let taskTitle = 'Untitled Task';
+	if (session.task_id) {
+		try {
+			const task = await graphService.getNode(session.task_id);
+			if (task) {
+				taskTitle = task.title || taskTitle;
+				await graphService.updateNode(session.task_id, {
+					status: 'done',
+					metadata: {
+						...task.metadata,
+						completed_at: new Date().toISOString(),
+						run_id: session.run_id,
+						session_id: sessionId,
+					},
+				}, session.agent_id);
+				logger.info(`[TaskIntake] Marked task ${session.task_id} as done`);
+			}
+		} catch (err: any) {
+			logger.warn(`[TaskIntake] Could not update task status: ${err.message}`);
+		}
+	}
+
+	// 3. Ensure task is linked to the hierarchy (default project/phase if orphaned)
+	if (session.task_id) {
+		try {
+			const edges = await graphService.listEdges({ target_node_id: session.task_id, edge_type: 'contains' });
+			if (!edges || edges.length === 0) {
+				const defaults = await hierarchyService.ensureDefaultHierarchy();
+				await hierarchyService.addWorkPackageToPhase(defaults.phase.id, session.task_id, session.agent_id);
+				logger.info(`[TaskIntake] Linked orphan task ${session.task_id} to default phase ${defaults.phase.id}`);
+			}
+		} catch (err: any) {
+			logger.warn(`[TaskIntake] Could not link task to hierarchy: ${err.message}`);
+		}
+	}
+
+	// 4. Auto-save as a library template (clone, don't mutate original)
+	if (session.task_id) {
+		try {
+			const task = await graphService.getNode(session.task_id);
+			if (task) {
+				const plan = session.plan_id ? await graphService.getNode(session.plan_id) : null;
+				await graphService.createNode({
+					node_type: 'task',
+					title: taskTitle,
+					description: task.description,
+					status: 'template',
+					metadata: {
+						is_template: true,
+						priority: task.metadata?.priority || 'medium',
+						acceptance_criteria: task.metadata?.acceptance_criteria || [],
+						estimated_hours: task.metadata?.estimated_hours,
+						tags: task.metadata?.tags || [],
+						source_task_id: session.task_id,
+						source_session_id: sessionId,
+						plan_steps: plan?.metadata?.steps || [],
+						saved_as_template_at: new Date().toISOString(),
+					},
+					created_by: session.agent_id,
+					source: 'agent',
+				});
+				logger.info(`[TaskIntake] Auto-saved clone template for task ${session.task_id}`);
+			}
+		} catch (err: any) {
+			logger.warn(`[TaskIntake] Could not auto-save library template: ${err.message}`);
+		}
+	}
 
 	session.stage = 'verify';
 	addMessage(session, 'system', `Execution complete. Moving to verification.`);
 	updateSession(session);
 
-	// Emit completion event
+	// 5. Emit rich completion event for Pulse / Dashboard
 	eventBus.emit({
 		id: uuid(),
 		event_type: 'updated',
 		entity_type: 'Run',
 		entity_id: session.run_id,
-		summary: `Execution completed`,
+		summary: `Execution completed for "${taskTitle}"`,
 		source: 'agent',
 		timestamp: new Date().toISOString(),
 		metadata: {
 			session_id: sessionId,
 			task_id: session.task_id,
+			task_title: taskTitle,
 			status: 'completed',
 		},
 	});
 
+	// 6. Append completion message to OC agent chat history for Messages inbox
+	try {
+		const results = await getExecutionResults(sessionId);
+		const stepSummary = results.steps.map(
+			(s: any) => `${s.success ? '✅' : '❌'} Step ${s.step_order}: ${s.action} (${s.source}, ${(s.duration_ms / 1000).toFixed(1)}s)`
+		).join('\n');
+		const completionMsg = [
+			`**Project Complete: ${taskTitle}**\n`,
+			`All ${results.steps.length} steps finished. ${results.success_count} succeeded, ${results.failure_count} failed.`,
+			`Total duration: ${(results.total_duration_ms / 1000).toFixed(1)}s\n`,
+			`**Steps:**`,
+			stepSummary,
+		].join('\n');
+		appendAgentChatMessage('main', completionMsg);
+		logger.info(`[TaskIntake] Appended completion message to agent chat history`);
+	} catch (err: any) {
+		logger.warn(`[TaskIntake] Could not append completion message: ${err.message}`);
+	}
+
 	return { session };
+}
+
+/**
+ * Append a message to an OC agent's PM-NET chat history file.
+ * This makes the message visible in the Messages inbox.
+ */
+function appendAgentChatMessage(agentId: string, content: string) {
+	const ocHome = process.env.OPENCLAW_HOME || path.join(process.env.HOME || '/home/x1', '.openclaw');
+	const historyPath = path.join(ocHome, 'agents', agentId, 'pmnet-chat-history.json');
+	const dir = path.dirname(historyPath);
+	if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+
+	let history: any[] = [];
+	if (existsSync(historyPath)) {
+		try { history = JSON.parse(readFileSync(historyPath, 'utf-8')); } catch { history = []; }
+	}
+
+	history.push({
+		role: 'assistant',
+		content,
+		timestamp: new Date().toISOString(),
+		meta: { source: 'pm-net-execution', type: 'completion_report' },
+	});
+
+	// Keep last 200 messages
+	writeFileSync(historyPath, JSON.stringify(history.slice(-200), null, 2), 'utf-8');
 }
 
 // ============================================================================
@@ -985,9 +1191,13 @@ interface StepResult {
 	success: boolean;
 	duration_ms: number;
 	tool_calls: ToolCallInfo[];
-	source: 'openclaw' | 'llm_fallback' | 'error';
+	source: 'openclaw' | 'llm_fallback' | 'error' | 'approval_gate';
 	model?: string;
 	oc_session_id?: string;
+}
+
+interface ExecuteStepOptions {
+	onOutputChunk?: (chunk: string) => void;
 }
 
 /**
@@ -1065,7 +1275,8 @@ function parseOCSessionToolCalls(sessionId: string): ToolCallInfo[] {
 
 export async function executeStep(
 	sessionId: string,
-	input: { step_order: number; action: string; tool: string | null; expected_outcome: string }
+	input: { step_order: number; action: string; tool: string | null; expected_outcome: string; step_type?: PlanStepType },
+	options?: ExecuteStepOptions
 ): Promise<StepResult> {
 	const session = getSession(sessionId);
 	if (!session) throw new Error(`Session not found: ${sessionId}`);
@@ -1075,6 +1286,7 @@ export async function executeStep(
 	if (!task) throw new Error(`Task not found: ${session.task_id}`);
 
 	const startTime = Date.now();
+	const isApprovalGateStep = input.step_type === 'approval_gate' || input.tool === 'approval_gate';
 
 	// Build a focused prompt for the OpenClaw agent
 	const agentPrompt = [
@@ -1122,58 +1334,145 @@ export async function executeStep(
 	// Use a dedicated session ID per PM_NET task so steps share context
 	const ocSessionId = `pmnet-${sessionId}`;
 
-	try {
-		// Try OpenClaw CLI first
-		const { execSync } = require('child_process');
-		const escapedPrompt = agentPrompt.replace(/'/g, "'\\''");
-		const result = execSync(
-			`openclaw agent --agent main --message '${escapedPrompt}' --json --session-id '${ocSessionId}'`,
-			{ timeout: 120000, encoding: 'utf-8', maxBuffer: 1024 * 1024 }
-		);
+	if (isApprovalGateStep) {
+		// Create a pending approval node in the graph so Approvals page shows it
+		const gateNode = await graphService.createNode({
+			node_type: 'gate',
+			title: `Approval Gate — Step ${input.step_order}`,
+			description: `Approval checkpoint after step ${input.step_order - 1}. Waiting for human review.`,
+			status: 'pending_approval',
+			metadata: {
+				session_id: sessionId,
+				task_id: session.task_id,
+				task_title: task.title,
+				step_order: input.step_order,
+				run_id: session.run_id,
+				requested_at: new Date().toISOString(),
+			},
+			created_by: session.agent_id,
+			source: 'agent',
+		});
 
-		try {
-			const parsed = JSON.parse(result);
-			// Extract text from payloads
-			if (parsed.result?.payloads?.length > 0) {
-				output = parsed.result.payloads.map((p: any) => p.text || '').join('\n').trim();
-			} else {
-				output = parsed.response || parsed.message || parsed.content || parsed.result?.text || result;
-			}
-			// Extract metadata
-			model = parsed.result?.meta?.agentMeta?.model;
-			oc_session_id = parsed.result?.meta?.agentMeta?.sessionId;
-
-			// Parse the session JSONL to get tool calls
-			if (oc_session_id) {
-				tool_calls = parseOCSessionToolCalls(oc_session_id);
-			}
-		} catch {
-			output = result;
-		}
-		success = true;
-		source = 'openclaw';
-		logger.info(`[TaskIntake] Step ${input.step_order} completed via OpenClaw agent (${tool_calls.length} tool calls)`);
-	} catch (ocErr: any) {
-		logger.warn(`[TaskIntake] OpenClaw agent unavailable, falling back to LLM: ${ocErr.message}`);
-
-		// Fallback: use the LLM directly
-		try {
-			const llmResponse = await callLLM({
-				caller: 'task-intake-execute-step',
-				system_prompt: `You are an AI agent executing a task step. Provide real, substantive output — not placeholders. If the step involves research, provide actual analysis. If it involves writing, produce real content.`,
-				user_prompt: agentPrompt,
-				temperature: 0.5,
+		// Link gate to the run
+		if (session.run_id) {
+			await graphService.createEdge({
+				edge_type: 'contains',
+				source_node_id: session.run_id,
+				target_node_id: gateNode.id,
+				weight: 1.0,
+				created_by: session.agent_id,
 			});
-			output = llmResponse.content;
-			model = llmResponse.model;
+		}
+
+		// Send approval-needed message to agent chat
+		appendAgentChatMessage('main', [
+			`**⏸ Approval Gate Reached — Step ${input.step_order}**\n`,
+			`Task: **${task.title}**`,
+			`The execution has paused and is waiting for your approval before continuing.`,
+			`Please review the work so far and approve or reject in the Execution Console or Approvals page.`,
+		].join('\n'));
+
+		logger.info(`[TaskIntake] Step ${input.step_order} is an approval gate — created gate node ${gateNode.id}, waiting for approval`);
+
+		output = `Approval gate checkpoint reached. Waiting for human approval. Gate ID: ${gateNode.id}`;
+		success = true;
+		source = 'approval_gate';
+		oc_session_id = gateNode.id; // Reuse this field to pass gate_node_id back
+
+		const duration_ms = Date.now() - startTime;
+		return { output, success, duration_ms, tool_calls, source, model, oc_session_id };
+	} else {
+		try {
+			// Try OpenClaw CLI first (stream stdout chunks for real-time console updates)
+			const { spawn } = require('child_process');
+			const result: string = await new Promise((resolve, reject) => {
+				const child = spawn(
+					'openclaw',
+					['agent', '--agent', 'main', '--message', agentPrompt, '--json', '--session-id', ocSessionId],
+					{ stdio: ['ignore', 'pipe', 'pipe'] }
+				);
+
+				let stdout = '';
+				let stderr = '';
+				let timedOut = false;
+
+				const timer = setTimeout(() => {
+					timedOut = true;
+					child.kill('SIGTERM');
+					setTimeout(() => child.kill('SIGKILL'), 5000);
+				}, 120000);
+
+				child.stdout.on('data', (chunk: Buffer | string) => {
+					const text = chunk.toString();
+					stdout += text;
+					options?.onOutputChunk?.(text);
+				});
+
+				child.stderr.on('data', (chunk: Buffer | string) => {
+					stderr += chunk.toString();
+				});
+
+				child.on('error', (err: Error) => {
+					clearTimeout(timer);
+					reject(err);
+				});
+
+				child.on('close', (code: number) => {
+					clearTimeout(timer);
+					if (timedOut) {
+						return reject(new Error('OpenClaw agent timed out after 120s'));
+					}
+					if (code !== 0) {
+						return reject(new Error(stderr.trim() || `OpenClaw agent exited with code ${code}`));
+					}
+					resolve(stdout);
+				});
+			});
+
+			try {
+				const parsed = JSON.parse(result);
+				// Extract text from payloads
+				if (parsed.result?.payloads?.length > 0) {
+					output = parsed.result.payloads.map((p: any) => p.text || '').join('\n').trim();
+				} else {
+					output = parsed.response || parsed.message || parsed.content || parsed.result?.text || result;
+				}
+				// Extract metadata
+				model = parsed.result?.meta?.agentMeta?.model;
+				oc_session_id = parsed.result?.meta?.agentMeta?.sessionId;
+
+				// Parse the session JSONL to get tool calls
+				if (oc_session_id) {
+					tool_calls = parseOCSessionToolCalls(oc_session_id);
+				}
+			} catch {
+				output = result;
+			}
 			success = true;
-			source = 'llm_fallback';
-			logger.info(`[TaskIntake] Step ${input.step_order} completed via LLM fallback`);
-		} catch (llmErr: any) {
-			output = `Error executing step: ${llmErr.message}`;
-			success = false;
-			source = 'error';
-			logger.error(`[TaskIntake] Step ${input.step_order} failed: ${llmErr.message}`);
+			source = 'openclaw';
+			logger.info(`[TaskIntake] Step ${input.step_order} completed via OpenClaw agent (${tool_calls.length} tool calls)`);
+		} catch (ocErr: any) {
+			logger.warn(`[TaskIntake] OpenClaw agent unavailable, falling back to LLM: ${ocErr.message}`);
+
+			// Fallback: use the LLM directly
+			try {
+				const llmResponse = await callLLM({
+					caller: 'task-intake-execute-step',
+					system_prompt: `You are an AI agent executing a task step. Provide real, substantive output — not placeholders. If the step involves research, provide actual analysis. If it involves writing, produce real content.`,
+					user_prompt: agentPrompt,
+					temperature: 0.5,
+				});
+				output = llmResponse.content;
+				model = llmResponse.model;
+				success = true;
+				source = 'llm_fallback';
+				logger.info(`[TaskIntake] Step ${input.step_order} completed via LLM fallback`);
+			} catch (llmErr: any) {
+				output = `Error executing step: ${llmErr.message}`;
+				success = false;
+				source = 'error';
+				logger.error(`[TaskIntake] Step ${input.step_order} failed: ${llmErr.message}`);
+			}
 		}
 	}
 
@@ -1256,7 +1555,7 @@ export async function getExecutionResults(
 }> {
 	const session = getSession(sessionId);
 	if (!session) throw new Error(`Session not found: ${sessionId}`);
-	if (!session.run_id) throw new Error('No active run');
+	if (!session.run_id) return { steps: [], total_duration_ms: 0, success_count: 0, failure_count: 0 };
 
 	// Query all decision_trace nodes linked to this run
 	const allNodes = await graphService.listNodes({

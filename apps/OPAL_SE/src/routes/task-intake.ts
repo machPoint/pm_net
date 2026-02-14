@@ -7,6 +7,7 @@
 
 import { Router, Request, Response } from 'express';
 import * as taskIntake from '../services/taskIntakeService';
+import * as graphService from '../services/graphService';
 import logger from '../logger';
 
 const router = Router();
@@ -21,6 +22,21 @@ router.post('/sessions', async (_req: Request, res: Response) => {
 	} catch (err: any) {
 		logger.error('[task-intake] POST /sessions error:', err);
 		res.status(500).json({ ok: false, error: err.message });
+	}
+});
+
+/** POST /sessions/:id/plan-steps — persist edited plan steps before approval */
+router.post('/sessions/:id/plan-steps', async (req: Request, res: Response) => {
+	try {
+		const { steps } = req.body;
+		if (!Array.isArray(steps)) {
+			return res.status(400).json({ ok: false, error: 'steps array required' });
+		}
+		const result = await taskIntake.updatePlanSteps(req.params.id, steps);
+		res.json({ ok: true, ...result });
+	} catch (err: any) {
+		logger.error(`[task-intake] POST /sessions/${req.params.id}/plan-steps error:`, err);
+		res.status(400).json({ ok: false, error: err.message });
 	}
 });
 
@@ -124,7 +140,8 @@ router.post('/sessions/:id/plan', async (req: Request, res: Response) => {
 router.post('/sessions/:id/approve', async (req: Request, res: Response) => {
 	try {
 		const approved = req.body.approved !== false;
-		const result = await taskIntake.approvePlan(req.params.id, approved);
+		const editedSteps = Array.isArray(req.body.steps) ? req.body.steps : undefined;
+		const result = await taskIntake.approvePlan(req.params.id, approved, editedSteps);
 		res.json({ ok: true, ...result });
 	} catch (err: any) {
 		logger.error(`[task-intake] POST /sessions/${req.params.id}/approve error:`, err);
@@ -159,7 +176,7 @@ router.post('/sessions/:id/finalize-execution', async (req: Request, res: Respon
 /** POST /sessions/:id/execute-step — execute a single plan step via AI agent */
 router.post('/sessions/:id/execute-step', async (req: Request, res: Response) => {
 	try {
-		const { step_order, action, tool, expected_outcome } = req.body;
+		const { step_order, action, tool, expected_outcome, step_type } = req.body;
 		if (!action) {
 			return res.status(400).json({ ok: false, error: 'Missing action' });
 		}
@@ -168,11 +185,307 @@ router.post('/sessions/:id/execute-step', async (req: Request, res: Response) =>
 			action,
 			tool: tool || null,
 			expected_outcome: expected_outcome || '',
+			step_type,
 		});
 		res.json({ ok: true, ...result });
 	} catch (err: any) {
 		logger.error(`[task-intake] POST /sessions/${req.params.id}/execute-step error:`, err);
 		res.status(400).json({ ok: false, error: err.message });
+	}
+});
+
+/**
+ * POST /sessions/:id/execute-stream — execute all plan steps and stream rich telemetry as SSE
+ *
+ * Body:
+ * {
+ *   steps: Array<{ order, action, tool, expected_outcome, step_type }>
+ * }
+ */
+router.post('/sessions/:id/execute-stream', async (req: Request, res: Response) => {
+	const sessionId = req.params.id;
+	const steps = Array.isArray(req.body?.steps) ? req.body.steps : [];
+
+	if (steps.length === 0) {
+		return res.status(400).json({ ok: false, error: 'steps array required' });
+	}
+
+	res.writeHead(200, {
+		'Content-Type': 'text/event-stream',
+		'Cache-Control': 'no-cache, no-transform',
+		Connection: 'keep-alive',
+	});
+
+	const send = (event: string, payload: Record<string, any>) => {
+		res.write(`event: ${event}\n`);
+		res.write(`data: ${JSON.stringify(payload)}\n\n`);
+	};
+
+	try {
+		const state = await taskIntake.getSessionState(sessionId);
+		if (!state?.session) {
+			send('run_error', { session_id: sessionId, error: 'Session not found' });
+			return res.end();
+		}
+
+		// Ensure run is initialized once before step execution
+		if (!state.session.run_id) {
+			await taskIntake.startExecution(sessionId);
+		}
+
+		const refreshedState = await taskIntake.getSessionState(sessionId);
+		send('run_started', {
+			session_id: sessionId,
+			run_id: refreshedState.session.run_id,
+			agent_id: refreshedState.session.agent_id,
+			task_id: refreshedState.session.task_id,
+			project: {
+				id: refreshedState.task?.id,
+				title: refreshedState.task?.title,
+				description: refreshedState.task?.description,
+			},
+			total_steps: steps.length,
+			started_at: new Date().toISOString(),
+		});
+
+		const runStart = Date.now();
+		const stepSummaries: Array<Record<string, any>> = [];
+
+		for (let i = 0; i < steps.length; i++) {
+			const step = steps[i];
+			const stepOrder = step.order || i + 1;
+			let chunkIndex = 0;
+
+			send('step_started', {
+				session_id: sessionId,
+				run_id: refreshedState.session.run_id,
+				step_order: stepOrder,
+				step_index: i,
+				action: step.action,
+				expected_outcome: step.expected_outcome || '',
+				tool: step.tool || null,
+				step_type: step.step_type || (step.tool === 'approval_gate' ? 'approval_gate' : 'task'),
+				status: 'running',
+				timestamp: new Date().toISOString(),
+			});
+
+			try {
+				const result = await taskIntake.executeStep(sessionId, {
+					step_order: stepOrder,
+					action: step.action,
+					tool: step.tool || null,
+					expected_outcome: step.expected_outcome || '',
+					step_type: step.step_type,
+				}, {
+					onOutputChunk: (chunk: string) => {
+						if (!chunk) return;
+						send('step_output_chunk', {
+							session_id: sessionId,
+							run_id: refreshedState.session.run_id,
+							step_order: stepOrder,
+							step_index: i,
+							action: step.action,
+							status: 'running',
+							chunk_index: chunkIndex++,
+							chunk,
+							timestamp: new Date().toISOString(),
+						});
+					},
+				});
+
+				// If this is an approval gate, poll until human resolves it
+				if (result.source === 'approval_gate' && result.oc_session_id) {
+					const gateNodeId = result.oc_session_id;
+					send('gate_waiting', {
+						session_id: sessionId,
+						run_id: refreshedState.session.run_id,
+						step_order: stepOrder,
+						step_index: i,
+						gate_node_id: gateNodeId,
+						action: step.action,
+						message: 'Approval gate reached. Waiting for human approval before continuing.',
+						timestamp: new Date().toISOString(),
+					});
+
+					// Poll gate node status every 3s (max 30 min)
+					const maxWaitMs = 30 * 60 * 1000;
+					const pollIntervalMs = 3000;
+					const gateStart = Date.now();
+					let gateResolved = false;
+					let gateApproved = false;
+
+					while (Date.now() - gateStart < maxWaitMs) {
+						await new Promise(r => setTimeout(r, pollIntervalMs));
+						try {
+							const gateNode = await graphService.getNode(gateNodeId);
+							if (!gateNode || gateNode.status !== 'pending_approval') {
+								gateResolved = true;
+								gateApproved = gateNode?.status === 'approved';
+								break;
+							}
+						} catch { break; }
+					}
+
+					const gateStatus = gateApproved ? 'approved' : (gateResolved ? 'rejected' : 'timeout');
+					send('gate_resolved', {
+						session_id: sessionId,
+						run_id: refreshedState.session.run_id,
+						step_order: stepOrder,
+						step_index: i,
+						gate_node_id: gateNodeId,
+						status: gateStatus,
+						timestamp: new Date().toISOString(),
+					});
+
+					if (!gateApproved) {
+						// Gate was rejected or timed out — stop execution
+						stepSummaries.push({
+							step_order: stepOrder,
+							action: step.action,
+							source: 'approval_gate',
+							success: false,
+							error: gateStatus === 'rejected' ? 'Gate rejected by user' : 'Gate approval timed out',
+						});
+						send('step_completed', {
+							session_id: sessionId,
+							run_id: refreshedState.session.run_id,
+							step_order: stepOrder,
+							step_index: i,
+							action: step.action,
+							step_type: 'approval_gate',
+							status: 'failed',
+							source: 'approval_gate',
+							full_output: `Approval gate ${gateStatus}. Execution stopped.`,
+							duration_ms: Date.now() - gateStart,
+							timestamp: new Date().toISOString(),
+						});
+						break; // Stop the execution loop
+					}
+
+					// Gate approved — update result output and fall through to step_completed
+					result.output = `Approval gate approved. Continuing execution.`;
+				}
+
+				stepSummaries.push({
+					step_order: stepOrder,
+					action: step.action,
+					source: result.source,
+					success: result.success,
+					duration_ms: result.duration_ms,
+					tool_calls_count: result.tool_calls?.length || 0,
+				});
+
+				send('step_completed', {
+					session_id: sessionId,
+					run_id: refreshedState.session.run_id,
+					agent_id: refreshedState.session.agent_id,
+					project: {
+						id: refreshedState.task?.id,
+						title: refreshedState.task?.title,
+					},
+					step_order: stepOrder,
+					step_index: i,
+					action: step.action,
+					expected_outcome: step.expected_outcome || '',
+					tool: step.tool || null,
+					step_type: step.step_type || (step.tool === 'approval_gate' ? 'approval_gate' : 'task'),
+					status: result.success ? 'completed' : 'failed',
+					source: result.source,
+					model: result.model,
+					oc_session_id: result.oc_session_id,
+					duration_ms: result.duration_ms,
+					tool_calls: result.tool_calls || [],
+					tool_calls_count: result.tool_calls?.length || 0,
+					full_output: result.output || '',
+					timestamp: new Date().toISOString(),
+				});
+			} catch (stepErr: any) {
+				stepSummaries.push({
+					step_order: stepOrder,
+					action: step.action,
+					source: 'error',
+					success: false,
+					error: stepErr.message,
+				});
+
+				send('step_failed', {
+					session_id: sessionId,
+					run_id: refreshedState.session.run_id,
+					step_order: stepOrder,
+					step_index: i,
+					action: step.action,
+					status: 'failed',
+					error: stepErr.message,
+					timestamp: new Date().toISOString(),
+				});
+			}
+		}
+
+		await taskIntake.finalizeExecution(sessionId);
+		const finalState = await taskIntake.getSessionState(sessionId);
+
+		send('run_completed', {
+			session_id: sessionId,
+			run_id: finalState.session.run_id,
+			agent_id: finalState.session.agent_id,
+			task_id: finalState.session.task_id,
+			project: {
+				id: finalState.task?.id,
+				title: finalState.task?.title,
+			},
+			total_steps: steps.length,
+			completed_steps: stepSummaries.filter((s) => s.success).length,
+			failed_steps: stepSummaries.filter((s) => s.success === false).length,
+			duration_ms: Date.now() - runStart,
+			stage: finalState.session.stage,
+			steps: stepSummaries,
+			finished_at: new Date().toISOString(),
+		});
+	} catch (err: any) {
+		logger.error(`[task-intake] POST /sessions/${sessionId}/execute-stream error:`, err);
+		send('run_error', {
+			session_id: sessionId,
+			error: err.message,
+			timestamp: new Date().toISOString(),
+		});
+	}
+
+	res.end();
+});
+
+/** POST /gates/:gateId/resolve — approve or reject an approval gate */
+router.post('/gates/:gateId/resolve', async (req: Request, res: Response) => {
+	try {
+		const { gateId } = req.params;
+		const { approved, reason } = req.body;
+		const newStatus = approved ? 'approved' : 'rejected';
+
+		await graphService.updateNode(gateId, {
+			status: newStatus,
+			metadata: {
+				resolved_at: new Date().toISOString(),
+				resolved_by: req.body.resolved_by || 'ui-user',
+				reason: reason || '',
+			},
+		}, req.body.resolved_by || 'ui-user');
+
+		logger.info(`[task-intake] Gate ${gateId} resolved as ${newStatus}`);
+		res.json({ ok: true, gate_id: gateId, status: newStatus });
+	} catch (err: any) {
+		logger.error(`[task-intake] POST /gates/${req.params.gateId}/resolve error:`, err);
+		res.status(400).json({ ok: false, error: err.message });
+	}
+});
+
+/** GET /gates/pending — list all pending approval gates */
+router.get('/gates/pending', async (_req: Request, res: Response) => {
+	try {
+		const gates = await graphService.listNodes({ node_type: 'gate', limit: 100 });
+		const pending = gates.filter(g => g.status === 'pending_approval' && !g.deleted_at);
+		res.json({ ok: true, gates: pending });
+	} catch (err: any) {
+		logger.error('[task-intake] GET /gates/pending error:', err);
+		res.status(500).json({ ok: false, error: err.message });
 	}
 });
 

@@ -7,7 +7,14 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   Select,
   SelectContent,
@@ -16,29 +23,13 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from "@/components/ui/dialog";
-import {
   Bot,
   Search,
   Plus,
-  Settings,
   Play,
   Pause,
   Trash2,
-  Edit,
-  Copy,
-  Calendar,
-  Clock,
   Zap,
-  Brain,
-  AlertCircle,
-  CheckCircle2,
   Activity,
   TrendingUp,
   Shield,
@@ -84,134 +75,151 @@ interface Agent {
   };
 }
 
+interface SpecializationSummary {
+  agentId: string;
+  filesUpdated: string[];
+  suggestedTools: string[];
+  suggestedSkills: string[];
+  aiApplied: boolean;
+  fallbackApplied: boolean;
+  warning?: string;
+  summary?: string;
+}
+
 const OPAL_BASE_URL = '/api/opal/proxy';
 
 export default function AgentsSection() {
   const [agents, setAgents] = useState<Agent[]>([]);
+  const [isCloningAgent, setIsCloningAgent] = useState(false);
+  const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [newAgentName, setNewAgentName] = useState("");
+  const [newAgentEmoji, setNewAgentEmoji] = useState("🤖");
+  const [newAgentDescription, setNewAgentDescription] = useState("");
+  const [lastSpecialization, setLastSpecialization] = useState<SpecializationSummary | null>(null);
+
+  const fetchAgents = useCallback(async (): Promise<Agent[]> => {
+    try {
+      // Fetch from both sources in parallel
+      const [openclawRes, graphRes] = await Promise.all([
+        fetch('/api/openclaw/status').catch(() => null),
+        fetch(`${OPAL_BASE_URL}/api/nodes?node_type=resource`).catch(() => null),
+      ]);
+
+      const merged: Agent[] = [];
+      const seenIds = new Set<string>();
+      const seenNames = new Set<string>(); // track OC agent names to dedup graph nodes
+
+      // 1. OpenClaw agents (live runtime data)
+      if (openclawRes?.ok) {
+        const oc = await openclawRes.json();
+        const ocAgents = oc.health?.agents || oc.status?.heartbeat?.agents || [];
+        const ocSkills = Array.isArray(oc.skills) ? oc.skills : (oc.skills?.skills || []);
+        const sessionDefaults = oc.health?.sessions?.defaults || oc.status?.sessions?.defaults || {};
+
+        for (const a of ocAgents) {
+          const id = `openclaw-${a.agentId}`;
+          seenIds.add(id);
+          seenNames.add(a.agentId.toLowerCase());
+          seenNames.add(a.agentId.toLowerCase().replace(/-/g, ' '));
+          const eligibleSkills = (ocSkills || []).filter((s: any) => s.eligible).map((s: any) => s.name);
+          const sessionCount = a.sessions?.count || 0;
+          const lastSession = a.sessions?.recent?.[0];
+          const lastActivityAge = lastSession?.age;
+          const lastActivityStr = lastActivityAge
+            ? lastActivityAge < 60000 ? 'just now'
+            : lastActivityAge < 3600000 ? `${Math.round(lastActivityAge / 60000)}m ago`
+            : lastActivityAge < 86400000 ? `${Math.round(lastActivityAge / 3600000)}h ago`
+            : `${Math.round(lastActivityAge / 86400000)}d ago`
+            : '';
+          const heartbeatStr = a.heartbeat?.enabled ? `every ${a.heartbeat.every}` : 'disabled';
+          const descParts = [
+            `Heartbeat: ${heartbeatStr}`,
+            sessionCount > 0 ? `${sessionCount} session${sessionCount > 1 ? 's' : ''}` : 'No sessions',
+            lastActivityStr ? `Last active: ${lastActivityStr}` : '',
+            a.isDefault ? 'Default agent' : '',
+          ].filter(Boolean);
+
+          merged.push({
+            id,
+            name: `OpenClaw: ${a.agentId}`,
+            description: descParts.join(' · '),
+            type: 'integrator',
+            status: a.heartbeat?.enabled ? 'active' : 'stopped',
+            systemPrompt: '',
+            model: (sessionDefaults.model || 'gpt-4o') as Agent['model'],
+            temperature: 0.7,
+            maxTokens: sessionDefaults.contextTokens || 1000,
+            schedule: {
+              enabled: !!a.heartbeat?.enabled,
+              frequency: a.heartbeat?.every?.includes('m') ? 'realtime' : 'hourly',
+            },
+            dataSources: eligibleSkills.slice(0, 8),
+            outputChannels: ['graph-db', 'event-stream'],
+            runsCount: sessionCount,
+            successRate: sessionCount > 0 ? 100 : 0,
+            lastRun: lastActivityStr || undefined,
+            metadata: {
+              created: '',
+              createdBy: 'OpenClaw',
+              lastModified: oc.fetchedAt || '',
+              version: oc.status?.update?.registry?.latestVersion || '1.0',
+            },
+          });
+        }
+      }
+
+      // 2. Graph resource nodes (agent type)
+      if (graphRes?.ok) {
+        const data = await graphRes.json();
+        const nodes = data.nodes || [];
+        for (const n of nodes) {
+          const meta = typeof n.metadata === 'string' ? JSON.parse(n.metadata) : (n.metadata || {});
+          if (meta.resource_type !== 'agent') continue;
+          const id = n.id;
+          if (seenIds.has(id)) continue;
+          // Skip graph nodes that duplicate an OpenClaw agent
+          const normalizedTitle = (n.title || '').toLowerCase().trim();
+          if (seenNames.has(normalizedTitle)) continue;
+          seenIds.add(id);
+          merged.push({
+            id,
+            name: n.title,
+            description: n.description || '',
+            type: meta.agent_type || 'monitor',
+            status: n.status === 'available' ? 'active' : n.status === 'busy' ? 'active' : 'stopped',
+            systemPrompt: meta.system_prompt || '',
+            model: meta.model || 'gpt-4o',
+            temperature: meta.temperature ?? 0.7,
+            maxTokens: meta.max_tokens ?? 1000,
+            schedule: { enabled: false, frequency: 'manual' },
+            dataSources: meta.data_sources || [],
+            outputChannels: meta.output_channels || [],
+            runsCount: meta.runs_count ?? 0,
+            successRate: meta.success_rate ?? 0,
+            metadata: {
+              created: n.created_at || '',
+              createdBy: n.created_by || '',
+              lastModified: n.updated_at || '',
+              version: meta.version || '1.0',
+            },
+          });
+        }
+      }
+
+      setAgents(merged);
+      return merged;
+    } catch (err) {
+      console.error('Failed to fetch agents:', err);
+      return [];
+    }
+  }, []);
 
   // Fetch agents from OpenClaw status + graph resource nodes
   useEffect(() => {
-    async function fetchAgents() {
-      try {
-        // Fetch from both sources in parallel
-        const [openclawRes, graphRes] = await Promise.all([
-          fetch('/api/openclaw/status').catch(() => null),
-          fetch(`${OPAL_BASE_URL}/api/nodes?node_type=resource`).catch(() => null),
-        ]);
-
-        const merged: Agent[] = [];
-        const seenIds = new Set<string>();
-        const seenNames = new Set<string>(); // track OC agent names to dedup graph nodes
-
-        // 1. OpenClaw agents (live runtime data)
-        if (openclawRes?.ok) {
-          const oc = await openclawRes.json();
-          const ocAgents = oc.health?.agents || oc.status?.heartbeat?.agents || [];
-          const ocSkills = Array.isArray(oc.skills) ? oc.skills : (oc.skills?.skills || []);
-          const sessionDefaults = oc.health?.sessions?.defaults || oc.status?.sessions?.defaults || {};
-
-          for (const a of ocAgents) {
-            const id = `openclaw-${a.agentId}`;
-            seenIds.add(id);
-            seenNames.add(a.agentId.toLowerCase());
-            seenNames.add(a.agentId.toLowerCase().replace(/-/g, ' '));
-            const eligibleSkills = (ocSkills || []).filter((s: any) => s.eligible).map((s: any) => s.name);
-            const sessionCount = a.sessions?.count || 0;
-            const lastSession = a.sessions?.recent?.[0];
-            const lastActivityAge = lastSession?.age;
-            const lastActivityStr = lastActivityAge
-              ? lastActivityAge < 60000 ? 'just now'
-              : lastActivityAge < 3600000 ? `${Math.round(lastActivityAge / 60000)}m ago`
-              : lastActivityAge < 86400000 ? `${Math.round(lastActivityAge / 3600000)}h ago`
-              : `${Math.round(lastActivityAge / 86400000)}d ago`
-              : '';
-            const heartbeatStr = a.heartbeat?.enabled ? `every ${a.heartbeat.every}` : 'disabled';
-            const descParts = [
-              `Heartbeat: ${heartbeatStr}`,
-              sessionCount > 0 ? `${sessionCount} session${sessionCount > 1 ? 's' : ''}` : 'No sessions',
-              lastActivityStr ? `Last active: ${lastActivityStr}` : '',
-              a.isDefault ? 'Default agent' : '',
-            ].filter(Boolean);
-
-            merged.push({
-              id,
-              name: `OpenClaw: ${a.agentId}`,
-              description: descParts.join(' · '),
-              type: 'integrator',
-              status: a.heartbeat?.enabled ? 'active' : 'stopped',
-              systemPrompt: '',
-              model: (sessionDefaults.model || 'gpt-4o') as Agent['model'],
-              temperature: 0.7,
-              maxTokens: sessionDefaults.contextTokens || 1000,
-              schedule: {
-                enabled: !!a.heartbeat?.enabled,
-                frequency: a.heartbeat?.every?.includes('m') ? 'realtime' : 'hourly',
-              },
-              dataSources: eligibleSkills.slice(0, 8),
-              outputChannels: ['graph-db', 'event-stream'],
-              runsCount: sessionCount,
-              successRate: sessionCount > 0 ? 100 : 0,
-              lastRun: lastActivityStr || undefined,
-              metadata: {
-                created: '',
-                createdBy: 'OpenClaw',
-                lastModified: oc.fetchedAt || '',
-                version: oc.status?.update?.registry?.latestVersion || '1.0',
-              },
-            });
-          }
-        }
-
-        // 2. Graph resource nodes (agent type)
-        if (graphRes?.ok) {
-          const data = await graphRes.json();
-          const nodes = data.nodes || [];
-          for (const n of nodes) {
-            const meta = typeof n.metadata === 'string' ? JSON.parse(n.metadata) : (n.metadata || {});
-            if (meta.resource_type !== 'agent') continue;
-            const id = n.id;
-            if (seenIds.has(id)) continue;
-            // Skip graph nodes that duplicate an OpenClaw agent
-            const normalizedTitle = (n.title || '').toLowerCase().trim();
-            if (seenNames.has(normalizedTitle)) continue;
-            seenIds.add(id);
-            merged.push({
-              id,
-              name: n.title,
-              description: n.description || '',
-              type: meta.agent_type || 'monitor',
-              status: n.status === 'available' ? 'active' : n.status === 'busy' ? 'active' : 'stopped',
-              systemPrompt: meta.system_prompt || '',
-              model: meta.model || 'gpt-4o',
-              temperature: meta.temperature ?? 0.7,
-              maxTokens: meta.max_tokens ?? 1000,
-              schedule: { enabled: false, frequency: 'manual' },
-              dataSources: meta.data_sources || [],
-              outputChannels: meta.output_channels || [],
-              runsCount: meta.runs_count ?? 0,
-              successRate: meta.success_rate ?? 0,
-              metadata: {
-                created: n.created_at || '',
-                createdBy: n.created_by || '',
-                lastModified: n.updated_at || '',
-                version: meta.version || '1.0',
-              },
-            });
-          }
-        }
-
-        setAgents(merged);
-      } catch (err) {
-        console.error('Failed to fetch agents:', err);
-      }
-    }
     fetchAgents();
-  }, []);
+  }, [fetchAgents]);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null);
-  const [showCreateDialog, setShowCreateDialog] = useState(false);
-  const [showEditDialog, setShowEditDialog] = useState(false);
-  const [editingAgent, setEditingAgent] = useState<Agent | null>(null);
 
   // Workspace editor state
   const [wsFiles, setWsFiles] = useState<Record<string, string>>({});
@@ -281,6 +289,7 @@ export default function AgentsSection() {
   const [chatInput, setChatInput] = useState("");
   const [chatSending, setChatSending] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
+  const [agentDetailTab, setAgentDetailTab] = useState<"overview" | "files" | "tools" | "skills" | "channels" | "cron">("overview");
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   // Load chat history when an OpenClaw agent is selected
@@ -298,6 +307,10 @@ export default function AgentsSection() {
       })
       .catch(() => setChatMessages([]));
   }, [selectedAgent]);
+
+  useEffect(() => {
+    setAgentDetailTab("overview");
+  }, [selectedAgent?.id]);
 
   // Auto-scroll chat to bottom
   useEffect(() => {
@@ -372,133 +385,10 @@ export default function AgentsSection() {
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [filterCapability, setFilterCapability] = useState<string>("all");
 
-  // Form states
-  const [formName, setFormName] = useState("");
-  const [formDescription, setFormDescription] = useState("");
-  const [formType, setFormType] = useState<Agent["type"]>("monitor");
-  const [formSystemPrompt, setFormSystemPrompt] = useState("");
-  const [formModel, setFormModel] = useState<Agent["model"]>("gpt-4o");
-  const [formTemperature, setFormTemperature] = useState(0.7);
-  const [formMaxTokens, setFormMaxTokens] = useState(1000);
-  const [formScheduleEnabled, setFormScheduleEnabled] = useState(false);
-  const [formScheduleFrequency, setFormScheduleFrequency] = useState<Agent["schedule"]["frequency"]>("daily");
-
-  const handleCreateAgent = async () => {
-    try {
-      // Derive a CLI-safe agent id from the name
-      const agentId = formName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || `agent-${Date.now()}`;
-
-      // 1. Create OpenClaw agent with workspace files
-      const ocRes = await fetch('/api/openclaw/agents', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          id: agentId,
-          model: 'anthropic/claude-sonnet-4-5',
-          workspace: {
-            "SOUL.md": `# SOUL.md - ${formName}\n\n${formSystemPrompt || 'You are a helpful agent.'}\n\n## Role\n\nType: ${formType}\n${formDescription ? `\n## Description\n\n${formDescription}\n` : ''}`,
-            "IDENTITY.md": `# IDENTITY.md\n\n- **Name:** ${formName}\n- **Vibe:** ${formType}\n- **Emoji:** 🤖\n`,
-            "USER.md": "# USER.md\n\nYou are helping the PM_NET engineering team.\n",
-          },
-        }),
-      });
-
-      if (!ocRes.ok) {
-        const err = await ocRes.json();
-        throw new Error(err.error || 'Failed to create OpenClaw agent');
-      }
-
-      const newAgent: Agent = {
-        id: `openclaw-${agentId}`,
-        name: `OpenClaw: ${agentId}`,
-        description: formDescription || `${formType} agent`,
-        type: formType,
-        status: "active",
-        systemPrompt: formSystemPrompt,
-        model: 'gpt-4o' as Agent['model'],
-        temperature: formTemperature,
-        maxTokens: formMaxTokens,
-        schedule: {
-          enabled: formScheduleEnabled,
-          frequency: formScheduleFrequency,
-        },
-        dataSources: [],
-        outputChannels: ['graph-db', 'event-stream'],
-        runsCount: 0,
-        successRate: 0,
-        metadata: {
-          created: new Date().toISOString(),
-          createdBy: "OpenClaw",
-          lastModified: new Date().toISOString(),
-          version: "1.0"
-        }
-      };
-
-      setAgents([...agents, newAgent]);
-      setShowCreateDialog(false);
-      resetForm();
-      toast.success(`Agent "${agentId}" created in OpenClaw`);
-    } catch (err: any) {
-      console.error('Failed to create agent:', err);
-      toast.error(err.message || "Failed to create agent");
-    }
-  };
-
-  const handleEditAgent = async () => {
-    if (!editingAgent) return;
-
-    try {
-      // Only update graph nodes (not OpenClaw agents which have openclaw- prefix)
-      if (!editingAgent.id.startsWith('openclaw-')) {
-        await fetch(`${OPAL_BASE_URL}/api/nodes/${editingAgent.id}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            title: formName,
-            description: formDescription,
-            metadata: {
-              resource_type: 'agent',
-              agent_type: formType,
-              system_prompt: formSystemPrompt,
-              model: formModel,
-              temperature: formTemperature,
-              max_tokens: formMaxTokens,
-              schedule_enabled: formScheduleEnabled,
-              schedule_frequency: formScheduleFrequency,
-            },
-          }),
-        });
-      }
-
-      const updatedAgent = {
-        ...editingAgent,
-        name: formName,
-        description: formDescription,
-        type: formType,
-        systemPrompt: formSystemPrompt,
-        model: formModel,
-        temperature: formTemperature,
-        maxTokens: formMaxTokens,
-        schedule: {
-          ...editingAgent.schedule,
-          enabled: formScheduleEnabled,
-          frequency: formScheduleFrequency,
-        },
-        metadata: {
-          ...editingAgent.metadata,
-          lastModified: new Date().toISOString(),
-        }
-      };
-
-      setAgents(agents.map(a => a.id === editingAgent.id ? updatedAgent : a));
-      setShowEditDialog(false);
-      setEditingAgent(null);
-      resetForm();
-      toast.success("Agent updated");
-    } catch (err) {
-      console.error('Failed to update agent:', err);
-      toast.error("Failed to update agent");
-    }
+  const resetCreateForm = () => {
+    setNewAgentName("");
+    setNewAgentEmoji("🤖");
+    setNewAgentDescription("");
   };
 
   const handleDeleteAgent = async (agentId: string) => {
@@ -529,6 +419,85 @@ export default function AgentsSection() {
     }
   };
 
+  const handleCloneFromMain = async () => {
+    if (isCloningAgent) return;
+
+    try {
+      setIsCloningAgent(true);
+      const baseSlug = newAgentName
+        .toLowerCase()
+        .replace(/[^a-z0-9_-]+/g, '-')
+        .replace(/^-|-$/g, '')
+        .slice(0, 48);
+      const cloneId = baseSlug || `agent-${Date.now().toString(36)}`;
+
+      const ocRes = await fetch('/api/openclaw/agents', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: cloneId,
+          model: 'anthropic/claude-sonnet-4-5',
+          cloneFromMain: true,
+          specialization: {
+            name: newAgentName.trim(),
+            emoji: newAgentEmoji.trim(),
+            description: newAgentDescription.trim(),
+          },
+        }),
+      });
+
+      if (!ocRes.ok) {
+        const err = await ocRes.json().catch(() => ({}));
+        throw new Error(err.error || 'Failed to clone OpenClaw main agent');
+      }
+
+      const createPayload = await ocRes.json().catch(() => ({}));
+      const spec = createPayload?.specialization;
+      const specializationSummary: SpecializationSummary = {
+        agentId: cloneId,
+        filesUpdated: Array.isArray(spec?.filesUpdated) ? spec.filesUpdated : [],
+        suggestedTools: Array.isArray(spec?.suggestedTools) ? spec.suggestedTools : [],
+        suggestedSkills: Array.isArray(spec?.suggestedSkills) ? spec.suggestedSkills : [],
+        aiApplied: !!spec?.aiApplied,
+        fallbackApplied: !!spec?.fallbackApplied,
+        warning: typeof spec?.warning === 'string' ? spec.warning : undefined,
+        summary: typeof spec?.summary === 'string' ? spec.summary : undefined,
+      };
+      setLastSpecialization(specializationSummary);
+
+      const refreshed = await fetchAgents();
+      const created = refreshed.find((a) => a.id === `openclaw-${cloneId}`);
+      if (created) {
+        setSelectedAgent(created);
+        setAgentDetailTab('files');
+      }
+
+      setShowCreateDialog(false);
+      resetCreateForm();
+      toast.success(`Created specialized agent "${cloneId}" from OpenClaw main. Review files in Files tab.`);
+      if (specializationSummary.filesUpdated.length > 0 || specializationSummary.summary) {
+        const summaryBits = [
+          specializationSummary.filesUpdated.length > 0
+            ? `${specializationSummary.filesUpdated.length} file${specializationSummary.filesUpdated.length > 1 ? 's' : ''} updated`
+            : '',
+          specializationSummary.aiApplied ? 'AI edits applied' : '',
+          specializationSummary.fallbackApplied ? 'Template-safe fallback applied' : '',
+        ].filter(Boolean);
+        toast.message(
+          `Specialization summary${summaryBits.length ? `: ${summaryBits.join(' · ')}` : ''}`
+        );
+      }
+      if (specializationSummary.warning) {
+        toast.warning(`Specialization note: ${specializationSummary.warning}`);
+      }
+    } catch (err: any) {
+      console.error('Failed to clone agent from main:', err);
+      toast.error(err.message || 'Failed to clone agent from main');
+    } finally {
+      setIsCloningAgent(false);
+    }
+  };
+
   const handleToggleAgent = async (agentId: string) => {
     const agent = agents.find(a => a.id === agentId);
     if (!agent) return;
@@ -548,32 +517,6 @@ export default function AgentsSection() {
       console.error('Failed to toggle agent:', err);
       toast.error("Failed to update agent status");
     }
-  };
-
-  const openEditDialog = (agent: Agent) => {
-    setEditingAgent(agent);
-    setFormName(agent.name);
-    setFormDescription(agent.description);
-    setFormType(agent.type);
-    setFormSystemPrompt(agent.systemPrompt);
-    setFormModel(agent.model);
-    setFormTemperature(agent.temperature);
-    setFormMaxTokens(agent.maxTokens);
-    setFormScheduleEnabled(agent.schedule.enabled);
-    setFormScheduleFrequency(agent.schedule.frequency);
-    setShowEditDialog(true);
-  };
-
-  const resetForm = () => {
-    setFormName("");
-    setFormDescription("");
-    setFormType("monitor");
-    setFormSystemPrompt("");
-    setFormModel("gpt-4o");
-    setFormTemperature(0.7);
-    setFormMaxTokens(1000);
-    setFormScheduleEnabled(false);
-    setFormScheduleFrequency("daily");
   };
 
   const getAgentTypeIcon = (type: string) => {
@@ -613,6 +556,43 @@ export default function AgentsSection() {
     return matchesSearch && matchesLayer && matchesStatus && matchesCapability;
   });
 
+  const selectedIsOpenClaw = !!selectedAgent?.id.startsWith('openclaw-');
+  const selectedOpenClawId = selectedIsOpenClaw
+    ? selectedAgent!.id.replace('openclaw-', '')
+    : '';
+  const selectedWorkspacePath = selectedIsOpenClaw
+    ? selectedOpenClawId === 'main'
+      ? '~/.openclaw/workspace'
+      : `~/.openclaw/agents/${selectedOpenClawId}/workspace`
+    : 'n/a';
+
+  const toolsFromWorkspace = (wsFiles['TOOLS.md'] || '')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => /^[-*]\s+/.test(line) || /^\d+\.\s+/.test(line))
+    .map((line) => line.replace(/^[-*]\s+/, '').replace(/^\d+\.\s+/, '').trim())
+    .filter(Boolean)
+    .slice(0, 12);
+
+  const identityMd = wsFiles['IDENTITY.md'] || '';
+  const identityName = identityMd.match(/\*\*Name:\*\*\s*(.+)/i)?.[1]?.trim() || selectedOpenClawId;
+  const identityEmoji = identityMd.match(/\*\*Emoji:\*\*\s*(.+)/i)?.[1]?.trim() || '🤖';
+
+  const detailTabs: Array<{ key: "overview" | "files" | "tools" | "skills" | "channels" | "cron"; label: string }> = selectedIsOpenClaw
+    ? [
+        { key: 'overview', label: 'Overview' },
+        { key: 'files', label: 'Files' },
+        { key: 'tools', label: 'Tools' },
+        { key: 'skills', label: 'Skills' },
+        { key: 'channels', label: 'Channels' },
+        { key: 'cron', label: 'Cron Jobs' },
+      ]
+    : [
+        { key: 'overview', label: 'Overview' },
+        { key: 'skills', label: 'Skills' },
+        { key: 'channels', label: 'Channels' },
+      ];
+
   return (
     <div className="flex h-full bg-background">
       {/* Left Panel - Agent List */}
@@ -626,6 +606,7 @@ export default function AgentsSection() {
             <Button
               size="sm"
               onClick={() => setShowCreateDialog(true)}
+              disabled={isCloningAgent}
               className="h-8 px-3"
             >
               <Plus className="w-4 h-4 mr-1" />
@@ -761,8 +742,8 @@ export default function AgentsSection() {
                   <Button variant="ghost" size="sm" onClick={() => handleToggleAgent(selectedAgent.id)}>
                     {selectedAgent.status === "active" ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
                   </Button>
-                  <Button variant="ghost" size="sm" onClick={() => openEditDialog(selectedAgent)}>
-                    <Edit className="w-4 h-4" />
+                  <Button variant="ghost" size="sm" onClick={() => setAgentDetailTab('files')}>
+                    <FileText className="w-4 h-4" />
                   </Button>
                   <Button variant="ghost" size="sm" onClick={() => handleDeleteAgent(selectedAgent.id)}>
                     <Trash2 className="w-4 h-4" />
@@ -770,91 +751,263 @@ export default function AgentsSection() {
                 </div>
               </div>
 
-              {/* Compact Info Grid */}
-              <Card>
-                <CardContent className="p-4">
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-2 text-sm">
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Type</span>
-                      <span className="font-medium capitalize">{selectedAgent.type}</span>
+              {lastSpecialization && selectedAgent.id === `openclaw-${lastSpecialization.agentId}` && (
+                <Card className="border-primary/30 bg-primary/5">
+                  <CardHeader className="px-4 py-3">
+                    <CardTitle className="text-sm">Specialization Summary</CardTitle>
+                    <CardDescription>
+                      {lastSpecialization.summary || 'Clone completed with minimal workspace specialization.'}
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="px-4 pb-4 text-xs space-y-2">
+                    <div>
+                      <span className="text-muted-foreground">Files updated:</span>{' '}
+                      {lastSpecialization.filesUpdated.length
+                        ? lastSpecialization.filesUpdated.join(', ')
+                        : 'None'}
                     </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Schedule</span>
-                      <span className="font-medium">{selectedAgent.schedule.enabled ? selectedAgent.schedule.frequency : 'disabled'}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Temperature</span>
-                      <span className="font-medium">{selectedAgent.temperature}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Max Tokens</span>
-                      <span className="font-medium">{selectedAgent.maxTokens?.toLocaleString()}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Runs</span>
-                      <span className="font-medium">{selectedAgent.runsCount}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Success</span>
-                      <span className="font-medium">{selectedAgent.successRate}%</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Last Active</span>
-                      <span className="font-medium">{selectedAgent.lastRun || '—'}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Provider</span>
-                      <span className="font-medium">{selectedAgent.id.startsWith('openclaw-') ? 'OpenClaw' : 'Graph'}</span>
-                    </div>
-                  </div>
+                    {!!lastSpecialization.suggestedTools.length && (
+                      <div>
+                        <span className="text-muted-foreground">Suggested tools:</span>{' '}
+                        {lastSpecialization.suggestedTools.join(', ')}
+                      </div>
+                    )}
+                    {!!lastSpecialization.suggestedSkills.length && (
+                      <div>
+                        <span className="text-muted-foreground">Suggested skills:</span>{' '}
+                        {lastSpecialization.suggestedSkills.join(', ')}
+                      </div>
+                    )}
+                    {lastSpecialization.warning && (
+                      <div className="text-amber-600 dark:text-amber-400">
+                        Note: {lastSpecialization.warning}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
 
-                  {/* Description */}
-                  {selectedAgent.description && (
-                    <p className="text-sm text-muted-foreground mt-3 pt-3 border-t border-border">
-                      {selectedAgent.description}
-                    </p>
-                  )}
+              {/* OpenClaw-style detail pills */}
+              <div className="flex flex-wrap gap-2">
+                {detailTabs.map((tab) => (
+                  <button
+                    key={tab.key}
+                    onClick={() => setAgentDetailTab(tab.key)}
+                    className={cn(
+                      "px-3 py-1.5 rounded-full text-xs font-medium transition-colors border",
+                      agentDetailTab === tab.key
+                        ? "bg-primary text-primary-foreground border-primary"
+                        : "bg-muted/40 text-muted-foreground border-border hover:bg-muted"
+                    )}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
 
-                  {/* Skills & Channels row */}
-                  {(selectedAgent.dataSources.length > 0 || selectedAgent.outputChannels.length > 0) && (
-                    <div className="mt-3 pt-3 border-t border-border flex flex-wrap gap-3">
-                      {selectedAgent.dataSources.length > 0 && (
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-xs text-muted-foreground">Skills:</span>
-                          <div className="flex flex-wrap gap-1">
-                            {selectedAgent.dataSources.map((s) => (
-                              <Badge key={s} variant="outline" className="text-[10px] px-1.5 py-0">{s}</Badge>
-                            ))}
+              {agentDetailTab === 'overview' && (
+                <>
+                  {/* Compact Info Grid */}
+                  <Card>
+                    <CardContent className="p-4">
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-2 text-sm">
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Type</span>
+                          <span className="font-medium capitalize">{selectedAgent.type}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Schedule</span>
+                          <span className="font-medium">{selectedAgent.schedule.enabled ? selectedAgent.schedule.frequency : 'disabled'}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Temperature</span>
+                          <span className="font-medium">{selectedAgent.temperature}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Max Tokens</span>
+                          <span className="font-medium">{selectedAgent.maxTokens?.toLocaleString()}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Runs</span>
+                          <span className="font-medium">{selectedAgent.runsCount}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Success</span>
+                          <span className="font-medium">{selectedAgent.successRate}%</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Last Active</span>
+                          <span className="font-medium">{selectedAgent.lastRun || '—'}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Provider</span>
+                          <span className="font-medium">{selectedAgent.id.startsWith('openclaw-') ? 'OpenClaw' : 'Graph'}</span>
+                        </div>
+                      </div>
+
+                      {selectedAgent.description && (
+                        <p className="text-sm text-muted-foreground mt-3 pt-3 border-t border-border">
+                          {selectedAgent.description}
+                        </p>
+                      )}
+
+                      {selectedAgent.systemPrompt && (
+                        <div className="mt-3 pt-3 border-t border-border">
+                          <Label className="text-xs text-muted-foreground mb-1 block">System Prompt</Label>
+                          <div className="p-2 bg-muted/30 rounded text-xs font-mono whitespace-pre-wrap max-h-[100px] overflow-auto">
+                            {selectedAgent.systemPrompt}
                           </div>
                         </div>
                       )}
-                      {selectedAgent.outputChannels.length > 0 && (
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-xs text-muted-foreground">Output:</span>
-                          <div className="flex flex-wrap gap-1">
-                            {selectedAgent.outputChannels.map((c) => (
-                              <Badge key={c} variant="secondary" className="text-[10px] px-1.5 py-0">{c}</Badge>
-                            ))}
+                    </CardContent>
+                  </Card>
+
+                  {selectedIsOpenClaw && (
+                    <div className="grid gap-3 lg:grid-cols-2">
+                      <Card>
+                        <CardHeader className="px-4 py-3">
+                          <CardTitle className="text-sm">Agent Context</CardTitle>
+                          <CardDescription>Workspace and identity settings.</CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-2 text-sm">
+                          <div><span className="text-muted-foreground">Workspace:</span> <span className="font-mono text-xs">{selectedWorkspacePath}</span></div>
+                          <div><span className="text-muted-foreground">Primary Model:</span> {selectedAgent.model}</div>
+                          <div><span className="text-muted-foreground">Identity Name:</span> {identityName}</div>
+                          <div><span className="text-muted-foreground">Identity Emoji:</span> {identityEmoji}</div>
+                          <div><span className="text-muted-foreground">Default:</span> {selectedOpenClawId === 'main' ? 'yes' : 'no'}</div>
+                        </CardContent>
+                      </Card>
+
+                      <Card>
+                        <CardHeader className="px-4 py-3 flex flex-row items-center justify-between">
+                          <div>
+                            <CardTitle className="text-sm">Scheduler</CardTitle>
+                            <CardDescription>Gateway cron status.</CardDescription>
                           </div>
-                        </div>
-                      )}
+                          <Button variant="ghost" size="sm" disabled>
+                            <RotateCcw className="w-3.5 h-3.5" />
+                          </Button>
+                        </CardHeader>
+                        <CardContent>
+                          <div className="grid grid-cols-3 gap-2 text-sm">
+                            <div className="rounded-md border border-border p-3">
+                              <div className="text-[10px] uppercase text-muted-foreground">Enabled</div>
+                              <div className="font-semibold">{selectedAgent.schedule.enabled ? 'Yes' : 'No'}</div>
+                            </div>
+                            <div className="rounded-md border border-border p-3">
+                              <div className="text-[10px] uppercase text-muted-foreground">Jobs</div>
+                              <div className="font-semibold">0</div>
+                            </div>
+                            <div className="rounded-md border border-border p-3">
+                              <div className="text-[10px] uppercase text-muted-foreground">Next Wake</div>
+                              <div className="font-semibold">{selectedAgent.nextRun || 'n/a'}</div>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
                     </div>
                   )}
+                </>
+              )}
 
-                  {/* System Prompt (only if non-empty) */}
-                  {selectedAgent.systemPrompt && (
-                    <div className="mt-3 pt-3 border-t border-border">
-                      <Label className="text-xs text-muted-foreground mb-1 block">System Prompt</Label>
-                      <div className="p-2 bg-muted/30 rounded text-xs font-mono whitespace-pre-wrap max-h-[100px] overflow-auto">
-                        {selectedAgent.systemPrompt}
+              {agentDetailTab === 'tools' && (
+                <Card>
+                  <CardHeader className="px-4 py-3">
+                    <CardTitle className="text-sm">Tools</CardTitle>
+                    <CardDescription>Agent workspace and runtime tooling context.</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    {selectedIsOpenClaw ? (
+                      toolsFromWorkspace.length > 0 ? (
+                        <div className="flex flex-wrap gap-2">
+                          {toolsFromWorkspace.map((tool) => (
+                            <Badge key={tool} variant="outline" className="text-xs">{tool}</Badge>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-sm text-muted-foreground">No explicit tool list found in TOOLS.md yet.</p>
+                      )
+                    ) : (
+                      <p className="text-sm text-muted-foreground">Tool details are currently available for OpenClaw agents.</p>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
+
+              {agentDetailTab === 'skills' && (
+                <Card>
+                  <CardHeader className="px-4 py-3">
+                    <CardTitle className="text-sm">Skills</CardTitle>
+                    <CardDescription>Eligible skills and capabilities mapped to this agent.</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    {selectedAgent.dataSources.length > 0 ? (
+                      <div className="flex flex-wrap gap-2">
+                        {selectedAgent.dataSources.map((skill) => (
+                          <Badge key={skill} variant="outline" className="text-xs">
+                            <Zap className="w-3 h-3 mr-1" />
+                            {skill}
+                          </Badge>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">No skills mapped yet.</p>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
+
+              {agentDetailTab === 'channels' && (
+                <Card>
+                  <CardHeader className="px-4 py-3">
+                    <CardTitle className="text-sm">Channels</CardTitle>
+                    <CardDescription>Output and routing channels for this agent.</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    {selectedAgent.outputChannels.length > 0 ? (
+                      <div className="flex flex-wrap gap-2">
+                        {selectedAgent.outputChannels.map((channel) => (
+                          <Badge key={channel} variant="secondary" className="text-xs">
+                            <Mail className="w-3 h-3 mr-1" />
+                            {channel}
+                          </Badge>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">No channels configured.</p>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
+
+              {agentDetailTab === 'cron' && (
+                <Card>
+                  <CardHeader className="px-4 py-3">
+                    <CardTitle className="text-sm">Agent Cron Jobs</CardTitle>
+                    <CardDescription>Scheduled jobs targeting this agent.</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-2 mb-3 text-sm">
+                      <div className="rounded-md border border-border p-3">
+                        <div className="text-[10px] uppercase text-muted-foreground">Enabled</div>
+                        <div className="font-semibold">{selectedAgent.schedule.enabled ? 'Yes' : 'No'}</div>
+                      </div>
+                      <div className="rounded-md border border-border p-3">
+                        <div className="text-[10px] uppercase text-muted-foreground">Frequency</div>
+                        <div className="font-semibold">{selectedAgent.schedule.frequency}</div>
+                      </div>
+                      <div className="rounded-md border border-border p-3">
+                        <div className="text-[10px] uppercase text-muted-foreground">Next Wake</div>
+                        <div className="font-semibold">{selectedAgent.nextRun || 'n/a'}</div>
                       </div>
                     </div>
-                  )}
-                </CardContent>
-              </Card>
+                    <p className="text-sm text-muted-foreground">No cron jobs assigned.</p>
+                  </CardContent>
+                </Card>
+              )}
 
               {/* Workspace Document Editor (OpenClaw agents only) */}
-              {selectedAgent.id.startsWith('openclaw-') && (
+              {selectedAgent.id.startsWith('openclaw-') && agentDetailTab === 'files' && (
                 <Card>
                   <CardHeader className="px-4 py-3">
                     <div className="flex items-center justify-between">
@@ -1062,11 +1215,11 @@ export default function AgentsSection() {
                 <Bot className="w-16 h-16 mx-auto mb-4 text-muted-foreground opacity-20" />
                 <h3 className="text-xl font-semibold mb-2">No Agent Selected</h3>
                 <p className="text-muted-foreground mb-6">
-                  Select an agent from the list to view and configure its settings, or create a new agent to get started.
+                  Select an agent from the list to view and configure its settings, or clone main to create a new editable agent.
                 </p>
-                <Button onClick={() => setShowCreateDialog(true)}>
+                <Button onClick={() => setShowCreateDialog(true)} disabled={isCloningAgent}>
                   <Plus className="w-4 h-4 mr-2" />
-                  Create New Agent
+                  New Agent
                 </Button>
               </div>
             </div>
@@ -1074,147 +1227,54 @@ export default function AgentsSection() {
         </div>
       </div>
 
-      {/* Create/Edit Agent Dialog */}
-      <Dialog open={showCreateDialog || showEditDialog} onOpenChange={(open) => {
-        if (!open) {
-          setShowCreateDialog(false);
-          setShowEditDialog(false);
-          setEditingAgent(null);
-          resetForm();
-        }
-      }}>
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+      <Dialog
+        open={showCreateDialog}
+        onOpenChange={(open) => {
+          setShowCreateDialog(open);
+          if (!open && !isCloningAgent) resetCreateForm();
+        }}
+      >
+        <DialogContent className="max-w-xl">
           <DialogHeader>
-            <DialogTitle>{editingAgent ? "Edit Agent" : "Create New Agent"}</DialogTitle>
+            <DialogTitle>Create Specialized Agent</DialogTitle>
             <DialogDescription>
-              Configure the AI agent's behavior, prompts, and operational parameters
+              We clone OpenClaw main first, then apply minimal AI edits to workspace markdown files.
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4 py-4">
+          <div className="space-y-4 py-2">
             <div className="space-y-2">
-              <Label htmlFor="name">Agent Name *</Label>
+              <Label htmlFor="new-agent-name">Agent Name *</Label>
               <Input
-                id="name"
+                id="new-agent-name"
                 placeholder="e.g., Requirements Compliance Monitor"
-                value={formName}
-                onChange={(e) => setFormName(e.target.value)}
+                value={newAgentName}
+                onChange={(e) => setNewAgentName(e.target.value)}
+                disabled={isCloningAgent}
               />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="description">Description</Label>
+              <Label htmlFor="new-agent-emoji">Emoji</Label>
+              <Input
+                id="new-agent-emoji"
+                placeholder="🤖"
+                value={newAgentEmoji}
+                onChange={(e) => setNewAgentEmoji(e.target.value)}
+                disabled={isCloningAgent}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="new-agent-desc">What this agent should do *</Label>
               <Textarea
-                id="description"
-                placeholder="Describe what this agent does..."
-                value={formDescription}
-                onChange={(e) => setFormDescription(e.target.value)}
-                rows={2}
+                id="new-agent-desc"
+                placeholder="Describe the mission. AI will minimally adapt SOUL.md, IDENTITY.md, TOOLS.md, AGENTS.md, and USER.md."
+                value={newAgentDescription}
+                onChange={(e) => setNewAgentDescription(e.target.value)}
+                rows={5}
+                disabled={isCloningAgent}
               />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="type">Agent Type</Label>
-              <Select value={formType} onValueChange={(value) => setFormType(value as Agent["type"])}>
-                <SelectTrigger id="type">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="monitor">Monitor</SelectItem>
-                  <SelectItem value="analyzer">Analyzer</SelectItem>
-                  <SelectItem value="validator">Validator</SelectItem>
-                  <SelectItem value="reporter">Reporter</SelectItem>
-                  <SelectItem value="integrator">Integrator</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="systemPrompt">System Prompt *</Label>
-              <Textarea
-                id="systemPrompt"
-                placeholder="You are an expert in... Your role is to..."
-                value={formSystemPrompt}
-                onChange={(e) => setFormSystemPrompt(e.target.value)}
-                rows={6}
-                className="font-mono text-sm"
-              />
-            </div>
-
-            <div className="grid grid-cols-3 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="model">Model</Label>
-                <Select value={formModel} onValueChange={(value) => setFormModel(value as Agent["model"])}>
-                  <SelectTrigger id="model">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="gpt-4o">GPT-4o</SelectItem>
-                    <SelectItem value="gpt-4o-mini">GPT-4o Mini</SelectItem>
-                    <SelectItem value="gpt-3.5-turbo">GPT-3.5 Turbo</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="temperature">Temperature</Label>
-                <Input
-                  id="temperature"
-                  type="number"
-                  min="0"
-                  max="2"
-                  step="0.1"
-                  value={formTemperature}
-                  onChange={(e) => setFormTemperature(parseFloat(e.target.value))}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="maxTokens">Max Tokens</Label>
-                <Input
-                  id="maxTokens"
-                  type="number"
-                  min="100"
-                  max="4000"
-                  step="100"
-                  value={formMaxTokens}
-                  onChange={(e) => setFormMaxTokens(parseInt(e.target.value))}
-                />
-              </div>
-            </div>
-
-            <div className="space-y-4 p-4 border rounded-lg">
-              <div className="flex items-center justify-between">
-                <div>
-                  <Label htmlFor="scheduleEnabled">Enable Scheduled Runs</Label>
-                  <p className="text-xs text-muted-foreground">
-                    Run this agent automatically on a schedule
-                  </p>
-                </div>
-                <Switch
-                  id="scheduleEnabled"
-                  checked={formScheduleEnabled}
-                  onCheckedChange={setFormScheduleEnabled}
-                />
-              </div>
-
-              {formScheduleEnabled && (
-                <div className="space-y-2">
-                  <Label htmlFor="frequency">Frequency</Label>
-                  <Select value={formScheduleFrequency} onValueChange={(value) => setFormScheduleFrequency(value as Agent["schedule"]["frequency"])}>
-                    <SelectTrigger id="frequency">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="realtime">Real-time</SelectItem>
-                      <SelectItem value="hourly">Hourly</SelectItem>
-                      <SelectItem value="daily">Daily</SelectItem>
-                      <SelectItem value="weekly">Weekly</SelectItem>
-                      <SelectItem value="manual">Manual Only</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
             </div>
           </div>
 
@@ -1223,18 +1283,24 @@ export default function AgentsSection() {
               variant="outline"
               onClick={() => {
                 setShowCreateDialog(false);
-                setShowEditDialog(false);
-                setEditingAgent(null);
-                resetForm();
+                resetCreateForm();
               }}
+              disabled={isCloningAgent}
             >
               Cancel
             </Button>
             <Button
-              onClick={editingAgent ? handleEditAgent : handleCreateAgent}
-              disabled={!formName || !formSystemPrompt}
+              onClick={handleCloneFromMain}
+              disabled={isCloningAgent || !newAgentName.trim() || !newAgentDescription.trim()}
             >
-              {editingAgent ? "Save Changes" : "Create Agent"}
+              {isCloningAgent ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Creating...
+                </>
+              ) : (
+                'Clone + Specialize'
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -6,6 +6,7 @@ import {
 	DialogContent,
 	DialogHeader,
 	DialogTitle,
+	DialogDescription,
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -56,10 +57,13 @@ export default function TaskDetailDialog({ task, open, onOpenChange, onTaskUpdat
 		if (!task || !confirm('Delete this task?')) return;
 		setDeleting(true);
 		try {
-			const res = await fetch(`${OPAL_BASE_URL}/api/nodes/${task.id}`, {
+			const res = await fetch(`${OPAL_BASE_URL}/api/hierarchy/work-packages/${task.id}`, {
 				method: 'DELETE',
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ changed_by: 'ui-user' }),
+				body: JSON.stringify({
+					changed_by: 'ui-user',
+					change_reason: 'User deleted task from task detail dialog',
+				}),
 			});
 			if (!res.ok) throw new Error('Failed to delete');
 			toast.success('Task deleted');
@@ -75,10 +79,10 @@ export default function TaskDetailDialog({ task, open, onOpenChange, onTaskUpdat
 	// Fetch parent project when dialog opens
 	useEffect(() => {
 		if (!open || !task) { setParentProject(null); return; }
-		fetch(`${OPAL_BASE_URL}/api/traverse?from_id=${task.id}&edge_type=contains&direction=incoming`)
+		fetch(`${OPAL_BASE_URL}/api/hierarchy/work-packages/${task.id}/context`)
 			.then(r => r.ok ? r.json() : null)
 			.then(data => {
-				const project = (data?.nodes || []).find((n: any) => n.node_type === 'project');
+				const project = data?.project;
 				if (project) setParentProject({ id: project.id, title: project.title });
 			})
 			.catch(() => {});
@@ -171,6 +175,9 @@ export default function TaskDetailDialog({ task, open, onOpenChange, onTaskUpdat
 	return (
 		<Dialog open={open} onOpenChange={onOpenChange}>
 			<DialogContent className="max-w-lg">
+				<DialogDescription className="sr-only">
+					Task detail, assignment, and approval context.
+				</DialogDescription>
 				{/* Parent Project */}
 				{parentProject && (
 					<div className="flex items-center gap-1.5 text-xs text-muted-foreground pb-1 -mb-2">

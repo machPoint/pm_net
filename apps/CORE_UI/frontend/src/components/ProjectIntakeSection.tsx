@@ -27,13 +27,14 @@ import {
 	Copy,
 	ExternalLink,
 	Search,
+	TerminalSquare,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
-import { useTaskIntake, IntakeStage, IntakeMessage, PrecedentMatch, PlanPreview, GraphNode } from "@/hooks/useTaskIntake";
+import { useTaskIntake, IntakeStage, IntakeMessage, PrecedentMatch, PlanPreview, GraphNode, PlanStep } from "@/hooks/useTaskIntake";
 
 // ============================================================================
 // Stage metadata
@@ -56,7 +57,11 @@ const STAGES_ORDER: IntakeStage[] = ["start", "precedents", "clarify", "plan", "
 // Main Component
 // ============================================================================
 
-export default function ProjectIntakeSection() {
+export default function ProjectIntakeSection({
+	onNavigateToExecution,
+}: {
+	onNavigateToExecution?: () => void;
+}) {
 	const intake = useTaskIntake();
 	const [inputValue, setInputValue] = useState("");
 	const chatEndRef = useRef<HTMLDivElement>(null);
@@ -165,28 +170,19 @@ export default function ProjectIntakeSection() {
 			<div className="flex-1 flex overflow-hidden">
 				{/* Left: Focused Stage Content */}
 				<div className="flex-1 flex flex-col min-w-0">
-					<ScrollArea className="flex-1">
+					<div className="flex-1 overflow-y-auto themed-scrollbar">
 						<div className="max-w-2xl mx-auto p-6">
-							<StageContent intake={intake} inputValue={inputValue} setInputValue={setInputValue} />
+							<StageContent
+								intake={intake}
+								inputValue={inputValue}
+								setInputValue={setInputValue}
+								onNavigateToExecution={onNavigateToExecution}
+							/>
 							<div ref={chatEndRef} />
 						</div>
-					</ScrollArea>
+					</div>
 
-					{/* Chat input (clarify stage only) */}
-					{intake.session.stage === "clarify" && (
-						<ChatInput
-							value={inputValue}
-							onChange={setInputValue}
-							onSend={async () => {
-								if (!inputValue.trim()) return;
-								const msg = inputValue.trim();
-								setInputValue("");
-								await intake.clarify(msg);
-							}}
-							loading={intake.loading}
-							placeholder="Answer the question or provide more details..."
-						/>
-					)}
+					{/* Clarify input is rendered inside ClarifyStage for tighter back-and-forth context */}
 				</div>
 
 				{/* Right: Live Preview */}
@@ -228,7 +224,7 @@ function ChatBubble({ message }: { message: IntakeMessage }) {
 		<div className={cn("flex", isUser ? "justify-end" : "justify-start")}>
 			<div className={cn(
 				"max-w-[85%] rounded-lg px-3 py-2 text-sm",
-				isUser && "bg-primary text-primary-foreground",
+				isUser && "border border-border bg-[var(--color-text-primary)]/8 text-[var(--color-text-primary)]",
 				!isUser && !isSystem && "bg-[var(--color-text-primary)]/5 text-[var(--color-text-primary)]",
 				isSystem && "bg-transparent text-[var(--color-text-secondary)] text-xs italic"
 			)}>
@@ -261,7 +257,7 @@ function ChatInput({ value, onChange, onSend, loading, placeholder }: {
 	}, [value]);
 
 	return (
-		<div className="p-3 border-t border-border flex gap-2 items-end">
+		<div className="p-3 rounded-xl border border-border bg-[var(--color-background)]/70 flex gap-2 items-end">
 			<textarea
 				ref={textareaRef}
 				value={value}
@@ -283,10 +279,11 @@ function ChatInput({ value, onChange, onSend, loading, placeholder }: {
 // Stage Content — renders the interactive UI for the current stage
 // ============================================================================
 
-function StageContent({ intake, inputValue, setInputValue }: {
+function StageContent({ intake, inputValue, setInputValue, onNavigateToExecution }: {
 	intake: ReturnType<typeof useTaskIntake>;
 	inputValue: string;
 	setInputValue: (v: string) => void;
+	onNavigateToExecution?: () => void;
 }) {
 	const stage = intake.session?.stage;
 	if (!stage) return null;
@@ -297,13 +294,13 @@ function StageContent({ intake, inputValue, setInputValue }: {
 		case "precedents":
 			return <PrecedentsStage intake={intake} />;
 		case "clarify":
-			return <ClarifyStage intake={intake} />;
+			return <ClarifyStage intake={intake} inputValue={inputValue} setInputValue={setInputValue} />;
 		case "plan":
 			return <PlanStage intake={intake} />;
 		case "approve":
 			return <ApproveStage intake={intake} />;
 		case "execute":
-			return <ExecuteStage intake={intake} />;
+			return <ExecuteStage intake={intake} onNavigateToExecution={onNavigateToExecution} />;
 		case "verify":
 			return <VerifyStage intake={intake} />;
 		case "learn":
@@ -656,10 +653,35 @@ function PrecedentsStage({ intake }: { intake: ReturnType<typeof useTaskIntake> 
 
 // ── Stage 2: Clarify ────────────────────────────────────────────────────────
 
-function ClarifyStage({ intake }: { intake: ReturnType<typeof useTaskIntake> }) {
-	const readyForPlan = intake.session?.stage === "clarify" &&
-		(intake.session?.clarify_count || 0) > 0;
+function ClarifyStage({
+	intake,
+	inputValue,
+	setInputValue,
+}: {
+	intake: ReturnType<typeof useTaskIntake>;
+	inputValue: string;
+	setInputValue: (v: string) => void;
+}) {
 	const messages = intake.session?.messages || [];
+	const clarifyCount = intake.session?.clarify_count || 0;
+	const hasAssistantPrompt = messages.some((m) => m.role === "assistant");
+	const canGeneratePlan = clarifyCount > 0;
+	const buttonToneClass = "w-full gap-2 border border-border bg-[var(--color-text-primary)]/5 text-[var(--color-text-primary)] hover:bg-[var(--color-text-primary)]/10";
+
+	const handleStartClarify = async () => {
+		await intake.clarify("Please assess this project and ask the 2-3 most important clarifying questions before planning.");
+	};
+
+	const handleFollowUp = async () => {
+		await intake.clarify("Please continue clarification and ask the next most important question.");
+	};
+
+	const handleSendClarification = async () => {
+		if (!inputValue.trim()) return;
+		const msg = inputValue.trim();
+		setInputValue("");
+		await intake.clarify(msg);
+	};
 
 	return (
 		<div className="space-y-4">
@@ -678,26 +700,61 @@ function ClarifyStage({ intake }: { intake: ReturnType<typeof useTaskIntake> }) 
 				</div>
 			)}
 
-			{/* Generate Plan CTA */}
-			{readyForPlan && (
-				<div className="rounded-xl border-2 border-primary/30 bg-primary/5 p-4">
-					<div className="flex items-center gap-2 mb-2">
-						<Sparkles className="w-4 h-4 text-primary" />
-						<span className="text-sm font-medium text-[var(--color-text-primary)]">Ready to generate a plan?</span>
-					</div>
-					<p className="text-xs text-[var(--color-text-secondary)] mb-3">
-						You can continue refining below, or generate an execution plan now.
-					</p>
-					<Button
-						onClick={() => intake.generatePlan(true)}
-						disabled={intake.loading}
-						className="w-full gap-2"
-					>
-						{intake.loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <GitBranch className="w-4 h-4" />}
-						Generate Execution Plan
-					</Button>
+			<ChatInput
+				value={inputValue}
+				onChange={setInputValue}
+				onSend={handleSendClarification}
+				loading={intake.loading}
+				placeholder="Answer the AI question, add constraints, or share more detail..."
+			/>
+
+			{/* Clarify actions */}
+			<div className="rounded-xl border border-border bg-[var(--color-background)]/70 p-4 space-y-3">
+				<div className="flex items-center gap-2">
+					<Sparkles className="w-4 h-4 text-primary" />
+					<span className="text-sm font-medium text-[var(--color-text-primary)]">Clarify Actions</span>
 				</div>
-			)}
+				<p className="text-xs text-[var(--color-text-secondary)]">
+					Precedents/templates were checked in the previous step. Continue clarifying, or move to plan generation.
+				</p>
+
+				{!hasAssistantPrompt ? (
+					<Button
+						onClick={handleStartClarify}
+						disabled={intake.loading}
+						variant="outline"
+						className={buttonToneClass}
+					>
+						{intake.loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+						Start AI Clarification
+					</Button>
+				) : (
+					<Button
+						onClick={handleFollowUp}
+						disabled={intake.loading}
+						variant="outline"
+						className={buttonToneClass}
+					>
+						{intake.loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowRight className="w-4 h-4" />}
+						Ask Next Clarifying Question
+					</Button>
+				)}
+
+				<Button
+					onClick={() => intake.generatePlan(true)}
+					disabled={intake.loading || !canGeneratePlan}
+					variant="outline"
+					className={buttonToneClass}
+				>
+					{intake.loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <GitBranch className="w-4 h-4" />}
+					Generate Execution Plan
+				</Button>
+				{!canGeneratePlan && (
+					<p className="text-[11px] text-[var(--color-text-secondary)]">
+						Submit at least one clarification response before generating a plan.
+					</p>
+				)}
+			</div>
 		</div>
 	);
 }
@@ -733,7 +790,7 @@ function PlanStage({ intake }: { intake: ReturnType<typeof useTaskIntake> }) {
 
 function ApproveStage({ intake }: { intake: ReturnType<typeof useTaskIntake> }) {
 	const [editing, setEditing] = useState(false);
-	const [editSteps, setEditSteps] = useState<Array<{ order: number; action: string; expected_outcome: string; tool?: string }>>([]);
+	const [editSteps, setEditSteps] = useState<PlanStep[]>([]);
 	const [newStepAction, setNewStepAction] = useState("");
 	const [confirmed, setConfirmed] = useState(false);
 
@@ -758,12 +815,18 @@ function ApproveStage({ intake }: { intake: ReturnType<typeof useTaskIntake> }) 
 
 	const addStep = () => {
 		if (!newStepAction.trim()) return;
-		setEditSteps([...editSteps, { order: editSteps.length + 1, action: newStepAction.trim(), expected_outcome: '' }]);
+		setEditSteps([...editSteps, { order: editSteps.length + 1, action: newStepAction.trim(), expected_outcome: '', tool: null, step_type: 'task' }]);
 		setNewStepAction("");
 	};
 
 	const addApprovalGate = (afterIdx?: number) => {
-		const gate = { order: 0, action: '🛡️ APPROVAL GATE — Pause for human review before continuing', expected_outcome: 'Human approval received', tool: 'approval_gate' };
+		const gate: PlanStep = {
+			order: 0,
+			action: 'APPROVAL GATE — Pause for human review before continuing',
+			expected_outcome: 'Human approval received',
+			tool: 'approval_gate',
+			step_type: 'approval_gate',
+		};
 		const next = [...editSteps];
 		if (afterIdx !== undefined) {
 			next.splice(afterIdx + 1, 0, gate);
@@ -774,8 +837,33 @@ function ApproveStage({ intake }: { intake: ReturnType<typeof useTaskIntake> }) 
 		setEditSteps(next);
 	};
 
-	const isGateStep = (step: { action: string; tool?: string }) =>
-		step.tool === 'approval_gate' || step.action.includes('APPROVAL GATE');
+	const isGateStep = (step: PlanStep) =>
+		step.step_type === 'approval_gate' || step.tool === 'approval_gate';
+
+	const normalizeEditedSteps = (steps: PlanStep[]): PlanStep[] => (
+		steps.map((step, i): PlanStep => {
+			const gate = isGateStep(step);
+			return {
+				order: i + 1,
+				action: gate
+					? (step.action || 'APPROVAL GATE — Pause for human review before continuing')
+					: (step.action || '').trim(),
+				expected_outcome: gate
+					? (step.expected_outcome || 'Human approval received')
+					: (step.expected_outcome || '').trim(),
+				tool: gate ? 'approval_gate' : (step.tool || null),
+				step_type: gate ? 'approval_gate' : 'task',
+			};
+		}).filter((s) => s.action.length > 0)
+	);
+
+	const handleDoneEditing = async () => {
+		const normalized = normalizeEditedSteps(editSteps);
+		if (normalized.length === 0) return;
+		setEditSteps(normalized);
+		await intake.savePlanSteps(normalized);
+		setEditing(false);
+	};
 
 	const moveStep = (idx: number, dir: -1 | 1) => {
 		const newIdx = idx + dir;
@@ -797,7 +885,13 @@ function ApproveStage({ intake }: { intake: ReturnType<typeof useTaskIntake> }) 
 						{steps.length} step{steps.length !== 1 ? "s" : ""} · Review, edit, then approve or reject.
 					</p>
 				</div>
-				<Button size="sm" variant={editing ? "default" : "outline"} onClick={() => setEditing(!editing)} className="gap-1.5">
+				<Button
+					size="sm"
+					variant={editing ? "default" : "outline"}
+					onClick={editing ? handleDoneEditing : () => setEditing(true)}
+					className="gap-1.5"
+					disabled={intake.loading}
+				>
 					<Pencil className="w-3 h-3" />
 					{editing ? 'Done Editing' : 'Edit Steps'}
 				</Button>
@@ -952,7 +1046,7 @@ function ApproveStage({ intake }: { intake: ReturnType<typeof useTaskIntake> }) 
 
 			<div className="flex gap-2">
 				<Button
-					onClick={() => intake.approvePlan(true)}
+					onClick={() => intake.approvePlan(true, normalizeEditedSteps(editSteps))}
 					disabled={!confirmed || intake.loading}
 					className="flex-1 gap-2"
 				>
@@ -975,275 +1069,53 @@ function ApproveStage({ intake }: { intake: ReturnType<typeof useTaskIntake> }) 
 
 // ── Stage 5: Execute ────────────────────────────────────────────────────────
 
-interface StepToolCall {
-	name: string;
-	arguments: Record<string, any>;
-	result?: string;
-	error?: string;
-}
-
-interface StepLog {
-	step: number;
-	status: "pending" | "running" | "done" | "error";
-	output: string;
-	tool_calls: StepToolCall[];
-	source?: "openclaw" | "llm_fallback" | "error";
-	model?: string;
-	duration_ms?: number;
-	expanded?: boolean;
-}
-
-function ToolCallBlock({ tc, index }: { tc: StepToolCall; index: number }) {
-	const [open, setOpen] = useState(false);
-	return (
-		<div className="rounded border border-border bg-muted/50 text-xs">
-			<button
-				onClick={() => setOpen(!open)}
-				className="w-full flex items-center gap-2 px-2 py-1.5 text-left hover:bg-accent/50 transition-colors"
-			>
-				<span className="text-primary font-medium">⚙ {tc.name}</span>
-				{tc.error && <span className="text-destructive text-[10px]">error</span>}
-				{!tc.error && tc.result && <span className="text-muted-foreground text-[10px]">✓</span>}
-				<span className="ml-auto text-muted-foreground text-[10px]">{open ? "▼" : "▶"}</span>
-			</button>
-			{open && (
-				<div className="border-t border-border px-2 py-1.5 space-y-1">
-					<div>
-						<span className="text-muted-foreground">args: </span>
-						<code className="text-[10px] text-[var(--color-text-primary)]">
-							{JSON.stringify(tc.arguments, null, 2)}
-						</code>
-					</div>
-					{tc.result && (
-						<div>
-							<span className="text-muted-foreground">{tc.error ? "error: " : "result: "}</span>
-							<pre className={cn(
-								"text-[10px] whitespace-pre-wrap mt-0.5 max-h-32 overflow-y-auto",
-								tc.error ? "text-destructive" : "text-[var(--color-text-primary)]"
-							)}>
-								{tc.result}
-							</pre>
-						</div>
-					)}
-				</div>
-			)}
-		</div>
-	);
-}
-
-function ExecuteStage({ intake }: { intake: ReturnType<typeof useTaskIntake> }) {
-	const [executing, setExecuting] = useState(false);
-	const [stepLogs, setStepLogs] = useState<StepLog[]>([]);
+function ExecuteStage({
+	intake,
+	onNavigateToExecution,
+}: {
+	intake: ReturnType<typeof useTaskIntake>;
+	onNavigateToExecution?: () => void;
+}) {
 	const steps = intake.planPreview?.steps || intake.plan?.metadata?.steps || [];
 
-	const handleExecute = async () => {
-		setExecuting(true);
-		setStepLogs(steps.map((_: any, i: number) => ({
-			step: i, status: "pending" as const, output: "", tool_calls: [],
-		})));
-
-		// 1. Create the run node first (sets session.run_id so decision traces are linked)
-		await intake.startExecution();
-
-		for (let i = 0; i < steps.length; i++) {
-			const step = steps[i] as any;
-			// Mark step as running
-			setStepLogs(prev => prev.map((l, idx) =>
-				idx === i ? { ...l, status: "running" as const, output: `Agent is working on: ${step.action}...`, expanded: true } : l
-			));
-
-			// 2. Call the real execute-step endpoint
-			let result: Partial<StepLog> = { output: "", tool_calls: [], source: "error" };
-			try {
-				const res = await fetch(`/api/opal/proxy/api/task-intake/sessions/${intake.session!.id}/execute-step`, {
-					method: "POST",
-					headers: { "Content-Type": "application/json" },
-					body: JSON.stringify({
-						step_order: step.order || i + 1,
-						action: step.action,
-						tool: step.tool || null,
-						expected_outcome: step.expected_outcome || "",
-					}),
-				});
-				const data = await res.json();
-				if (data.ok) {
-					result = {
-						output: data.output || "Completed",
-						tool_calls: data.tool_calls || [],
-						source: data.source || "openclaw",
-						model: data.model,
-						duration_ms: data.duration_ms,
-					};
-				} else {
-					result = { output: `Error: ${data.error || "Unknown error"}`, tool_calls: [], source: "error" };
-				}
-			} catch (err: any) {
-				result = { output: `Network error: ${err.message}`, tool_calls: [], source: "error" };
-			}
-
-			const success = result.source !== "error";
-			setStepLogs(prev => prev.map((l, idx) =>
-				idx === i ? {
-					...l,
-					status: (success ? "done" : "error") as StepLog["status"],
-					output: result.output || "",
-					tool_calls: result.tool_calls || [],
-					source: result.source,
-					model: result.model,
-					duration_ms: result.duration_ms,
-					expanded: true,
-				} : l
-			));
+	const handleOpenConsole = () => {
+		if (intake.session?.id) {
+			localStorage.setItem("pmnet_active_intake_session_id", intake.session.id);
 		}
-
-		// 3. Finalize — advance to verify stage
-		await intake.finalizeExecution();
-		setExecuting(false);
+		onNavigateToExecution?.();
 	};
-
-	const completedCount = stepLogs.filter(l => l.status === "done").length;
-	const progress = steps.length > 0 ? Math.round((completedCount / steps.length) * 100) : 0;
 
 	return (
 		<div className="space-y-5">
 			<div>
-				<h3 className="text-lg font-semibold text-[var(--color-text-primary)] mb-1">
-					{executing ? "Executing Plan..." : completedCount === steps.length && completedCount > 0 ? "Execution Complete" : "Ready to Execute"}
-				</h3>
+				<h3 className="text-lg font-semibold text-[var(--color-text-primary)] mb-1">Execution Console Handoff</h3>
 				<p className="text-sm text-[var(--color-text-secondary)]">
-					{executing
-						? `Step ${completedCount + 1} of ${steps.length} — ${progress}% complete`
-						: completedCount > 0
-							? `All ${steps.length} steps completed. Moving to verification...`
-							: `${steps.length} step${steps.length !== 1 ? "s" : ""} ready to run. Each step will be dispatched to an AI agent.`
-					}
+					Execution now runs in the dedicated console so users can watch full OpenClaw output, tool calls, agent metadata, and step-by-step status in real time.
 				</p>
 			</div>
 
-			{/* Progress bar */}
-			{(executing || completedCount > 0) && steps.length > 0 && (
-				<div className="w-full bg-muted rounded-full h-2">
-					<div
-						className="bg-primary h-2 rounded-full transition-all duration-500"
-						style={{ width: `${progress}%` }}
-					/>
+			<div className="rounded-lg border border-border bg-[var(--color-background)]/70 p-4 space-y-3">
+				<div className="flex items-center justify-between text-sm">
+					<span className="text-[var(--color-text-secondary)]">Approved steps ready</span>
+					<span className="font-medium text-[var(--color-text-primary)]">{steps.length}</span>
 				</div>
-			)}
-
-			{/* Step list with rich output */}
-			{steps.length > 0 && (
-				<div className="space-y-3 rounded-xl border border-border p-3">
-					{steps.map((step: any, i: number) => {
-						const log = stepLogs[i];
-						const isDone = log?.status === "done";
-						const isError = log?.status === "error";
-						const isActive = log?.status === "running";
-						const isPending = !log || log.status === "pending";
-						const isExpanded = log?.expanded ?? false;
-						return (
-							<div key={i} className={cn(
-								"rounded-lg transition-all border",
-								isDone && "bg-primary/5 border-primary/20",
-								isError && "bg-destructive/5 border-destructive/20",
-								isActive && "bg-accent border-primary/30",
-								isPending && "border-transparent",
-								isPending && !executing && "opacity-70",
-								isPending && executing && "opacity-40",
-							)}>
-								{/* Step header */}
-								<button
-									className="w-full flex items-center gap-3 px-3 py-2.5 text-sm text-left"
-									onClick={() => log && setStepLogs(prev => prev.map((l, idx) =>
-										idx === i ? { ...l, expanded: !l.expanded } : l
-									))}
-								>
-									{isDone ? (
-										<CheckCircle2 className="w-4 h-4 text-primary flex-shrink-0" />
-									) : isError ? (
-										<AlertCircle className="w-4 h-4 text-destructive flex-shrink-0" />
-									) : isActive ? (
-										<Loader2 className="w-4 h-4 animate-spin text-primary flex-shrink-0" />
-									) : (
-										<div className="w-4 h-4 rounded-full border-2 border-muted-foreground/30 flex-shrink-0" />
-									)}
-									<span className="flex-1 text-[var(--color-text-primary)] font-medium">
-										{step.action}
-									</span>
-									<div className="flex items-center gap-1.5">
-										{step.tool && <Badge variant="outline" className="text-[10px]">{step.tool}</Badge>}
-										{log?.source === "openclaw" && <Badge variant="outline" className="text-[10px] border-primary/30 text-primary">OpenClaw</Badge>}
-										{log?.source === "llm_fallback" && <Badge variant="outline" className="text-[10px]">LLM</Badge>}
-										{log?.duration_ms && (
-											<span className="text-[10px] text-muted-foreground">{(log.duration_ms / 1000).toFixed(1)}s</span>
-										)}
-										{log && !isPending && (
-											<span className="text-muted-foreground text-[10px]">{isExpanded ? "▼" : "▶"}</span>
-										)}
-									</div>
-								</button>
-
-								{/* Expanded output */}
-								{isExpanded && log && !isPending && (
-									<div className="px-3 pb-3 space-y-2">
-										{/* Tool calls */}
-										{log.tool_calls.length > 0 && (
-											<div className="space-y-1">
-												<span className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">Tool Calls</span>
-												{log.tool_calls.map((tc, tci) => (
-													<ToolCallBlock key={tci} tc={tc} index={tci} />
-												))}
-											</div>
-										)}
-
-										{/* Agent output */}
-										{log.output && (
-											<div>
-												{log.tool_calls.length > 0 && (
-													<span className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium block mb-1">Agent Output</span>
-												)}
-												<div className={cn(
-													"px-3 py-2 rounded text-xs whitespace-pre-wrap border-l-2 max-h-64 overflow-y-auto",
-													isActive ? "bg-muted/50 border-primary/30 text-muted-foreground" : "bg-muted border-primary/30 text-[var(--color-text-primary)]",
-												)}>
-													{log.output}
-												</div>
-											</div>
-										)}
-
-										{/* Model info */}
-										{log.model && (
-											<div className="text-[10px] text-muted-foreground">
-												Model: {log.model}
-											</div>
-										)}
-									</div>
-								)}
-							</div>
-						);
-					})}
+				<div className="text-xs text-[var(--color-text-secondary)]">
+					Project: <span className="text-[var(--color-text-primary)]">{intake.task?.title || "Untitled"}</span>
 				</div>
-			)}
+				<div className="text-xs text-[var(--color-text-secondary)]">
+					Agent: <span className="text-[var(--color-text-primary)] font-mono">{intake.session?.agent_id || "main"}</span>
+				</div>
+			</div>
 
-			{/* Note about execution */}
-			{!executing && completedCount === 0 && (
-				<>
-					<div className="rounded-lg border border-border bg-muted/50 p-3">
-						<p className="text-xs text-muted-foreground">
-							<strong>How it works:</strong> Each step is dispatched to an OpenClaw AI agent which can search the web, generate code, analyze data, and write documents.
-							Tool calls and results are shown in real time. Steps run sequentially — this may take a few minutes.
-						</p>
-					</div>
-					<Button
-						onClick={handleExecute}
-						disabled={intake.loading}
-						size="lg"
-						className="w-full gap-2"
-					>
-						{intake.loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4" />}
-						Start Execution
-					</Button>
-				</>
-			)}
+			<Button
+				onClick={handleOpenConsole}
+				disabled={!intake.session || steps.length === 0}
+				size="lg"
+				className="w-full gap-2"
+			>
+				<TerminalSquare className="w-4 h-4" />
+				Open Execution Console
+			</Button>
 		</div>
 	);
 }

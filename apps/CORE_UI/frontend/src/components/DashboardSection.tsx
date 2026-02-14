@@ -72,6 +72,11 @@ interface RecentTask {
 	updatedAt: string;
 }
 
+interface HierarchyTreeNode {
+	node: any;
+	children?: HierarchyTreeNode[];
+}
+
 type TimeRange = "7d" | "30d" | "90d" | "12m";
 type ChartLayer = "tasks" | "plans" | "runs" | "verifications";
 
@@ -151,18 +156,60 @@ export default function DashboardSection() {
 	const [approvals, setApprovals] = useState<PendingApproval[]>([]);
 	const [allTasks, setAllTasks] = useState<RecentTask[]>([]);
 
+	const parseMetadata = useCallback((metadata: any): Record<string, any> => {
+		if (!metadata) return {};
+		if (typeof metadata === 'string') {
+			try {
+				return JSON.parse(metadata);
+			} catch {
+				return {};
+			}
+		}
+		return typeof metadata === 'object' ? metadata : {};
+	}, []);
+
+	const extractTasksFromHierarchyTree = useCallback((tree: HierarchyTreeNode | null | undefined): any[] => {
+		if (!tree) return [];
+		const out: any[] = [];
+		const stack: HierarchyTreeNode[] = [tree];
+		while (stack.length > 0) {
+			const current = stack.pop()!;
+			if (current?.node?.node_type === 'task') {
+				out.push(current.node);
+			}
+			if (Array.isArray(current?.children)) {
+				for (const child of current.children) stack.push(child);
+			}
+		}
+		return out;
+	}, []);
+
 	const fetchDashboardData = useCallback(async () => {
 		try {
 			setLoading(true);
 
-			// Fetch projects and tasks in parallel
-			const [tasksRes, projectsRes] = await Promise.all([
-				fetch(`${OPAL_BASE_URL}/api/nodes?node_type=task`),
-				fetch(`${OPAL_BASE_URL}/api/nodes?node_type=project`),
-			]);
-
-			const tasks = tasksRes.ok ? (await tasksRes.json()).nodes || [] : [];
+			// Fetch projects, then aggregate only hierarchy-linked tasks
+			const projectsRes = await fetch(`${OPAL_BASE_URL}/api/nodes?node_type=project`);
 			const projects = projectsRes.ok ? (await projectsRes.json()).nodes || [] : [];
+
+			const taskTrees = await Promise.all(
+				projects.map(async (project: any) => {
+					try {
+						const treeRes = await fetch(`${OPAL_BASE_URL}/api/hierarchy/tree/${project.id}?depth=4`);
+						if (!treeRes.ok) return [] as any[];
+						const treeData = await treeRes.json();
+						return extractTasksFromHierarchyTree(treeData?.node ? treeData : null);
+					} catch {
+						return [] as any[];
+					}
+				})
+			);
+
+			const dedup = new Map<string, any>();
+			for (const task of taskTrees.flat()) {
+				dedup.set(task.id, task);
+			}
+			const tasks = Array.from(dedup.values());
 
 			// --- KPIs ---
 			const activeTasks = tasks.filter((n: any) => ['backlog', 'in_progress', 'review', 'blocked'].includes(n.status));
@@ -182,22 +229,25 @@ export default function DashboardSection() {
 			).slice(0, 10);
 
 			setAllTasks(sorted.map((n: any) => {
-				const meta = typeof n.metadata === 'string' ? JSON.parse(n.metadata) : (n.metadata || {});
+				const meta = parseMetadata(n.metadata);
 				const updatedAt = n.updated_at ? timeAgo(new Date(n.updated_at)) : '';
 				return {
 					id: n.id,
 					title: n.title,
 					status: n.status || 'backlog',
 					priority: meta.priority || 'medium',
-					assignee: meta.assignee || n.created_by || '',
+					assignee: meta.assignee || meta.assigned_agent || n.created_by || '',
 					updatedAt,
 				};
 			}));
 
 			// --- Pending Approvals (tasks needing review) ---
-			const reviewTasks = tasks.filter((n: any) => n.status === 'review' || n.status === 'pending_approval' || (typeof n.metadata === 'object' && n.metadata?.needs_approval));
+			const reviewTasks = tasks.filter((n: any) => {
+				const meta = parseMetadata(n.metadata);
+				return n.status === 'review' || n.status === 'pending_approval' || meta.needs_approval === true;
+			});
 			setApprovals(reviewTasks.slice(0, 10).map((g: any) => {
-				const meta = typeof g.metadata === 'string' ? JSON.parse(g.metadata) : (g.metadata || {});
+				const meta = parseMetadata(g.metadata);
 				const createdAt = g.created_at ? timeAgo(new Date(g.created_at)) : '';
 				return {
 					id: g.id,
@@ -223,7 +273,7 @@ export default function DashboardSection() {
 		} finally {
 			setLoading(false);
 		}
-	}, []);
+	}, [extractTasksFromHierarchyTree, parseMetadata]);
 
 	useEffect(() => {
 		fetchDashboardData();

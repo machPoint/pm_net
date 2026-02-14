@@ -17,6 +17,9 @@ import {
   Trash2,
   ListTodo,
   CalendarDays,
+  ChevronDown,
+  ChevronRight,
+  Bot,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -28,6 +31,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
@@ -61,6 +65,23 @@ interface ProjectWithStats extends Project {
   task_count: number;
   tasks_done: number;
   tasks_in_progress: number;
+}
+
+interface ProjectTaskSummary {
+  id: string;
+  title: string;
+  status: string;
+  agents: string[];
+}
+
+interface ProjectExpandedDetails {
+  tasks: ProjectTaskSummary[];
+  unique_agents: string[];
+}
+
+interface HierarchyTreeNode {
+  node: any;
+  children?: HierarchyTreeNode[];
 }
 
 // ============================================================================
@@ -129,29 +150,110 @@ export default function ProjectsSection() {
   // Delete confirmation
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [expandedProjectId, setExpandedProjectId] = useState<string | null>(null);
+  const [expandedDetails, setExpandedDetails] = useState<Record<string, ProjectExpandedDetails>>({});
+  const [loadingExpandedId, setLoadingExpandedId] = useState<string | null>(null);
+
+  const extractTasksFromHierarchyTree = useCallback((tree: HierarchyTreeNode | null | undefined) => {
+    if (!tree) return [] as any[];
+    const out: any[] = [];
+    const stack: HierarchyTreeNode[] = [tree];
+    while (stack.length > 0) {
+      const current = stack.pop()!;
+      if (current?.node?.node_type === "task") {
+        out.push(current.node);
+      }
+      if (Array.isArray(current?.children)) {
+        for (const child of current.children) stack.push(child);
+      }
+    }
+    return out;
+  }, []);
+
+  const extractTaskAgents = useCallback((task: any): string[] => {
+    const meta = task?.metadata || {};
+    if (Array.isArray(meta.assigned_agents)) {
+      return meta.assigned_agents
+        .map((a: any) => (typeof a === "string" ? a : a?.name || a?.id || ""))
+        .filter(Boolean);
+    }
+    if (Array.isArray(meta.assignees)) {
+      return meta.assignees
+        .map((a: any) => (typeof a === "string" ? a : a?.name || a?.id || ""))
+        .filter(Boolean);
+    }
+    if (meta.assigned_agent) return [String(meta.assigned_agent)];
+    if (meta.agent_id) return [String(meta.agent_id)];
+    return [];
+  }, []);
+
+  const fetchProjectDetails = useCallback(async (projectId: string) => {
+    setLoadingExpandedId(projectId);
+    try {
+      const treeRes = await fetch(`${API_BASE}/api/hierarchy/tree/${projectId}?depth=4`);
+      if (!treeRes.ok) throw new Error("Failed to load project details");
+      const treeData = await treeRes.json();
+      const tasks = extractTasksFromHierarchyTree(treeData?.node ? treeData : null);
+      const taskRows: ProjectTaskSummary[] = tasks.map((t: any) => ({
+        id: t.id,
+        title: t.title,
+        status: t.status || "backlog",
+        agents: extractTaskAgents(t),
+      }));
+      const uniqueAgents = Array.from(new Set(taskRows.flatMap((t) => t.agents))).sort();
+
+      setExpandedDetails((prev) => ({
+        ...prev,
+        [projectId]: {
+          tasks: taskRows,
+          unique_agents: uniqueAgents,
+        },
+      }));
+    } catch (err: any) {
+      toast.error(err.message || "Failed to load project details");
+    } finally {
+      setLoadingExpandedId((prev) => (prev === projectId ? null : prev));
+    }
+  }, [extractTaskAgents, extractTasksFromHierarchyTree]);
 
   // ── Fetch projects ──────────────────────────────────────────────────
 
   const fetchProjects = useCallback(async () => {
     try {
       setLoading(true);
-      const res = await fetch(`${API_BASE}/api/nodes?node_type=project`);
-      if (!res.ok) throw new Error("Failed to fetch projects");
-      const data = await res.json();
-      const nodes: Project[] = data.nodes || data || [];
+      const programsRes = await fetch(`${API_BASE}/api/nodes?node_type=program`);
+      if (!programsRes.ok) throw new Error("Failed to fetch programs");
+      const programsData = await programsRes.json();
+      const programs: any[] = programsData.nodes || programsData || [];
 
-      // For each project, fetch task stats
+      const projectLists = await Promise.all(
+        programs.map(async (program) => {
+          try {
+            const res = await fetch(`${API_BASE}/api/hierarchy/programs/${program.id}/projects`);
+            if (!res.ok) return [] as Project[];
+            const data = await res.json();
+            return (data.projects || []) as Project[];
+          } catch {
+            return [] as Project[];
+          }
+        })
+      );
+
+      const dedup = new Map<string, Project>();
+      for (const project of projectLists.flat()) {
+        dedup.set(project.id, project);
+      }
+
+      const nodes: Project[] = Array.from(dedup.values());
+
+      // For each project, fetch task stats via hierarchy tree
       const withStats: ProjectWithStats[] = await Promise.all(
         nodes.map(async (p) => {
           try {
-            const tasksRes = await fetch(
-              `${API_BASE}/api/traverse?from_id=${p.id}&edge_type=contains&direction=outgoing`
-            );
+            const tasksRes = await fetch(`${API_BASE}/api/hierarchy/tree/${p.id}?depth=4`);
             if (tasksRes.ok) {
               const tasksData = await tasksRes.json();
-              const tasks = (tasksData.nodes || tasksData || []).filter(
-                (n: any) => n.node_type === "task"
-              );
+              const tasks = extractTasksFromHierarchyTree(tasksData?.node ? tasksData : null);
               return {
                 ...p,
                 task_count: tasks.length,
@@ -171,7 +273,7 @@ export default function ProjectsSection() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [extractTasksFromHierarchyTree]);
 
   useEffect(() => {
     fetchProjects();
@@ -195,6 +297,14 @@ export default function ProjectsSection() {
     }
     return list;
   }, [projects, searchQuery, filterStatus]);
+
+  const toggleProjectExpanded = async (projectId: string) => {
+    const next = expandedProjectId === projectId ? null : projectId;
+    setExpandedProjectId(next);
+    if (next && !expandedDetails[next]) {
+      await fetchProjectDetails(next);
+    }
+  };
 
   // ── Create / Edit ───────────────────────────────────────────────────
 
@@ -223,9 +333,11 @@ export default function ProjectsSection() {
       if (editingProject) {
         // Update
         const res = await fetch(`${API_BASE}/api/nodes/${editingProject.id}`, {
-          method: "PUT",
+          method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
+            changed_by: "ui-user",
+            change_reason: "User edited quick project",
             title: formTitle,
             description: formDescription,
             status: formStatus,
@@ -236,15 +348,15 @@ export default function ProjectsSection() {
         toast.success("Project updated");
       } else {
         // Create
-        const res = await fetch(`${API_BASE}/api/nodes`, {
+        const res = await fetch(`${API_BASE}/api/hierarchy/projects`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            node_type: "project",
             title: formTitle,
             description: formDescription,
             status: formStatus,
-            metadata: { category: formCategory },
+            category: formCategory,
+            created_by: "ui-user",
           }),
         });
         if (!res.ok) throw new Error("Failed to create project");
@@ -266,11 +378,19 @@ export default function ProjectsSection() {
     if (!selectedProject) return;
     setDeleting(true);
     try {
-      const res = await fetch(`${API_BASE}/api/nodes/${selectedProject.id}`, {
+      const res = await fetch(`${API_BASE}/api/hierarchy/projects/${selectedProject.id}`, {
         method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          changed_by: "ui-user",
+          change_reason: "User deleted project from Projects section",
+        }),
       });
-      if (!res.ok) throw new Error("Failed to delete project");
-      toast.success("Project deleted");
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data.ok === false) {
+        throw new Error(data.error || "Failed to delete project");
+      }
+      toast.success("Project deleted with associated work and artifacts");
       setDeleteConfirmOpen(false);
       setDetailOpen(false);
       setSelectedProject(null);
@@ -387,15 +507,38 @@ export default function ProjectsSection() {
                   ? Math.round((project.tasks_done / project.task_count) * 100)
                   : 0;
 
+              const isExpanded = expandedProjectId === project.id;
+              const details = expandedDetails[project.id];
+              const isLoadingDetails = loadingExpandedId === project.id;
+
               return (
-                <button
+                <div
                   key={project.id}
-                  onClick={() => {
-                    setSelectedProject(project);
-                    setDetailOpen(true);
-                  }}
                   className="w-full text-left border border-border rounded-lg p-5 hover:border-blue-500/40 transition-all group bg-[var(--color-card)]"
                 >
+                  <div className="flex items-center justify-between gap-2 mb-3">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => toggleProjectExpanded(project.id)}
+                      className="h-7 px-2 text-[11px] text-[var(--color-text-secondary)] gap-1"
+                    >
+                      {isExpanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+                      {isExpanded ? "Hide details" : "Show details"}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setSelectedProject(project);
+                        setDetailOpen(true);
+                      }}
+                      className="h-7 px-2 text-[11px]"
+                    >
+                      Open popup
+                    </Button>
+                  </div>
+
                   {/* Top row: category + status */}
                   <div className="flex items-center justify-between mb-3">
                     <div className="flex items-center gap-2">
@@ -442,7 +585,67 @@ export default function ProjectsSection() {
                       {new Date(project.created_at).toLocaleDateString()}
                     </div>
                   )}
-                </button>
+
+                  {isExpanded && (
+                    <div className="mt-4 pt-4 border-t border-border space-y-3">
+                      <div className="rounded-md border border-border p-3 bg-[var(--color-background)]/40">
+                        <p className="text-[11px] uppercase tracking-wide text-[var(--color-text-secondary)] mb-1">Project Overview</p>
+                        <p className="text-xs text-[var(--color-text-primary)] line-clamp-3">
+                          {project.description || "No description provided."}
+                        </p>
+                      </div>
+
+                      <div className="rounded-md border border-border p-3 bg-[var(--color-background)]/40">
+                        <p className="text-[11px] uppercase tracking-wide text-[var(--color-text-secondary)] mb-2">Agents in Use</p>
+                        {isLoadingDetails ? (
+                          <div className="flex items-center gap-2 text-xs text-[var(--color-text-secondary)]">
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading agents...
+                          </div>
+                        ) : details?.unique_agents?.length ? (
+                          <div className="flex flex-wrap gap-1.5">
+                            {details.unique_agents.map((agent) => (
+                              <Badge key={agent} variant="outline" className="text-[10px] gap-1">
+                                <Bot className="w-3 h-3" />
+                                {agent}
+                              </Badge>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-xs text-[var(--color-text-secondary)]">No assigned agents yet.</p>
+                        )}
+                      </div>
+
+                      <div className="rounded-md border border-border p-3 bg-[var(--color-background)]/40">
+                        <p className="text-[11px] uppercase tracking-wide text-[var(--color-text-secondary)] mb-2">Tasks</p>
+                        {isLoadingDetails ? (
+                          <div className="flex items-center gap-2 text-xs text-[var(--color-text-secondary)]">
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading tasks...
+                          </div>
+                        ) : details?.tasks?.length ? (
+                          <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
+                            {details.tasks.map((task) => (
+                              <div key={task.id} className="rounded border border-border p-2">
+                                <div className="flex items-start justify-between gap-2">
+                                  <p className="text-xs font-medium text-[var(--color-text-primary)] line-clamp-1">{task.title}</p>
+                                  <StatusPill status={task.status} />
+                                </div>
+                                {task.agents.length > 0 && (
+                                  <div className="flex flex-wrap gap-1 mt-1.5">
+                                    {task.agents.map((agent) => (
+                                      <Badge key={`${task.id}-${agent}`} variant="outline" className="text-[10px]">{agent}</Badge>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-xs text-[var(--color-text-secondary)]">No tasks linked to this project.</p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
               );
             })}
           </div>
@@ -452,6 +655,9 @@ export default function ProjectsSection() {
       {/* ── Detail Popup ─────────────────────────────────────────────── */}
       <Dialog open={detailOpen} onOpenChange={setDetailOpen}>
         <DialogContent className="max-w-lg">
+          <DialogDescription className="sr-only">
+            Project detail summary including status, description, and task progress.
+          </DialogDescription>
           {selectedProject && (
             <>
               <DialogHeader>
@@ -565,6 +771,9 @@ export default function ProjectsSection() {
       {/* ── Create / Edit Dialog ─────────────────────────────────────── */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent>
+          <DialogDescription className="sr-only">
+            Create or edit a project record.
+          </DialogDescription>
           <DialogHeader>
             <DialogTitle>
               {editingProject ? "Edit Project" : "New Project"}
@@ -645,6 +854,9 @@ export default function ProjectsSection() {
       {/* ── Delete Confirmation ──────────────────────────────────────── */}
       <Dialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
         <DialogContent className="max-w-sm">
+          <DialogDescription className="sr-only">
+            Confirm permanent deletion of this project and associated linked work.
+          </DialogDescription>
           <DialogHeader>
             <DialogTitle className="text-red-400">Delete Project</DialogTitle>
           </DialogHeader>

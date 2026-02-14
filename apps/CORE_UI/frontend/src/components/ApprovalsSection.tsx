@@ -27,6 +27,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
@@ -108,60 +109,68 @@ export default function ApprovalsSection() {
     try {
       setLoading(true);
 
-      // Fetch tasks that have deliverables ready for review
-      // These are tasks with status "review" or verification nodes pending
-      const res = await fetch(`${API_BASE}/api/nodes?node_type=task`);
-      if (!res.ok) throw new Error("Failed to fetch tasks");
-      const data = await res.json();
-      const tasks = (data.nodes || data || []);
+      const items: ApprovalItem[] = [];
 
-      // Filter to tasks that need approval (status = review, done, or have verification pending)
-      const reviewTasks = tasks.filter(
-        (t: any) =>
-          t.status === "review" ||
-          t.status === "pending_approval" ||
-          t.metadata?.needs_approval === true
-      );
+      // 1. Fetch gate nodes (approval gates created during execution)
+      try {
+        const gatesRes = await fetch(`${API_BASE}/api/nodes?node_type=gate`);
+        if (gatesRes.ok) {
+          const gatesData = await gatesRes.json();
+          const gates = (gatesData.nodes || gatesData || []).filter((g: any) => !g.deleted_at);
+          for (const gate of gates) {
+            const meta = typeof gate.metadata === "string" ? JSON.parse(gate.metadata) : (gate.metadata || {});
+            const statusMap: Record<string, ApprovalItem["status"]> = {
+              pending_approval: "pending",
+              approved: "approved",
+              rejected: "rejected",
+            };
+            items.push({
+              id: gate.id,
+              task_id: meta.task_id || gate.id,
+              task_title: meta.task_title || gate.title,
+              project_title: "",
+              project_id: "",
+              description: gate.description,
+              status: statusMap[gate.status] || "pending",
+              submitted_at: meta.requested_at || gate.created_at,
+              reviewed_at: meta.resolved_at,
+              feedback: meta.reason,
+              metadata: { ...meta, _node_type: "gate", _gate_id: gate.id, step_order: meta.step_order },
+            });
+          }
+        }
+      } catch {}
 
-      // Build approval items from tasks
-      const items: ApprovalItem[] = await Promise.all(
-        reviewTasks.map(async (task: any) => {
-          // Try to get parent project
-          let projectTitle = "";
-          let projectId = "";
-          try {
-            const parentRes = await fetch(
-              `${API_BASE}/api/traverse?from_id=${task.id}&edge_type=contains&direction=incoming`
-            );
-            if (parentRes.ok) {
-              const parentData = await parentRes.json();
-              const parent = (parentData.nodes || parentData || []).find(
-                (n: any) => n.node_type === "project"
-              );
-              if (parent) {
-                projectTitle = parent.title;
-                projectId = parent.id;
-              }
-            }
-          } catch {}
+      // 2. Fetch tasks that need approval (status = review or pending_approval)
+      try {
+        const res = await fetch(`${API_BASE}/api/nodes?node_type=task`);
+        if (res.ok) {
+          const data = await res.json();
+          const tasks = (data.nodes || data || []);
+          const reviewTasks = tasks.filter(
+            (t: any) =>
+              t.status === "review" ||
+              t.status === "pending_approval" ||
+              t.metadata?.needs_approval === true
+          );
 
-          return {
-            id: task.id,
-            task_id: task.id,
-            task_title: task.title,
-            project_title: projectTitle,
-            project_id: projectId,
-            description: task.description,
-            deliverable: task.metadata?.deliverable || task.metadata?.agent_output,
-            agent_output: task.metadata?.agent_output,
-            status: task.metadata?.approval_status || "pending",
-            submitted_at: task.metadata?.completed_at || task.updated_at,
-            reviewed_at: task.metadata?.reviewed_at,
-            feedback: task.metadata?.review_feedback,
-            metadata: task.metadata,
-          };
-        })
-      );
+          for (const task of reviewTasks) {
+            items.push({
+              id: task.id,
+              task_id: task.id,
+              task_title: task.title,
+              description: task.description,
+              deliverable: task.metadata?.deliverable || task.metadata?.agent_output,
+              agent_output: task.metadata?.agent_output,
+              status: task.metadata?.approval_status || "pending",
+              submitted_at: task.metadata?.completed_at || task.updated_at,
+              reviewed_at: task.metadata?.reviewed_at,
+              feedback: task.metadata?.review_feedback,
+              metadata: task.metadata,
+            });
+          }
+        }
+      } catch {}
 
       setApprovals(items);
     } catch (err: any) {
@@ -203,25 +212,45 @@ export default function ApprovalsSection() {
     if (!selectedApproval) return;
     setSubmitting(true);
     try {
-      const res = await fetch(`${API_BASE}/api/nodes/${selectedApproval.task_id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          status: decision === "approved" ? "done" : decision === "rejected" ? "cancelled" : "in_progress",
-          metadata: {
-            ...selectedApproval.metadata,
-            approval_status: decision,
-            review_feedback: feedback,
-            reviewed_at: new Date().toISOString(),
-            needs_approval: decision === "revision_requested",
-          },
-        }),
-      });
-      if (!res.ok) throw new Error("Failed to submit review");
+      const isGate = selectedApproval.metadata?._node_type === "gate";
+
+      if (isGate) {
+        // Resolve the gate node via the dedicated gate endpoint
+        const gateId = selectedApproval.metadata?._gate_id || selectedApproval.id;
+        const res = await fetch(`${API_BASE}/api/task-intake/gates/${gateId}/resolve`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            approved: decision === "approved",
+            reason: feedback,
+            resolved_by: "ui-reviewer",
+          }),
+        });
+        if (!res.ok) throw new Error("Failed to resolve gate");
+      } else {
+        // Patch the task node directly
+        const res = await fetch(`${API_BASE}/api/nodes/${selectedApproval.task_id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            changed_by: "ui-reviewer",
+            change_reason: `Approval decision: ${decision}`,
+            status: decision === "approved" ? "done" : decision === "rejected" ? "cancelled" : "in_progress",
+            metadata: {
+              ...selectedApproval.metadata,
+              approval_status: decision,
+              review_feedback: feedback,
+              reviewed_at: new Date().toISOString(),
+              needs_approval: decision === "revision_requested",
+            },
+          }),
+        });
+        if (!res.ok) throw new Error("Failed to submit review");
+      }
 
       const labels: Record<string, string> = {
-        approved: "Task approved!",
-        rejected: "Task rejected",
+        approved: isGate ? "Gate approved — execution will continue!" : "Task approved!",
+        rejected: isGate ? "Gate rejected — execution stopped" : "Task rejected",
         revision_requested: "Revision requested — AI will redo with your feedback",
       };
       toast.success(labels[decision]);
@@ -372,6 +401,9 @@ export default function ApprovalsSection() {
       {/* ── Detail / Review Dialog ───────────────────────────────────── */}
       <Dialog open={detailOpen} onOpenChange={setDetailOpen}>
         <DialogContent className="max-w-lg">
+          <DialogDescription className="sr-only">
+            Review and decide whether to approve, reject, or request revision for a task.
+          </DialogDescription>
           {selectedApproval && (
             <>
               <DialogHeader>

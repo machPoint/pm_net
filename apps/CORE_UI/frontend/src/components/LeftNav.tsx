@@ -3,6 +3,7 @@
 import {
   FileText,
   Brain,
+  Mail,
   CheckSquare,
   Bot,
   Calendar,
@@ -12,6 +13,7 @@ import {
   Library,
   FolderKanban,
   ClipboardCheck,
+  TerminalSquare,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -27,9 +29,12 @@ const navItems = [
   { id: "projects", label: "Projects", icon: FolderKanban },
   { id: "tasks", label: "Tasks", icon: CheckSquare },
   { id: "project-intake", label: "Project Intake", icon: ClipboardList },
+  { id: "execution-console", label: "Execution Console", icon: TerminalSquare },
   { id: "task-library", label: "Task Library", icon: Library },
+  { id: "messages", label: "Messages", icon: Mail },
   { id: "notes", label: "Notes", icon: FileText },
   { id: "gantt", label: "Gantt", icon: Calendar },
+  { id: "scheduler", label: "Scheduler", icon: Calendar },
   { id: "approvals", label: "Approvals", icon: ClipboardCheck },
   { id: "analytics", label: "Analytics", icon: BarChart3 },
   { id: "ai-chat", label: "AI Chat", icon: Brain },

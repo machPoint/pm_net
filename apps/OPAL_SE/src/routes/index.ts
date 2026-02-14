@@ -16,6 +16,7 @@ import aiChatRoutes from './ai-chat';
 import impactRoutes from './impact-api';
 import eventsStreamRoutes from './events-stream';
 import taskIntakeRoutes from './task-intake';
+import schedulerRoutes from './scheduler';
 
 const router = express.Router();
 
@@ -30,6 +31,7 @@ router.use('/ai', aiChatRoutes);
 router.use('/requirements', impactRoutes);
 router.use('/events', eventsStreamRoutes);
 router.use('/task-intake', taskIntakeRoutes);
+router.use('/scheduler', schedulerRoutes);
 
 // Register admin API routes (for the admin UI)
 router.use('/', adminApiRoutes);

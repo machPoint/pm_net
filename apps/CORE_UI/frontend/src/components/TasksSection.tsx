@@ -68,7 +68,7 @@ export default function TasksSection({ onNavigate }: { onNavigate?: (tab: string
       setLoading(true);
 
       // Fetch task nodes from graph API
-      const nodesRes = await fetch(`${OPAL_BASE_URL}/api/nodes?type=task`);
+      const nodesRes = await fetch(`${OPAL_BASE_URL}/api/nodes?node_type=task`);
       if (!nodesRes.ok) throw new Error('Failed to fetch tasks');
       const nodesData = await nodesRes.json();
       const nodes = nodesData.nodes || nodesData || [];
@@ -107,20 +107,25 @@ export default function TasksSection({ onNavigate }: { onNavigate?: (tab: string
         }
       });
 
-      // Transform nodes to tasks
-      const taskList: TaskNode[] = nodes.map((node: any) => {
-        const metadata = typeof node.metadata === 'string' ? JSON.parse(node.metadata) : (node.metadata || {});
-        return {
-          id: node.id,
-          title: node.title,
-          description: node.description || '',
-          status: node.status || metadata.status || 'backlog',
-          priority: metadata.priority || 'medium',
-          dueDate: metadata.due_date,
-          assignees: assignmentMap.get(node.id) || [],
-          metadata
-        };
-      });
+      // Transform nodes to tasks (exclude templates)
+      const taskList: TaskNode[] = nodes
+        .filter((node: any) => {
+          const meta = typeof node.metadata === 'string' ? JSON.parse(node.metadata) : (node.metadata || {});
+          return !meta.is_template && node.status !== 'template';
+        })
+        .map((node: any) => {
+          const metadata = typeof node.metadata === 'string' ? JSON.parse(node.metadata) : (node.metadata || {});
+          return {
+            id: node.id,
+            title: node.title,
+            description: node.description || '',
+            status: node.status || metadata.status || 'backlog',
+            priority: metadata.priority || 'medium',
+            dueDate: metadata.due_date,
+            assignees: assignmentMap.get(node.id) || [],
+            metadata
+          };
+        });
 
       setTasks(taskList);
     } catch (err: any) {
@@ -135,15 +140,19 @@ export default function TasksSection({ onNavigate }: { onNavigate?: (tab: string
     if (e) e.stopPropagation();
     if (!confirm('Delete this task and its associated nodes?')) return;
     try {
-      const res = await fetch(`${OPAL_BASE_URL}/api/nodes/${taskId}`, {
+      const res = await fetch(`${OPAL_BASE_URL}/api/hierarchy/work-packages/${taskId}`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ changed_by: 'ui-user' }),
+        body: JSON.stringify({
+          changed_by: 'ui-user',
+          change_reason: 'User deleted task from Tasks section',
+        }),
       });
       if (!res.ok) throw new Error('Failed to delete');
       setTasks(prev => prev.filter(t => t.id !== taskId));
       setSelectedTask(null);
       toast.success('Task deleted');
+      fetchTasks();
     } catch (err: any) {
       toast.error(`Delete failed: ${err.message}`);
     }

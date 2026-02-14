@@ -89,6 +89,7 @@ export async function POST(
 
     let cliResult: any = {};
     let replyText = "";
+    let replyMarkdown = "";
     let meta: Record<string, any> = {};
 
     try {
@@ -101,7 +102,8 @@ export async function POST(
         cliResult = JSON.parse(stdout);
         // Extract reply text from payloads
         const payloads = cliResult.result?.payloads || [];
-        replyText = payloads.map((p: any) => p.text).filter(Boolean).join("\n\n");
+        replyMarkdown = payloads.map((p: any) => p.text).filter(Boolean).join("\n\n");
+        replyText = replyMarkdown;
 
         meta = {
           runId: cliResult.runId,
@@ -113,6 +115,7 @@ export async function POST(
           injectedFiles: cliResult.result?.meta?.systemPromptReport?.injectedWorkspaceFiles?.map(
             (f: any) => f.name
           ),
+          consoleMarkdown: `\`\`\`json\n${JSON.stringify(cliResult, null, 2)}\n\`\`\``,
         };
       } else {
         replyText = stderr || "(no response)";
@@ -123,7 +126,9 @@ export async function POST(
       try {
         cliResult = JSON.parse(errOutput);
         const payloads = cliResult.result?.payloads || [];
-        replyText = payloads.map((p: any) => p.text).filter(Boolean).join("\n\n");
+        replyMarkdown = payloads.map((p: any) => p.text).filter(Boolean).join("\n\n");
+        replyText = replyMarkdown;
+        meta.consoleMarkdown = `\`\`\`json\n${JSON.stringify(cliResult, null, 2)}\n\`\`\``;
       } catch {
         replyText = `Error: ${errOutput}`;
       }
@@ -142,7 +147,7 @@ export async function POST(
 
     history.push({
       role: "assistant",
-      content: replyText || "(empty response)",
+      content: replyMarkdown || replyText || "(empty response)",
       timestamp: new Date().toISOString(),
       meta,
     });
@@ -153,6 +158,7 @@ export async function POST(
       ok: true,
       agentId: id,
       reply: replyText || "(empty response)",
+      reply_markdown: replyMarkdown || replyText || "(empty response)",
       meta,
     });
   } catch (err: any) {

@@ -173,6 +173,32 @@
   background: hsl(0 0% 65%);
 }
 
+/* Theme-aware scrollbar — auto light/dark using semantic tokens */
+.themed-scrollbar {
+  scrollbar-gutter: stable;
+  scrollbar-width: auto;
+  scrollbar-color: hsl(var(--muted-foreground)) hsl(var(--muted));
+}
+
+.themed-scrollbar::-webkit-scrollbar {
+  width: 12px;
+}
+
+.themed-scrollbar::-webkit-scrollbar-track {
+  background: hsl(var(--muted));
+  border-radius: 8px;
+}
+
+.themed-scrollbar::-webkit-scrollbar-thumb {
+  background: hsl(var(--muted-foreground));
+  border-radius: 8px;
+  border: 2px solid hsl(var(--muted));
+}
+
+.themed-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--foreground));
+}
+
 /* Resizable panel handle styles */
 .resize-handle {
   position: relative;
@@ -251,16 +277,16 @@
 }
 
 /* Glass effect for buttons and inputs */
-.glass-effect button:not(.flat-button),
-.glass-effect [data-slot="button"] {
+.glass-effect button:not(.flat-button):not([class*="bg-primary"]),
+.glass-effect [data-slot="button"]:not([class*="bg-primary"]) {
   background: rgba(255, 255, 255, 0.08) !important;
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
   border: 1px solid rgba(255, 255, 255, 0.12);
 }
 
-.glass-effect.dark button:not(.flat-button),
-.glass-effect.dark [data-slot="button"] {
+.glass-effect.dark button:not(.flat-button):not([class*="bg-primary"]),
+.glass-effect.dark [data-slot="button"]:not([class*="bg-primary"]) {
   background: rgba(255, 255, 255, 0.05) !important;
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
@@ -306,14 +332,14 @@
 }
 
 /* Enhance hover states for glass effect */
-.glass-effect button:hover:not(.flat-button),
-.glass-effect [data-slot="button"]:hover {
+.glass-effect button:hover:not(.flat-button):not([class*="bg-primary"]),
+.glass-effect [data-slot="button"]:hover:not([class*="bg-primary"]) {
   background: rgba(255, 255, 255, 0.12) !important;
   border: 1px solid rgba(255, 255, 255, 0.18);
 }
 
-.glass-effect.dark button:hover:not(.flat-button),
-.glass-effect.dark [data-slot="button"]:hover {
+.glass-effect.dark button:hover:not(.flat-button):not([class*="bg-primary"]),
+.glass-effect.dark [data-slot="button"]:hover:not([class*="bg-primary"]) {
   background: rgba(255, 255, 255, 0.08) !important;
   border: 1px solid rgba(255, 255, 255, 0.12);
 }

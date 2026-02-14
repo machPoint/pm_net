@@ -202,6 +202,7 @@ import graphApiRoutes from './routes/graph-api';
 import agentOpsRoutes from './routes/agent-ops';
 import promptsRoutes from './routes/prompts';
 import hierarchyRoutes from './routes/hierarchy';
+import { startScheduler, stopScheduler } from './services/schedulerService';
 
 // Use routes (order matters — specific paths before catch-alls)
 app.use('/api/hierarchy', hierarchyRoutes);  // Mission hierarchy API
@@ -756,6 +757,12 @@ const startServer = () => {
       logger.warn(`Could not ensure default hierarchy: ${err.message}`);
     }
 
+    try {
+      startScheduler(60_000);
+    } catch (err: any) {
+      logger.warn(`Could not start scheduler dispatcher: ${err.message}`);
+    }
+
     console.log(`\nOPAL Server is running!`);
     console.log(`- HTTP: http://localhost:${MCP_PORT}/mcp`);
     console.log(`- WebSocket: ws://localhost:${MCP_PORT}`);
@@ -783,6 +790,8 @@ startServer();
 // Handle graceful shutdown
 process.on('SIGINT', async () => {
   logger.info('Shutting down OPAL server...');
+
+  stopScheduler();
 
   // Close the HTTP server
   httpServer.close(() => {
