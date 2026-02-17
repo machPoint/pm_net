@@ -1,8 +1,63 @@
 import { Router, Request, Response } from 'express';
 import * as scheduler from '../services/schedulerService';
+import { listRuntimes } from '../services/agentDispatcher';
 import logger from '../logger';
 
 const router = Router();
+
+// ── Standalone job CRUD ────────────────────────────────────────────────
+
+/** POST /scheduler/jobs — create a standalone scheduled job */
+router.post('/jobs', async (req: Request, res: Response) => {
+	try {
+		const { title, prompt, run_at, recurrence_cron, project_id, task_id, agent_id, runtime, metadata } = req.body || {};
+		if (!title || !prompt || !run_at) {
+			return res.status(400).json({ ok: false, error: 'Missing required fields: title, prompt, run_at' });
+		}
+		const job = await scheduler.createJob({
+			title,
+			prompt,
+			run_at,
+			recurrence_cron,
+			project_id,
+			task_id,
+			agent_id,
+			runtime,
+			created_by: req.body?.created_by || 'user',
+			metadata,
+		});
+		res.json({ ok: true, job });
+	} catch (err: any) {
+		logger.error('[scheduler] POST /jobs error:', err);
+		res.status(400).json({ ok: false, error: err.message });
+	}
+});
+
+/** GET /scheduler/jobs — list all jobs (optionally filter by status) */
+router.get('/jobs', async (req: Request, res: Response) => {
+	try {
+		const status = req.query.status as string | undefined;
+		const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : undefined;
+		const jobs = await scheduler.listAllJobs({ status, limit });
+		res.json({ ok: true, jobs });
+	} catch (err: any) {
+		logger.error('[scheduler] GET /jobs error:', err);
+		res.status(400).json({ ok: false, error: err.message });
+	}
+});
+
+/** GET /scheduler/runtimes — list available agent runtimes */
+router.get('/runtimes', async (_req: Request, res: Response) => {
+	try {
+		const runtimes = await listRuntimes();
+		res.json({ ok: true, runtimes });
+	} catch (err: any) {
+		logger.error('[scheduler] GET /runtimes error:', err);
+		res.status(500).json({ ok: false, error: err.message });
+	}
+});
+
+// ── Project-scoped routes ──────────────────────────────────────────────
 
 /** GET /scheduler/projects/:id/profile */
 router.get('/projects/:id/profile', async (req: Request, res: Response) => {

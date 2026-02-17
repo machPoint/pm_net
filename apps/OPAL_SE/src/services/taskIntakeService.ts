@@ -13,6 +13,7 @@
 import { v4 as uuid } from 'uuid';
 import * as graphService from './graphService';
 import { callLLM } from './agentGateway';
+import { dispatch as agentDispatch } from './agentDispatcher';
 import { eventBus } from './eventBus';
 import * as hierarchyService from './hierarchyService';
 import logger from '../logger';
@@ -112,9 +113,9 @@ const sessions = new Map<string, IntakeSession>();
 
 const MAX_CLARIFY_ROUNDS = 5;
 
-const SYSTEM_PROMPT = `You are a Task Intake Agent for an AI agent orchestration system called PM_NET. Your job is to help users define tasks that will be executed by autonomous AI agents (powered by OpenClaw), NOT by humans.
+const SYSTEM_PROMPT = `You are a Project Intake Agent for an AI agent orchestration system called PM_NET. Your job is to help users define projects that will be executed by autonomous AI agents (powered by OpenClaw), NOT by humans.
 
-CRITICAL: All tasks and plans are executed by AI agents, not people. Never suggest human activities like meetings, phone calls, surveys, or manual document editing. Instead, plan for what an AI agent can do autonomously.
+CRITICAL: All projects and their plan steps are executed by AI agents, not people. Never suggest human activities like meetings, phone calls, surveys, or manual document editing. Instead, plan for what an AI agent can do autonomously.
 
 AI agents have these capabilities:
 - **Web search & research**: Search the internet, read URLs, analyze web content
@@ -258,13 +259,15 @@ export async function startTask(
 	if (!session) throw new Error(`Session not found: ${sessionId}`);
 	if (session.stage !== 'start') throw new Error(`Invalid stage for startTask: ${session.stage}`);
 
-	logger.info(`[TaskIntake] Stage 0: Creating task node for session ${sessionId}`);
+	logger.info(`[TaskIntake] Stage 0: Creating project node for session ${sessionId}`);
 
+	// Items created through Project Intake are projects, not tasks.
+	// The AI-generated plan steps are the actual work items within the project.
 	const task = await graphService.createNode({
-		node_type: 'task',
+		node_type: 'project',
 		title: input.title,
 		description: input.description,
-		status: 'backlog',
+		status: 'planning',
 		metadata: {
 			priority: input.priority || 'medium',
 			estimated_hours: input.estimated_hours,
@@ -273,7 +276,7 @@ export async function startTask(
 				text,
 				status: 'pending',
 			})),
-			assignee_type: null,
+			session_id: sessionId,
 		},
 		created_by: session.agent_id,
 		source: 'agent',
@@ -281,26 +284,31 @@ export async function startTask(
 
 	session.task_id = task.id;
 
-	// Link to phase if provided
-	if (input.phase_id) {
-		try {
-			await hierarchyService.addWorkPackageToPhase(input.phase_id, task.id, session.agent_id);
-			logger.info(`[TaskIntake] Linked task ${task.id} to phase ${input.phase_id}`);
-		} catch (err: any) {
-			logger.warn(`[TaskIntake] Could not link task to phase: ${err.message}`);
-		}
+	// Link project to a program in the hierarchy
+	try {
+		const defaults = await hierarchyService.ensureDefaultHierarchy();
+		await graphService.createEdge({
+			edge_type: 'contains',
+			source_node_id: defaults.program.id,
+			target_node_id: task.id,
+			weight: 1.0,
+			created_by: session.agent_id,
+		});
+		logger.info(`[TaskIntake] Linked project ${task.id} to program ${defaults.program.id}`);
+	} catch (err: any) {
+		logger.warn(`[TaskIntake] Could not link project to program: ${err.message}`);
 	}
 
 	session.stage = 'precedents';
-	addMessage(session, 'system', `Task "${input.title}" created (${task.id}). Moving to precedent lookup.`);
+	addMessage(session, 'system', `Project "${input.title}" created (${task.id}). Moving to precedent lookup.`);
 
-	// Emit task created event to Pulse feed
+	// Emit project created event to Pulse feed
 	eventBus.emit({
 		id: uuid(),
 		event_type: 'created',
-		entity_type: 'Task',
+		entity_type: 'Project',
 		entity_id: task.id,
-		summary: `Task created: ${input.title}`,
+		summary: `Project created: ${input.title}`,
 		source: 'agent',
 		timestamp: new Date().toISOString(),
 		metadata: {
@@ -639,10 +647,10 @@ export async function generatePlan(
 	const task = await graphService.getNode(session.task_id);
 	if (!task) throw new Error(`Task not found: ${session.task_id}`);
 
-	// Ask LLM to generate a plan with subtasks
-	const planPrompt = `Generate an execution plan for this task that will be carried out by an autonomous AI agent (not a human).
+	// Ask LLM to generate a plan with work packages
+	const planPrompt = `Generate an execution plan for this project that will be carried out by an autonomous AI agent (not a human).
 
-Task details:
+Project details:
 Title: ${task.title}
 Description: ${task.description || 'None'}
 Priority: ${task.metadata?.priority || 'medium'}
@@ -668,14 +676,14 @@ Respond with JSON:
     {"order": 1, "action": "description of what the agent does", "expected_outcome": "concrete output produced", "tool": "tool_name"}
   ],
   "subtasks": [
-    {"title": "subtask title", "description": "what this subtask involves", "priority": "high|medium|low", "estimated_hours": number}
+    {"title": "work package title", "description": "what this work package involves", "priority": "high|medium|low", "estimated_hours": number}
   ],
   "rationale": "why this approach works for an AI agent",
   "estimated_hours": number,
   "risks": ["potential risk 1", "potential risk 2"]
 }
 
-For complex tasks, break into 2-5 subtasks. For simple tasks, subtasks can be empty.`;
+For complex projects, break into 2-5 work packages. For simple projects, subtasks can be empty.`;
 
 	let steps: PlanStep[] = [];
 	let rationale = '';
@@ -888,7 +896,8 @@ export async function updatePlanSteps(
 export async function approvePlan(
 	sessionId: string,
 	approved: boolean,
-	editedSteps?: any[]
+	editedSteps?: any[],
+	executionAgentId?: string
 ): Promise<{ status: string; session: IntakeSession }> {
 	const session = getSession(sessionId);
 	if (!session) throw new Error(`Session not found: ${sessionId}`);
@@ -900,6 +909,7 @@ export async function approvePlan(
 	logger.info(`[TaskIntake] Stage 4: ${approved ? 'Approving' : 'Rejecting'} plan for session ${sessionId}`);
 
 	const now = new Date().toISOString();
+	const requestedExecutionAgent = String(executionAgentId || '').trim();
 
 	if (approved) {
 		let mergedMeta = { ...(plan.metadata || {}) };
@@ -916,8 +926,28 @@ export async function approvePlan(
 			await graphService.updateNode(session.gate_id, { status: 'approved' }, session.agent_id);
 		}
 		if (session.task_id) {
-			await graphService.updateNode(session.task_id, { status: 'ready' }, session.agent_id);
+			let taskMetadata: Record<string, any> | undefined;
+			if (requestedExecutionAgent) {
+				const taskNode = await graphService.getNode(session.task_id);
+				taskMetadata = {
+					...(taskNode?.metadata || {}),
+					assigned_agent_id: requestedExecutionAgent,
+					execution_agent_id: requestedExecutionAgent,
+					assignee_type: 'agent',
+				};
+			}
+
+			await graphService.updateNode(
+				session.task_id,
+				taskMetadata ? { status: 'active', metadata: taskMetadata } : { status: 'active' },
+				session.agent_id
+			);
 		}
+
+		if (requestedExecutionAgent) {
+			addMessage(session, 'system', `Execution agent set to ${requestedExecutionAgent}.`);
+		}
+
 		session.stage = 'execute';
 		addMessage(session, 'system', 'Plan approved. Ready to execute.');
 	} else {
@@ -994,8 +1024,8 @@ export async function startExecution(
 		created_by: session.agent_id,
 	});
 
-	// Update task status
-	await graphService.updateNode(session.task_id, { status: 'in_progress' }, session.agent_id);
+	// Update project status
+	await graphService.updateNode(session.task_id, { status: 'active' }, session.agent_id);
 
 	session.run_id = run.id;
 	// Stay at 'execute' stage — steps still need to run
@@ -1037,15 +1067,15 @@ export async function finalizeExecution(
 	// 1. Update run status to completed
 	await graphService.updateNode(session.run_id, { status: 'completed' }, session.agent_id);
 
-	// 2. Mark the task node as done
-	let taskTitle = 'Untitled Task';
+	// 2. Mark the project node as complete
+	let taskTitle = 'Untitled Project';
 	if (session.task_id) {
 		try {
 			const task = await graphService.getNode(session.task_id);
 			if (task) {
 				taskTitle = task.title || taskTitle;
 				await graphService.updateNode(session.task_id, {
-					status: 'done',
+					status: 'complete',
 					metadata: {
 						...task.metadata,
 						completed_at: new Date().toISOString(),
@@ -1053,24 +1083,30 @@ export async function finalizeExecution(
 						session_id: sessionId,
 					},
 				}, session.agent_id);
-				logger.info(`[TaskIntake] Marked task ${session.task_id} as done`);
+				logger.info(`[TaskIntake] Marked project ${session.task_id} as complete`);
 			}
 		} catch (err: any) {
-			logger.warn(`[TaskIntake] Could not update task status: ${err.message}`);
+			logger.warn(`[TaskIntake] Could not update project status: ${err.message}`);
 		}
 	}
 
-	// 3. Ensure task is linked to the hierarchy (default project/phase if orphaned)
+	// 3. Ensure project is linked to the hierarchy (default program if orphaned)
 	if (session.task_id) {
 		try {
 			const edges = await graphService.listEdges({ target_node_id: session.task_id, edge_type: 'contains' });
 			if (!edges || edges.length === 0) {
 				const defaults = await hierarchyService.ensureDefaultHierarchy();
-				await hierarchyService.addWorkPackageToPhase(defaults.phase.id, session.task_id, session.agent_id);
-				logger.info(`[TaskIntake] Linked orphan task ${session.task_id} to default phase ${defaults.phase.id}`);
+				await graphService.createEdge({
+					edge_type: 'contains',
+					source_node_id: defaults.program.id,
+					target_node_id: session.task_id,
+					weight: 1.0,
+					created_by: session.agent_id,
+				});
+				logger.info(`[TaskIntake] Linked orphan project ${session.task_id} to default program ${defaults.program.id}`);
 			}
 		} catch (err: any) {
-			logger.warn(`[TaskIntake] Could not link task to hierarchy: ${err.message}`);
+			logger.warn(`[TaskIntake] Could not link project to hierarchy: ${err.message}`);
 		}
 	}
 
@@ -1140,7 +1176,8 @@ export async function finalizeExecution(
 			`**Steps:**`,
 			stepSummary,
 		].join('\n');
-		appendAgentChatMessage('main', completionMsg);
+		const executionAgentId = String((session.task_id && (await graphService.getNode(session.task_id))?.metadata?.execution_agent_id) || '').trim();
+		appendAgentChatMessage(executionAgentId || 'main', completionMsg);
 		logger.info(`[TaskIntake] Appended completion message to agent chat history`);
 	} catch (err: any) {
 		logger.warn(`[TaskIntake] Could not append completion message: ${err.message}`);
@@ -1297,6 +1334,8 @@ export async function executeStep(
 		input.tool ? `Suggested tool: ${input.tool}` : '',
 		input.expected_outcome ? `Expected outcome: ${input.expected_outcome}` : '',
 		``,
+		`Execution discipline: keep strict continuity across long waits for human approval.`,
+		`Before finishing this step, persist a concise heartbeat checkpoint (progress, evidence, and next action) to heartbeat.md when available; if not available, include the same checkpoint in your response body.`,
 		`Execute this step now. Provide your findings, analysis, or output directly. Be thorough but concise.`,
 		`If this involves web research, actually search and summarize what you find.`,
 		`If this involves analysis, provide real analysis with specific details.`,
@@ -1331,8 +1370,10 @@ export async function executeStep(
 	let model: string | undefined;
 	let oc_session_id: string | undefined;
 
-	// Use a dedicated session ID per PM_NET task so steps share context
-	const ocSessionId = `pmnet-${sessionId}`;
+	const executionAgentId = String(task.metadata?.execution_agent_id || task.metadata?.assigned_agent_id || '').trim() || 'main';
+
+	// Use a dedicated session ID per PM_NET task/agent so steps share context
+	const ocSessionId = `pmnet-${sessionId}-${executionAgentId}`;
 
 	if (isApprovalGateStep) {
 		// Create a pending approval node in the graph so Approvals page shows it
@@ -1365,7 +1406,7 @@ export async function executeStep(
 		}
 
 		// Send approval-needed message to agent chat
-		appendAgentChatMessage('main', [
+		appendAgentChatMessage(executionAgentId, [
 			`**⏸ Approval Gate Reached — Step ${input.step_order}**\n`,
 			`Task: **${task.title}**`,
 			`The execution has paused and is waiting for your approval before continuing.`,
@@ -1382,98 +1423,31 @@ export async function executeStep(
 		const duration_ms = Date.now() - startTime;
 		return { output, success, duration_ms, tool_calls, source, model, oc_session_id };
 	} else {
-		try {
-			// Try OpenClaw CLI first (stream stdout chunks for real-time console updates)
-			const { spawn } = require('child_process');
-			const result: string = await new Promise((resolve, reject) => {
-				const child = spawn(
-					'openclaw',
-					['agent', '--agent', 'main', '--message', agentPrompt, '--json', '--session-id', ocSessionId],
-					{ stdio: ['ignore', 'pipe', 'pipe'] }
-				);
+		// Dispatch through the agent-agnostic layer (handles OpenClaw, HTTP, LLM fallback)
+		const dispatchResult = await agentDispatch({
+			title: `Step ${input.step_order}: ${input.action}`,
+			prompt: agentPrompt,
+			agent_id: executionAgentId,
+			session_id: ocSessionId,
+			caller: 'task-intake-execute-step',
+			onChunk: options?.onOutputChunk,
+			metadata: {
+				session_id: sessionId,
+				task_id: session.task_id,
+				step_order: input.step_order,
+			},
+		});
 
-				let stdout = '';
-				let stderr = '';
-				let timedOut = false;
+		output = dispatchResult.output;
+		success = dispatchResult.success;
+		tool_calls = dispatchResult.tool_calls;
+		model = dispatchResult.model;
+		oc_session_id = dispatchResult.runtime_session_id;
+		source = dispatchResult.runtime === 'openclaw' ? 'openclaw'
+			: dispatchResult.runtime === 'llm' ? 'llm_fallback'
+			: dispatchResult.success ? 'openclaw' : 'error';
 
-				const timer = setTimeout(() => {
-					timedOut = true;
-					child.kill('SIGTERM');
-					setTimeout(() => child.kill('SIGKILL'), 5000);
-				}, 120000);
-
-				child.stdout.on('data', (chunk: Buffer | string) => {
-					const text = chunk.toString();
-					stdout += text;
-					options?.onOutputChunk?.(text);
-				});
-
-				child.stderr.on('data', (chunk: Buffer | string) => {
-					stderr += chunk.toString();
-				});
-
-				child.on('error', (err: Error) => {
-					clearTimeout(timer);
-					reject(err);
-				});
-
-				child.on('close', (code: number) => {
-					clearTimeout(timer);
-					if (timedOut) {
-						return reject(new Error('OpenClaw agent timed out after 120s'));
-					}
-					if (code !== 0) {
-						return reject(new Error(stderr.trim() || `OpenClaw agent exited with code ${code}`));
-					}
-					resolve(stdout);
-				});
-			});
-
-			try {
-				const parsed = JSON.parse(result);
-				// Extract text from payloads
-				if (parsed.result?.payloads?.length > 0) {
-					output = parsed.result.payloads.map((p: any) => p.text || '').join('\n').trim();
-				} else {
-					output = parsed.response || parsed.message || parsed.content || parsed.result?.text || result;
-				}
-				// Extract metadata
-				model = parsed.result?.meta?.agentMeta?.model;
-				oc_session_id = parsed.result?.meta?.agentMeta?.sessionId;
-
-				// Parse the session JSONL to get tool calls
-				if (oc_session_id) {
-					tool_calls = parseOCSessionToolCalls(oc_session_id);
-				}
-			} catch {
-				output = result;
-			}
-			success = true;
-			source = 'openclaw';
-			logger.info(`[TaskIntake] Step ${input.step_order} completed via OpenClaw agent (${tool_calls.length} tool calls)`);
-		} catch (ocErr: any) {
-			logger.warn(`[TaskIntake] OpenClaw agent unavailable, falling back to LLM: ${ocErr.message}`);
-
-			// Fallback: use the LLM directly
-			try {
-				const llmResponse = await callLLM({
-					caller: 'task-intake-execute-step',
-					system_prompt: `You are an AI agent executing a task step. Provide real, substantive output — not placeholders. If the step involves research, provide actual analysis. If it involves writing, produce real content.`,
-					user_prompt: agentPrompt,
-					temperature: 0.5,
-				});
-				output = llmResponse.content;
-				model = llmResponse.model;
-				success = true;
-				source = 'llm_fallback';
-				logger.info(`[TaskIntake] Step ${input.step_order} completed via LLM fallback`);
-			} catch (llmErr: any) {
-				output = `Error executing step: ${llmErr.message}`;
-				success = false;
-				source = 'error';
-				logger.error(`[TaskIntake] Step ${input.step_order} failed: ${llmErr.message}`);
-			}
-		}
+		logger.info(`[TaskIntake] Step ${input.step_order} completed via ${dispatchResult.runtime} (${tool_calls.length} tool calls)`);
 	}
 
 	const duration_ms = Date.now() - startTime;
@@ -1585,6 +1559,107 @@ export async function getExecutionResults(
 	const failure_count = steps.filter((s: any) => !s.success).length;
 
 	return { steps, total_duration_ms, success_count, failure_count };
+}
+
+export async function getExecutionReactivationStatus(
+	sessionId: string
+): Promise<{
+	can_reactivate: boolean;
+	next_step_order: number | null;
+	pending_gate_id: string | null;
+	pending_gate_step_order: number | null;
+	message: string;
+}> {
+	const session = getSession(sessionId);
+	if (!session) throw new Error(`Session not found: ${sessionId}`);
+	if (session.stage !== 'execute') {
+		return {
+			can_reactivate: false,
+			next_step_order: null,
+			pending_gate_id: null,
+			pending_gate_step_order: null,
+			message: `Session is in ${session.stage} stage`,
+		};
+	}
+
+	const plan = session.plan_id ? await graphService.getNode(session.plan_id) : null;
+	const planSteps: PlanStep[] = Array.isArray(plan?.metadata?.steps)
+		? plan.metadata.steps.map((s: any, i: number) => normalizePlanStep(s, i))
+		: [];
+
+	if (planSteps.length === 0) {
+		return {
+			can_reactivate: false,
+			next_step_order: null,
+			pending_gate_id: null,
+			pending_gate_step_order: null,
+			message: 'No plan steps found',
+		};
+	}
+
+	if (!session.run_id) {
+		return {
+			can_reactivate: true,
+			next_step_order: planSteps[0]?.order || 1,
+			pending_gate_id: null,
+			pending_gate_step_order: null,
+			message: 'Execution has not started yet',
+		};
+	}
+
+	const gateNodes = await graphService.listNodes({ node_type: 'gate', limit: 200 });
+	const runGates = (gateNodes || []).filter((g: any) =>
+		g?.metadata?.session_id === sessionId && g?.metadata?.run_id === session.run_id
+	);
+
+	const pendingGate = runGates
+		.filter((g: any) => g.status === 'pending_approval')
+		.sort((a: any, b: any) => Date.parse(b.metadata?.requested_at || '') - Date.parse(a.metadata?.requested_at || ''))[0];
+
+	if (pendingGate) {
+		return {
+			can_reactivate: false,
+			next_step_order: null,
+			pending_gate_id: pendingGate.id,
+			pending_gate_step_order: Number(pendingGate.metadata?.step_order || 0) || null,
+			message: 'Waiting for human approval on a gate before execution can continue',
+		};
+	}
+
+	const results = await getExecutionResults(sessionId);
+	const completedOrders = new Set((results.steps || []).filter((s) => s.success).map((s) => Number(s.step_order)));
+	const approvedGateOrders = runGates
+		.filter((g: any) => g.status === 'approved')
+		.map((g: any) => Number(g.metadata?.step_order || 0))
+		.filter(Boolean);
+
+	const maxProgressOrder = Math.max(
+		0,
+		...Array.from(completedOrders.values()),
+		...(approvedGateOrders.length > 0 ? approvedGateOrders : [0])
+	);
+
+	const nextStep = planSteps
+		.sort((a, b) => a.order - b.order)
+		.find((s) => Number(s.order || 0) > maxProgressOrder);
+
+	if (!nextStep) {
+		return {
+			can_reactivate: false,
+			next_step_order: null,
+			pending_gate_id: null,
+			pending_gate_step_order: null,
+			message: 'No remaining steps to execute',
+		};
+	}
+
+	return {
+		can_reactivate: true,
+		next_step_order: nextStep.order,
+		pending_gate_id: null,
+		pending_gate_step_order: null,
+		message: `Ready to resume from step ${nextStep.order}`,
+	};
 }
 
 // ============================================================================

@@ -25,6 +25,17 @@ router.post('/sessions', async (_req: Request, res: Response) => {
 	}
 });
 
+/** GET /sessions/:id/reactivation-status — inspect whether execution can be resumed */
+router.get('/sessions/:id/reactivation-status', async (req: Request, res: Response) => {
+	try {
+		const result = await taskIntake.getExecutionReactivationStatus(req.params.id);
+		res.json({ ok: true, ...result });
+	} catch (err: any) {
+		logger.error(`[task-intake] GET /sessions/${req.params.id}/reactivation-status error:`, err);
+		res.status(400).json({ ok: false, error: err.message });
+	}
+});
+
 /** POST /sessions/:id/plan-steps — persist edited plan steps before approval */
 router.post('/sessions/:id/plan-steps', async (req: Request, res: Response) => {
 	try {
@@ -141,7 +152,10 @@ router.post('/sessions/:id/approve', async (req: Request, res: Response) => {
 	try {
 		const approved = req.body.approved !== false;
 		const editedSteps = Array.isArray(req.body.steps) ? req.body.steps : undefined;
-		const result = await taskIntake.approvePlan(req.params.id, approved, editedSteps);
+		const executionAgentId = typeof req.body.execution_agent_id === 'string'
+			? req.body.execution_agent_id.trim()
+			: undefined;
+		const result = await taskIntake.approvePlan(req.params.id, approved, editedSteps, executionAgentId);
 		res.json({ ok: true, ...result });
 	} catch (err: any) {
 		logger.error(`[task-intake] POST /sessions/${req.params.id}/approve error:`, err);
@@ -205,6 +219,7 @@ router.post('/sessions/:id/execute-step', async (req: Request, res: Response) =>
 router.post('/sessions/:id/execute-stream', async (req: Request, res: Response) => {
 	const sessionId = req.params.id;
 	const steps = Array.isArray(req.body?.steps) ? req.body.steps : [];
+	const continueFromStepOrder = Number(req.body?.continue_from_step_order || 0) || null;
 
 	if (steps.length === 0) {
 		return res.status(400).json({ ok: false, error: 'steps array required' });
@@ -234,10 +249,31 @@ router.post('/sessions/:id/execute-stream', async (req: Request, res: Response) 
 		}
 
 		const refreshedState = await taskIntake.getSessionState(sessionId);
+		const executionAgentId = String(
+			refreshedState.task?.metadata?.execution_agent_id ||
+			refreshedState.task?.metadata?.assigned_agent_id ||
+			refreshedState.session.agent_id ||
+			'main'
+		).trim();
+		const runStart = Date.now();
+		const stepSummaries: Array<Record<string, any>> = [];
+		const sortedSteps = [...steps].sort((a: any, b: any) => Number(a?.order || 0) - Number(b?.order || 0));
+		const requestedStartIndex = continueFromStepOrder
+			? sortedSteps.findIndex((s: any, i: number) => Number(s?.order || i + 1) >= continueFromStepOrder)
+			: 0;
+		const startIndex = continueFromStepOrder
+			? (requestedStartIndex >= 0 ? requestedStartIndex : sortedSteps.length)
+			: 0;
+		const stepsToRun = sortedSteps.slice(startIndex);
+		let executionPaused = false;
+		let pauseReason = '';
+		let pauseNextStepOrder: number | null = null;
+		let shouldFinalize = true;
+
 		send('run_started', {
 			session_id: sessionId,
 			run_id: refreshedState.session.run_id,
-			agent_id: refreshedState.session.agent_id,
+			agent_id: executionAgentId,
 			task_id: refreshedState.session.task_id,
 			project: {
 				id: refreshedState.task?.id,
@@ -245,22 +281,23 @@ router.post('/sessions/:id/execute-stream', async (req: Request, res: Response) 
 				description: refreshedState.task?.description,
 			},
 			total_steps: steps.length,
+			resuming: Boolean(continueFromStepOrder),
+			continue_from_step_order: continueFromStepOrder,
+			remaining_steps: stepsToRun.length,
 			started_at: new Date().toISOString(),
 		});
 
-		const runStart = Date.now();
-		const stepSummaries: Array<Record<string, any>> = [];
-
-		for (let i = 0; i < steps.length; i++) {
-			const step = steps[i];
-			const stepOrder = step.order || i + 1;
+		for (let i = 0; i < stepsToRun.length; i++) {
+			const step = stepsToRun[i];
+			const originalIndex = startIndex + i;
+			const stepOrder = step.order || originalIndex + 1;
 			let chunkIndex = 0;
 
 			send('step_started', {
 				session_id: sessionId,
 				run_id: refreshedState.session.run_id,
 				step_order: stepOrder,
-				step_index: i,
+				step_index: originalIndex,
 				action: step.action,
 				expected_outcome: step.expected_outcome || '',
 				tool: step.tool || null,
@@ -300,15 +337,15 @@ router.post('/sessions/:id/execute-stream', async (req: Request, res: Response) 
 						session_id: sessionId,
 						run_id: refreshedState.session.run_id,
 						step_order: stepOrder,
-						step_index: i,
+						step_index: originalIndex,
 						gate_node_id: gateNodeId,
 						action: step.action,
 						message: 'Approval gate reached. Waiting for human approval before continuing.',
 						timestamp: new Date().toISOString(),
 					});
 
-					// Poll gate node status every 3s (max 30 min)
-					const maxWaitMs = 30 * 60 * 1000;
+					// Poll gate node status every 3s for a short live window, then pause for reactivation.
+					const maxWaitMs = 5 * 60 * 1000;
 					const pollIntervalMs = 3000;
 					const gateStart = Date.now();
 					let gateResolved = false;
@@ -327,11 +364,31 @@ router.post('/sessions/:id/execute-stream', async (req: Request, res: Response) 
 					}
 
 					const gateStatus = gateApproved ? 'approved' : (gateResolved ? 'rejected' : 'timeout');
+
+					if (!gateResolved && !gateApproved) {
+						executionPaused = true;
+						shouldFinalize = false;
+						pauseReason = 'approval_timeout';
+						pauseNextStepOrder = stepOrder + 1;
+						send('run_paused', {
+							session_id: sessionId,
+							run_id: refreshedState.session.run_id,
+							step_order: stepOrder,
+							step_index: originalIndex,
+							gate_node_id: gateNodeId,
+							reason: 'approval_timeout',
+							next_step_order: pauseNextStepOrder,
+							message: 'Approval has not been received yet. Execution paused and can be reactivated later.',
+							timestamp: new Date().toISOString(),
+						});
+						break;
+					}
+
 					send('gate_resolved', {
 						session_id: sessionId,
 						run_id: refreshedState.session.run_id,
 						step_order: stepOrder,
-						step_index: i,
+						step_index: originalIndex,
 						gate_node_id: gateNodeId,
 						status: gateStatus,
 						timestamp: new Date().toISOString(),
@@ -339,6 +396,7 @@ router.post('/sessions/:id/execute-stream', async (req: Request, res: Response) 
 
 					if (!gateApproved) {
 						// Gate was rejected or timed out — stop execution
+						shouldFinalize = false;
 						stepSummaries.push({
 							step_order: stepOrder,
 							action: step.action,
@@ -350,7 +408,7 @@ router.post('/sessions/:id/execute-stream', async (req: Request, res: Response) 
 							session_id: sessionId,
 							run_id: refreshedState.session.run_id,
 							step_order: stepOrder,
-							step_index: i,
+							step_index: originalIndex,
 							action: step.action,
 							step_type: 'approval_gate',
 							status: 'failed',
@@ -378,13 +436,13 @@ router.post('/sessions/:id/execute-stream', async (req: Request, res: Response) 
 				send('step_completed', {
 					session_id: sessionId,
 					run_id: refreshedState.session.run_id,
-					agent_id: refreshedState.session.agent_id,
+					agent_id: executionAgentId,
 					project: {
 						id: refreshedState.task?.id,
 						title: refreshedState.task?.title,
 					},
 					step_order: stepOrder,
-					step_index: i,
+					step_index: originalIndex,
 					action: step.action,
 					expected_outcome: step.expected_outcome || '',
 					tool: step.tool || null,
@@ -412,32 +470,60 @@ router.post('/sessions/:id/execute-stream', async (req: Request, res: Response) 
 					session_id: sessionId,
 					run_id: refreshedState.session.run_id,
 					step_order: stepOrder,
-					step_index: i,
+					step_index: originalIndex,
 					action: step.action,
 					status: 'failed',
 					error: stepErr.message,
 					timestamp: new Date().toISOString(),
 				});
+				shouldFinalize = false;
+				break;
+			}
+
+			if (executionPaused) {
+				break;
 			}
 		}
 
-		await taskIntake.finalizeExecution(sessionId);
 		const finalState = await taskIntake.getSessionState(sessionId);
+		if (shouldFinalize) {
+			await taskIntake.finalizeExecution(sessionId);
+		}
+
+		if (!shouldFinalize) {
+			send('run_paused', {
+				session_id: sessionId,
+				run_id: finalState.session.run_id,
+				agent_id: executionAgentId,
+				task_id: finalState.session.task_id,
+				reason: pauseReason || 'manual_reactivation_required',
+				next_step_order: pauseNextStepOrder,
+				timestamp: new Date().toISOString(),
+			});
+			return res.end();
+		}
+
+		const completedState = await taskIntake.getSessionState(sessionId);
 
 		send('run_completed', {
 			session_id: sessionId,
-			run_id: finalState.session.run_id,
-			agent_id: finalState.session.agent_id,
-			task_id: finalState.session.task_id,
+			run_id: completedState.session.run_id,
+			agent_id: String(
+				completedState.task?.metadata?.execution_agent_id ||
+				completedState.task?.metadata?.assigned_agent_id ||
+				completedState.session.agent_id ||
+				'main'
+			).trim(),
+			task_id: completedState.session.task_id,
 			project: {
-				id: finalState.task?.id,
-				title: finalState.task?.title,
+				id: completedState.task?.id,
+				title: completedState.task?.title,
 			},
 			total_steps: steps.length,
 			completed_steps: stepSummaries.filter((s) => s.success).length,
 			failed_steps: stepSummaries.filter((s) => s.success === false).length,
 			duration_ms: Date.now() - runStart,
-			stage: finalState.session.stage,
+			stage: completedState.session.stage,
 			steps: stepSummaries,
 			finished_at: new Date().toISOString(),
 		});
@@ -621,6 +707,78 @@ router.post('/library/:id/run', async (req: Request, res: Response) => {
 	} catch (err: any) {
 		logger.error(`[task-intake] POST /library/${req.params.id}/run error:`, err);
 		res.status(400).json({ ok: false, error: err.message });
+	}
+});
+
+/** POST /migrate-tasks-to-projects — reclassify intake-created task nodes as project nodes (DB-level) */
+router.post('/migrate-tasks-to-projects', async (_req: Request, res: Response) => {
+	try {
+		const hierarchyService = await import('../services/hierarchyService');
+
+		// Find all task nodes that have a for_task edge from a plan or run node
+		// (these are intake-created items, not manually created tasks)
+		const allTasks = await graphService.listNodes({ node_type: 'task', limit: 1000 });
+		const migratedIds: string[] = [];
+
+		for (const node of allTasks) {
+			// Skip library templates
+			if (node.metadata?.is_template) continue;
+			// Skip if already migrated
+			if (node.metadata?.migrated_from_task) continue;
+
+			// Check if this task has a for_task edge from a plan or run node
+			const incomingEdges = await graphService.listEdges({ target_node_id: node.id, edge_type: 'for_task' });
+			const hasIntakeArtifacts = (incomingEdges || []).length > 0;
+
+			// Also check if metadata has session_id (set by intake)
+			const hasSessionId = Boolean(node.metadata?.session_id);
+
+			if (!hasIntakeArtifacts && !hasSessionId) continue;
+
+			// Reclassify node_type from task to project
+			const statusMap: Record<string, string> = { done: 'complete', in_progress: 'active', backlog: 'planning', ready: 'active' };
+			const newStatus = statusMap[node.status] || node.status;
+
+			await graphService.updateNode(node.id, {
+				node_type: 'project',
+				status: newStatus,
+				metadata: { ...node.metadata, migrated_from_task: true },
+				change_reason: 'Reclassify intake-created task as project',
+			}, 'system');
+
+			// Remove old phase linkage and add program linkage
+			try {
+				const containsEdges = await graphService.listEdges({ target_node_id: node.id, edge_type: 'contains' });
+				for (const edge of containsEdges || []) {
+					const parentNode = await graphService.getNode(edge.source_node_id);
+					if (parentNode && parentNode.node_type === 'phase') {
+						await graphService.deleteEdge(edge.id, 'system', 'Reclassify: remove phase linkage');
+					}
+				}
+				// Ensure linked to default program
+				const defaults = await hierarchyService.ensureDefaultHierarchy();
+				const programEdges = await graphService.listEdges({ source_node_id: defaults.program.id, target_node_id: node.id, edge_type: 'contains' });
+				if (!programEdges || programEdges.length === 0) {
+					await graphService.createEdge({
+						edge_type: 'contains',
+						source_node_id: defaults.program.id,
+						target_node_id: node.id,
+						weight: 1.0,
+						created_by: 'system',
+					});
+				}
+			} catch (linkErr: any) {
+				logger.warn(`[task-intake] migrate: linkage fix for ${node.id}: ${linkErr.message}`);
+			}
+
+			migratedIds.push(node.id);
+			logger.info(`[task-intake] Migrated task→project: ${node.id} (${node.title})`);
+		}
+
+		res.json({ ok: true, migrated: migratedIds.length, ids: migratedIds });
+	} catch (err: any) {
+		logger.error('[task-intake] POST /migrate-tasks-to-projects error:', err);
+		res.status(500).json({ ok: false, error: err.message });
 	}
 });
 

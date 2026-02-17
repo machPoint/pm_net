@@ -27,12 +27,17 @@ import ProjectsSection from "@/components/ProjectsSection";
 import MessagesSection from "@/components/MessagesSection";
 import ExecutionConsoleSection from "@/components/ExecutionConsoleSection";
 import SchedulerSection from "@/components/SchedulerSection";
+import ProjectReportSection from "@/components/ProjectReportSection";
 
 const OPAL_BASE_URL = '/api/opal/proxy';
 
 function PageContent() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState("dashboard");
+  const [selectedProjectId, setSelectedProjectId] = useState<string>("");
+  const [projectOptions, setProjectOptions] = useState<Array<{ id: string; title: string }>>([]);
+  const [autoScheduleSignal, setAutoScheduleSignal] = useState(0);
+  const [reportProjectId, setReportProjectId] = useState<string>("");
   const [leftNavCollapsed, setLeftNavCollapsed] = useState(false);
   const [contextPanelCollapsed, setContextPanelCollapsed] = useState(false);
   const [agentListCollapsed, setAgentListCollapsed] = useState(true);
@@ -131,6 +136,25 @@ function PageContent() {
     fetchSidebarData();
   }, []);
 
+  useEffect(() => {
+    async function fetchProjectOptions() {
+      try {
+        const res = await fetch(`${OPAL_BASE_URL}/api/nodes?node_type=project&limit=500`);
+        if (!res.ok) return;
+        const data = await res.json();
+        const nodes = (data.nodes || data || []) as Array<{ id: string; title: string; metadata?: Record<string, any> }>;
+        const projects = nodes
+          .filter((node) => !node.metadata?.is_default)
+          .map((node) => ({ id: node.id, title: node.title || node.id }))
+          .sort((a, b) => a.title.localeCompare(b.title));
+        setProjectOptions(projects);
+      } catch (err) {
+        console.error("Failed to load project options:", err);
+      }
+    }
+    fetchProjectOptions();
+  }, []);
+
 
   const renderActiveSection = () => {
     switch (activeTab) {
@@ -139,13 +163,26 @@ function PageContent() {
       case "gantt":
         return <GanttSection />;
       case "scheduler":
-        return <SchedulerSection />;
+        return (
+          <SchedulerSection
+            selectedProjectId={selectedProjectId}
+            selectedProjectTitle={selectedProjectTitle}
+            onProjectChange={setSelectedProjectId}
+            autoScheduleSignal={autoScheduleSignal}
+          />
+        );
       case "approvals":
         return <ApprovalsSection />;
       case "analytics":
         return <AnalyticsSection />;
       case "tasks":
-        return <TasksSection onNavigate={setActiveTab} />;
+        return (
+          <TasksSection
+            onNavigate={setActiveTab}
+            selectedProjectId={selectedProjectId}
+            selectedProjectTitle={selectedProjectTitle}
+          />
+        );
       case "project-intake":
         return <ProjectIntakeSection onNavigateToExecution={() => setActiveTab("execution-console")} />;
       case "execution-console":
@@ -157,7 +194,29 @@ function PageContent() {
       case "dashboard":
         return <DashboardSection />;
       case "projects":
-        return <ProjectsSection />;
+        return (
+          <ProjectsSection
+            selectedProjectId={selectedProjectId}
+            onSelectProject={setSelectedProjectId}
+            onNavigate={setActiveTab}
+            onScheduleNow={(projectId) => {
+              setSelectedProjectId(projectId);
+              setActiveTab("scheduler");
+              setAutoScheduleSignal((prev) => prev + 1);
+            }}
+            onOpenReport={(projectId) => {
+              setReportProjectId(projectId);
+              setActiveTab("project-report");
+            }}
+          />
+        );
+      case "project-report":
+        return (
+          <ProjectReportSection
+            projectId={reportProjectId}
+            onBack={() => setActiveTab("projects")}
+          />
+        );
       case "agent-admin":
         return <AgentAdminSection />;
       case "integration-map":
@@ -182,6 +241,9 @@ function PageContent() {
         return <DashboardSection />;
     }
   };
+
+  const selectedProjectTitle =
+    projectOptions.find((project) => project.id === selectedProjectId)?.title || "No project selected";
 
   return (
     <div className="h-screen flex flex-col bg-[var(--color-background)]">
@@ -459,7 +521,49 @@ function PageContent() {
 
           {/* Central Content Area - Now full width */}
           <Panel defaultSize={88} minSize={60} className="bg-[var(--color-main-panel)]">
-            <div className="h-full overflow-hidden">
+            <div className="h-full overflow-hidden flex flex-col">
+              <div className="px-4 py-2 border-b border-border bg-[var(--color-card)]/70 flex items-center gap-3">
+                <span className="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">Current Project</span>
+                <select
+                  value={selectedProjectId}
+                  onChange={(e) => setSelectedProjectId(e.target.value)}
+                  className="h-8 min-w-[240px] rounded-md border border-border bg-background px-2 text-sm"
+                >
+                  <option value="">No project selected</option>
+                  {projectOptions.map((project) => (
+                    <option key={project.id} value={project.id}>
+                      {project.title}
+                    </option>
+                  ))}
+                </select>
+                <span className="text-xs text-[var(--color-text-secondary)] truncate">
+                  {selectedProjectTitle}
+                </span>
+                {selectedProjectId && (
+                  <>
+                    <button
+                      className="text-xs px-2 py-1 rounded border border-border hover:bg-muted"
+                      onClick={() => setActiveTab("tasks")}
+                    >
+                      Open Tasks
+                    </button>
+                    <button
+                      className="text-xs px-2 py-1 rounded border border-border hover:bg-muted"
+                      onClick={() => setActiveTab("scheduler")}
+                    >
+                      Open Scheduler
+                    </button>
+                  </>
+                )}
+                {selectedProjectId && (
+                  <button
+                    className="ml-auto text-xs px-2 py-1 rounded border border-border hover:bg-muted"
+                    onClick={() => setSelectedProjectId("")}
+                  >
+                    Clear scope
+                  </button>
+                )}
+              </div>
               {renderActiveSection()}
             </div>
           </Panel>

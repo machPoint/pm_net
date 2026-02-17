@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import {
 	Play,
 	CheckCircle2,
@@ -28,12 +28,15 @@ import {
 	ExternalLink,
 	Search,
 	TerminalSquare,
+	CalendarClock,
+	Repeat,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 import { useTaskIntake, IntakeStage, IntakeMessage, PrecedentMatch, PlanPreview, GraphNode, PlanStep } from "@/hooks/useTaskIntake";
 
 // ============================================================================
@@ -52,6 +55,84 @@ const STAGE_META: Record<IntakeStage, { label: string; subtitle: string; icon: a
 };
 
 const STAGES_ORDER: IntakeStage[] = ["start", "precedents", "clarify", "plan", "approve", "execute", "verify", "learn"];
+
+interface AgentSuggestion {
+	key: string;
+	roleLabel: string;
+	reason: string;
+	suggestedId: string;
+}
+
+function buildAgentSuggestions(steps: PlanStep[], taskTitle?: string, taskDescription?: string): AgentSuggestion[] {
+	const suggestions: AgentSuggestion[] = [];
+	const seen = new Set<string>();
+
+	const add = (item: AgentSuggestion) => {
+		if (seen.has(item.key)) return;
+		seen.add(item.key);
+		suggestions.push(item);
+	};
+
+	const tools = new Set(
+		(steps || [])
+			.map((s) => String(s.tool || "").trim().toLowerCase())
+			.filter(Boolean)
+	);
+
+	add({
+		key: "orchestrator",
+		roleLabel: "Execution Lead",
+		reason: `Coordinates delivery for ${taskTitle || "this project"} across all plan steps.`,
+		suggestedId: "main",
+	});
+
+	if (tools.has("web_search") || tools.has("web_read")) {
+		add({
+			key: "researcher",
+			roleLabel: "Research Agent",
+			reason: "Plan includes web research and source validation work.",
+			suggestedId: "researcher",
+		});
+	}
+
+	if (tools.has("code_generation") || tools.has("file_write")) {
+		add({
+			key: "builder",
+			roleLabel: "Build Agent",
+			reason: "Plan includes implementation/file production steps.",
+			suggestedId: "builder",
+		});
+	}
+
+	if (tools.has("data_analysis")) {
+		add({
+			key: "analyst",
+			roleLabel: "Analysis Agent",
+			reason: "Plan includes data or option analysis steps.",
+			suggestedId: "analyst",
+		});
+	}
+
+	if (tools.has("text_generation") || tools.has("obsidian_note")) {
+		add({
+			key: "writer",
+			roleLabel: "Documentation Agent",
+			reason: "Plan includes writing, synthesis, or documentation outputs.",
+			suggestedId: "writer",
+		});
+	}
+
+	if (suggestions.length === 1) {
+		add({
+			key: "operator",
+			roleLabel: "Operations Agent",
+			reason: `General execution support for ${taskDescription ? "the defined scope" : "project tasks"}.`,
+			suggestedId: "operator",
+		});
+	}
+
+	return suggestions.slice(0, 4);
+}
 
 // ============================================================================
 // Main Component
@@ -793,6 +874,127 @@ function ApproveStage({ intake }: { intake: ReturnType<typeof useTaskIntake> }) 
 	const [editSteps, setEditSteps] = useState<PlanStep[]>([]);
 	const [newStepAction, setNewStepAction] = useState("");
 	const [confirmed, setConfirmed] = useState(false);
+	const [scheduleEnabled, setScheduleEnabled] = useState(false);
+	const [scheduleRunAt, setScheduleRunAt] = useState(new Date().toISOString().slice(0, 16));
+	const [scheduleCron, setScheduleCron] = useState("");
+	const [availableAgents, setAvailableAgents] = useState<string[]>([]);
+	const [agentAssignments, setAgentAssignments] = useState<Record<string, string>>({});
+	const [newAgentDrafts, setNewAgentDrafts] = useState<Record<string, string>>({});
+	const [creatingSuggestionKey, setCreatingSuggestionKey] = useState<string | null>(null);
+	const [agentLoadError, setAgentLoadError] = useState<string | null>(null);
+
+	const suggestions = useMemo(
+		() => buildAgentSuggestions(intake.planPreview?.steps || [], intake.task?.title, intake.task?.description),
+		[intake.planPreview?.steps, intake.task?.title, intake.task?.description]
+	);
+
+	const sanitizeAgentId = (value: string) => value.trim().toLowerCase().replace(/[^a-z0-9_-]/g, "-").replace(/-+/g, "-");
+
+	useEffect(() => {
+		let alive = true;
+		(async () => {
+			try {
+				setAgentLoadError(null);
+				const res = await fetch("/api/openclaw/agents");
+				const data = await res.json();
+				if (!res.ok || data?.ok === false) throw new Error(data?.error || "Failed to load agents");
+				const ids = Array.from(
+					new Set(
+						(data?.agents || [])
+							.map((a: any) => String(a?.id || "").trim())
+							.filter((id: string) => Boolean(id))
+					)
+				) as string[];
+				if (alive) {
+					setAvailableAgents(ids);
+				}
+			} catch (err: any) {
+				if (alive) {
+					setAgentLoadError(err.message || "Failed to load agents");
+				}
+			}
+		})();
+		return () => {
+			alive = false;
+		};
+	}, []);
+
+	useEffect(() => {
+		setAgentAssignments((prev) => {
+			const next: Record<string, string> = {};
+			for (const s of suggestions) {
+				const existing = prev[s.key];
+				if (existing) {
+					next[s.key] = existing;
+					continue;
+				}
+				if (availableAgents.includes(s.suggestedId)) {
+					next[s.key] = s.suggestedId;
+				} else if (availableAgents.includes("main")) {
+					next[s.key] = "main";
+				} else if (availableAgents.length > 0) {
+					next[s.key] = availableAgents[0];
+				} else {
+					next[s.key] = "__create__";
+				}
+			}
+			return next;
+		});
+
+		setNewAgentDrafts((prev) => {
+			const next: Record<string, string> = { ...prev };
+			for (const s of suggestions) {
+				if (!next[s.key]) next[s.key] = s.suggestedId;
+			}
+			return next;
+		});
+	}, [suggestions, availableAgents]);
+
+	const selectedExecutionAgentId = useMemo(() => {
+		for (const s of suggestions) {
+			const assigned = agentAssignments[s.key];
+			if (assigned && assigned !== "__create__") return assigned;
+		}
+		if (availableAgents.includes("main")) return "main";
+		return availableAgents[0] || "";
+	}, [suggestions, agentAssignments, availableAgents]);
+
+	const createAgentForSuggestion = async (suggestion: AgentSuggestion) => {
+		const candidate = sanitizeAgentId(newAgentDrafts[suggestion.key] || suggestion.suggestedId);
+		if (!candidate) {
+			toast.error("Provide an agent ID first");
+			return;
+		}
+		if (availableAgents.includes(candidate)) {
+			setAgentAssignments((prev) => ({ ...prev, [suggestion.key]: candidate }));
+			toast.success(`Using existing agent ${candidate}`);
+			return;
+		}
+
+		try {
+			setCreatingSuggestionKey(suggestion.key);
+			const res = await fetch("/api/openclaw/agents", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({
+					id: candidate,
+					specialization: {
+						name: candidate,
+						description: `${suggestion.roleLabel} for project intake execution support`,
+					},
+				}),
+			});
+			const data = await res.json();
+			if (!res.ok || data?.ok === false) throw new Error(data?.error || "Failed to create agent");
+			setAvailableAgents((prev) => Array.from(new Set([...prev, candidate])));
+			setAgentAssignments((prev) => ({ ...prev, [suggestion.key]: candidate }));
+			toast.success(`Created agent ${candidate}`);
+		} catch (err: any) {
+			toast.error(err.message || "Failed to create agent");
+		} finally {
+			setCreatingSuggestionKey(null);
+		}
+	};
 
 	// Initialize edit steps from plan preview
 	useEffect(() => {
@@ -1020,6 +1222,75 @@ function ApproveStage({ intake }: { intake: ReturnType<typeof useTaskIntake> }) 
 			)}
 
 			{/* Approval Gate */}
+			<div className="rounded-xl border border-border p-4 space-y-3">
+				<div>
+					<h4 className="text-sm font-semibold text-[var(--color-text-primary)]">Agent Coverage</h4>
+					<p className="text-xs text-[var(--color-text-secondary)] mt-1">
+						AI suggested agent roles for this project. Use an existing agent or create one inline.
+					</p>
+				</div>
+
+				{agentLoadError && (
+					<div className="text-xs text-destructive rounded border border-destructive/30 bg-destructive/10 px-2 py-1.5">
+						{agentLoadError}
+					</div>
+				)}
+
+				<div className="space-y-2">
+					{suggestions.map((suggestion) => {
+						const assignment = agentAssignments[suggestion.key] || "";
+						return (
+							<div key={suggestion.key} className="rounded-lg border border-border p-2.5 space-y-2">
+								<div>
+									<div className="text-xs font-semibold text-[var(--color-text-primary)]">{suggestion.roleLabel}</div>
+									<div className="text-[11px] text-[var(--color-text-secondary)] mt-0.5">{suggestion.reason}</div>
+								</div>
+
+								<div className="grid gap-2 md:grid-cols-[1fr,auto] items-start">
+									<select
+										value={assignment}
+										onChange={(e) => setAgentAssignments((prev) => ({ ...prev, [suggestion.key]: e.target.value }))}
+										className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
+									>
+										<option value="">Select agent...</option>
+										{availableAgents.map((agentId) => (
+											<option key={agentId} value={agentId}>{agentId}</option>
+										))}
+										<option value="__create__">+ Create new agent</option>
+									</select>
+									<Badge variant="outline" className="h-6 text-[10px]">suggested: {suggestion.suggestedId}</Badge>
+								</div>
+
+								{assignment === "__create__" && (
+									<div className="flex gap-2">
+										<Input
+											value={newAgentDrafts[suggestion.key] || ""}
+											onChange={(e) => setNewAgentDrafts((prev) => ({ ...prev, [suggestion.key]: e.target.value }))}
+											placeholder="new-agent-id"
+											className="h-8 text-xs"
+										/>
+										<Button
+											size="sm"
+											variant="outline"
+											onClick={() => createAgentForSuggestion(suggestion)}
+											disabled={intake.loading || creatingSuggestionKey === suggestion.key}
+											className="h-8 gap-1"
+										>
+											{creatingSuggestionKey === suggestion.key ? <Loader2 className="w-3 h-3 animate-spin" /> : <Plus className="w-3 h-3" />}
+											Create
+										</Button>
+									</div>
+								)}
+							</div>
+						);
+					})}
+				</div>
+
+				<div className="text-[11px] text-[var(--color-text-secondary)] border-t border-border pt-2">
+					Primary execution agent: <span className="font-mono text-[var(--color-text-primary)]">{selectedExecutionAgentId || "not selected"}</span>
+				</div>
+			</div>
+
 			<div className="rounded-xl border-2 border-primary/30 bg-primary/5 p-4 space-y-3">
 				<div className="flex items-center gap-2">
 					<Shield className="w-5 h-5 text-primary" />
@@ -1039,19 +1310,97 @@ function ApproveStage({ intake }: { intake: ReturnType<typeof useTaskIntake> }) 
 						className="rounded border-input"
 					/>
 					<label htmlFor="approve-confirm" className="text-xs text-[var(--color-text-primary)] cursor-pointer select-none">
-						I have reviewed the plan and approve autonomous execution
+						I approve autonomous execution with the selected agent assignment
 					</label>
 				</div>
 			</div>
 
+			{/* Schedule execution option */}
+			<div className="rounded-xl border border-border p-4 space-y-3">
+				<div className="flex items-center justify-between">
+					<div className="flex items-center gap-2">
+						<CalendarClock className="w-4 h-4 text-muted-foreground" />
+						<span className="text-sm font-medium text-[var(--color-text-primary)]">Schedule Execution</span>
+					</div>
+					<label className="flex items-center gap-2 cursor-pointer">
+						<span className="text-xs text-[var(--color-text-secondary)]">{scheduleEnabled ? "Scheduled" : "Run immediately"}</span>
+						<input
+							type="checkbox"
+							checked={scheduleEnabled}
+							onChange={(e) => setScheduleEnabled(e.target.checked)}
+							className="rounded border-input"
+						/>
+					</label>
+				</div>
+				{scheduleEnabled && (
+					<div className="space-y-2 pt-1">
+						<div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+							<div>
+								<label className="text-xs text-[var(--color-text-secondary)]">Start At</label>
+								<input
+									type="datetime-local"
+									value={scheduleRunAt}
+									onChange={(e) => setScheduleRunAt(e.target.value)}
+									className="w-full mt-1 h-8 rounded-md border border-border bg-background px-2 text-xs"
+								/>
+							</div>
+							<div>
+								<label className="text-xs text-[var(--color-text-secondary)] flex items-center gap-1">
+									<Repeat className="w-3 h-3" /> Recurrence (optional cron)
+								</label>
+								<input
+									value={scheduleCron}
+									onChange={(e) => setScheduleCron(e.target.value)}
+									placeholder="e.g. 0 9 * * 1-5 (weekdays at 9am)"
+									className="w-full mt-1 h-8 rounded-md border border-border bg-background px-2 text-xs font-mono"
+								/>
+							</div>
+						</div>
+						<p className="text-[11px] text-[var(--color-text-secondary)]">
+							The plan will be approved now but execution will be deferred to the scheduled time.
+							{scheduleCron && " It will recur on the specified cron schedule."}
+						</p>
+					</div>
+				)}
+			</div>
+
 			<div className="flex gap-2">
 				<Button
-					onClick={() => intake.approvePlan(true, normalizeEditedSteps(editSteps))}
-					disabled={!confirmed || intake.loading}
+					onClick={async () => {
+						if (scheduleEnabled && intake.session?.task_id) {
+							// Approve the plan first
+							await intake.approvePlan(true, normalizeEditedSteps(editSteps), selectedExecutionAgentId || undefined);
+							// Then create a scheduled job
+							try {
+								const SCHED_BASE = "/api/opal/proxy/api/scheduler";
+								const stepsToSchedule = normalizeEditedSteps(editSteps);
+								const prompt = stepsToSchedule.map(s => `Step ${s.order}: ${s.action}`).join("\n");
+								await fetch(`${SCHED_BASE}/jobs`, {
+									method: "POST",
+									headers: { "Content-Type": "application/json" },
+									body: JSON.stringify({
+										title: `Execute: ${intake.task?.title || "Project plan"}`,
+										prompt,
+										run_at: new Date(scheduleRunAt).toISOString(),
+										recurrence_cron: scheduleCron || undefined,
+										project_id: intake.session?.task_id,
+										task_id: intake.session?.task_id,
+										agent_id: selectedExecutionAgentId || undefined,
+									}),
+								});
+								toast.success("Plan approved and execution scheduled");
+							} catch (err: any) {
+								toast.error(err.message || "Plan approved but scheduling failed");
+							}
+						} else {
+							intake.approvePlan(true, normalizeEditedSteps(editSteps), selectedExecutionAgentId || undefined);
+						}
+					}}
+					disabled={!confirmed || intake.loading || !selectedExecutionAgentId || Boolean(creatingSuggestionKey)}
 					className="flex-1 gap-2"
 				>
-					{intake.loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
-					Approve Plan
+					{intake.loading ? <Loader2 className="w-4 h-4 animate-spin" /> : scheduleEnabled ? <CalendarClock className="w-4 h-4" /> : <CheckCircle2 className="w-4 h-4" />}
+					{scheduleEnabled ? "Approve & Schedule" : "Approve Plan"}
 				</Button>
 				<Button
 					variant="outline"
@@ -1077,6 +1426,10 @@ function ExecuteStage({
 	onNavigateToExecution?: () => void;
 }) {
 	const steps = intake.planPreview?.steps || intake.plan?.metadata?.steps || [];
+	const executionAgentId =
+		String(intake.task?.metadata?.execution_agent_id || intake.task?.metadata?.assigned_agent_id || "").trim() ||
+		intake.session?.agent_id ||
+		"main";
 
 	const handleOpenConsole = () => {
 		if (intake.session?.id) {
@@ -1103,7 +1456,7 @@ function ExecuteStage({
 					Project: <span className="text-[var(--color-text-primary)]">{intake.task?.title || "Untitled"}</span>
 				</div>
 				<div className="text-xs text-[var(--color-text-secondary)]">
-					Agent: <span className="text-[var(--color-text-primary)] font-mono">{intake.session?.agent_id || "main"}</span>
+					Agent: <span className="text-[var(--color-text-primary)] font-mono">{executionAgentId}</span>
 				</div>
 			</div>
 

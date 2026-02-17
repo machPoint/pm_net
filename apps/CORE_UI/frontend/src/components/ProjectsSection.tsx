@@ -20,6 +20,9 @@ import {
   ChevronDown,
   ChevronRight,
   Bot,
+  Link2,
+  FileText,
+  Copy,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -43,6 +46,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
+import { canonicalTaskStatus, isDoneStatus, isInProgressStatus, taskStatusLabel } from "@/utils/workflow-status";
 
 const API_BASE = "/api/opal/proxy";
 
@@ -61,6 +65,15 @@ interface Project {
   updated_at?: string;
 }
 
+function StatCell({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-md border border-border px-2 py-2 bg-[var(--color-background)]/50">
+      <p className="text-[10px] uppercase tracking-wide text-[var(--color-text-secondary)]">{label}</p>
+      <p className="text-sm font-semibold text-[var(--color-text-primary)]">{value}</p>
+    </div>
+  );
+}
+
 interface ProjectWithStats extends Project {
   task_count: number;
   tasks_done: number;
@@ -77,6 +90,39 @@ interface ProjectTaskSummary {
 interface ProjectExpandedDetails {
   tasks: ProjectTaskSummary[];
   unique_agents: string[];
+}
+
+interface DossierExecutionStep {
+  step_order: number;
+  action: string;
+  tool: string | null;
+  output: string;
+  success: boolean;
+  duration_ms: number;
+  source: string;
+  tool_calls: string[];
+  model?: string;
+}
+
+interface ProjectRunBundle {
+  session_id: string;
+  stage: string;
+  task_id: string;
+  task_title: string;
+  run_id: string | null;
+  plan_id: string | null;
+  gate_id: string | null;
+  updated_at?: string;
+  execution_steps: DossierExecutionStep[];
+}
+
+interface ProjectDossier {
+  project: ProjectWithStats;
+  tasks: Array<{ id: string; title: string; status: string; metadata?: Record<string, any> }>;
+  runs: ProjectRunBundle[];
+  approvals: Array<{ id: string; title: string; status: string; step_order?: number | null; task_id?: string | null; run_id?: string | null }>;
+  artifacts: Array<{ id: string; node_type: string; title: string; status: string; description?: string; metadata?: Record<string, any> }>;
+  markdown_refs: string[];
 }
 
 interface HierarchyTreeNode {
@@ -128,7 +174,19 @@ function StatusPill({ status }: { status: string }) {
 // Main Component
 // ============================================================================
 
-export default function ProjectsSection() {
+export default function ProjectsSection({
+  selectedProjectId,
+  onSelectProject,
+  onNavigate,
+  onScheduleNow,
+  onOpenReport,
+}: {
+  selectedProjectId?: string;
+  onSelectProject?: (projectId: string) => void;
+  onNavigate?: (tab: string) => void;
+  onScheduleNow?: (projectId: string) => void;
+  onOpenReport?: (projectId: string) => void;
+}) {
   const [loading, setLoading] = useState(true);
   const [projects, setProjects] = useState<ProjectWithStats[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
@@ -153,6 +211,31 @@ export default function ProjectsSection() {
   const [expandedProjectId, setExpandedProjectId] = useState<string | null>(null);
   const [expandedDetails, setExpandedDetails] = useState<Record<string, ProjectExpandedDetails>>({});
   const [loadingExpandedId, setLoadingExpandedId] = useState<string | null>(null);
+  const [dossierOpen, setDossierOpen] = useState(false);
+  const [dossierLoading, setDossierLoading] = useState(false);
+  const [dossierError, setDossierError] = useState<string | null>(null);
+  const [dossierData, setDossierData] = useState<ProjectDossier | null>(null);
+
+  const collectMarkdownRefs = useCallback((input: any, out: Set<string>) => {
+    if (input == null) return;
+
+    if (typeof input === "string") {
+      const matches = input.match(/(?:[A-Za-z0-9._~\-\/]+\.md)\b/g);
+      if (matches) {
+        for (const match of matches) out.add(match);
+      }
+      return;
+    }
+
+    if (Array.isArray(input)) {
+      for (const item of input) collectMarkdownRefs(item, out);
+      return;
+    }
+
+    if (typeof input === "object") {
+      for (const value of Object.values(input)) collectMarkdownRefs(value, out);
+    }
+  }, []);
 
   const extractTasksFromHierarchyTree = useCallback((tree: HierarchyTreeNode | null | undefined) => {
     if (!tree) return [] as any[];
@@ -197,7 +280,7 @@ export default function ProjectsSection() {
       const taskRows: ProjectTaskSummary[] = tasks.map((t: any) => ({
         id: t.id,
         title: t.title,
-        status: t.status || "backlog",
+        status: canonicalTaskStatus(t.status || "backlog"),
         agents: extractTaskAgents(t),
       }));
       const uniqueAgents = Array.from(new Set(taskRows.flatMap((t) => t.agents))).sort();
@@ -221,12 +304,20 @@ export default function ProjectsSection() {
   const fetchProjects = useCallback(async () => {
     try {
       setLoading(true);
-      const programsRes = await fetch(`${API_BASE}/api/nodes?node_type=program`);
-      if (!programsRes.ok) throw new Error("Failed to fetch programs");
-      const programsData = await programsRes.json();
-      const programs: any[] = programsData.nodes || programsData || [];
+      const [programsRes, directProjectsRes] = await Promise.all([
+        fetch(`${API_BASE}/api/nodes?node_type=program&limit=500`),
+        fetch(`${API_BASE}/api/nodes?node_type=project&limit=500`),
+      ]);
 
-      const projectLists = await Promise.all(
+      if (!programsRes.ok) throw new Error("Failed to fetch programs");
+      if (!directProjectsRes.ok) throw new Error("Failed to fetch projects");
+
+      const programsData = await programsRes.json();
+      const directProjectsData = await directProjectsRes.json();
+      const programs: any[] = programsData.nodes || [];
+      const directProjects: Project[] = (directProjectsData.nodes || []) as Project[];
+
+      const hierarchyProjectLists = await Promise.all(
         programs.map(async (program) => {
           try {
             const res = await fetch(`${API_BASE}/api/hierarchy/programs/${program.id}/projects`);
@@ -240,7 +331,8 @@ export default function ProjectsSection() {
       );
 
       const dedup = new Map<string, Project>();
-      for (const project of projectLists.flat()) {
+      for (const project of [...directProjects, ...hierarchyProjectLists.flat()]) {
+        if (!project?.id) continue;
         dedup.set(project.id, project);
       }
 
@@ -257,8 +349,8 @@ export default function ProjectsSection() {
               return {
                 ...p,
                 task_count: tasks.length,
-                tasks_done: tasks.filter((t: any) => t.status === "done" || t.status === "complete").length,
-                tasks_in_progress: tasks.filter((t: any) => t.status === "in_progress" || t.status === "active").length,
+                tasks_done: tasks.filter((t: any) => isDoneStatus(t.status)).length,
+                tasks_in_progress: tasks.filter((t: any) => isInProgressStatus(t.status)).length,
               };
             }
           } catch {}
@@ -266,6 +358,7 @@ export default function ProjectsSection() {
         })
       );
 
+      withStats.sort((a, b) => Date.parse(b.updated_at || b.created_at || "") - Date.parse(a.updated_at || a.created_at || ""));
       setProjects(withStats);
     } catch (err: any) {
       console.error("Error fetching projects:", err);
@@ -274,6 +367,160 @@ export default function ProjectsSection() {
       setLoading(false);
     }
   }, [extractTasksFromHierarchyTree]);
+
+  const openProjectDossier = useCallback(async (project: ProjectWithStats) => {
+    setDossierOpen(true);
+    setDossierError(null);
+    setDossierLoading(true);
+    setDossierData(null);
+
+    try {
+      const treeRes = await fetch(`${API_BASE}/api/hierarchy/tree/${project.id}?depth=6`);
+      if (!treeRes.ok) throw new Error("Failed to load project hierarchy");
+      const treeData = await treeRes.json();
+      const tasks = extractTasksFromHierarchyTree(treeData?.node ? treeData : null);
+      const taskRows = tasks.map((task: any) => ({
+        id: String(task.id),
+        title: String(task.title || "Untitled Task"),
+        status: canonicalTaskStatus(task.status || "backlog"),
+        metadata: (task.metadata || {}) as Record<string, any>,
+      }));
+
+      const taskIds = new Set(taskRows.map((t: any) => t.id));
+      const sessionIds = Array.from(new Set(
+        taskRows
+          .map((t: any) => String(t.metadata?.session_id || "").trim())
+          .filter(Boolean)
+      ));
+
+      const runBundlesRaw = await Promise.all(
+        sessionIds.map(async (id) => {
+          try {
+            const [sessionRes, resultsRes] = await Promise.all([
+              fetch(`${API_BASE}/api/task-intake/sessions/${id}`),
+              fetch(`${API_BASE}/api/task-intake/sessions/${id}/execution-results`),
+            ]);
+            if (!sessionRes.ok) return null;
+            const sessionData = await sessionRes.json();
+            const resultsData = resultsRes.ok ? await resultsRes.json() : { ok: false, steps: [] };
+            if (!sessionData?.ok) return null;
+
+            const session = sessionData.session || {};
+            const task = sessionData.task || {};
+
+            return {
+              session_id: String(session.id || id),
+              stage: String(session.stage || "unknown"),
+              task_id: String(task.id || session.task_id || ""),
+              task_title: String(task.title || "Untitled Task"),
+              run_id: session.run_id || null,
+              plan_id: session.plan_id || null,
+              gate_id: session.gate_id || null,
+              updated_at: session.updated_at,
+              execution_steps: Array.isArray(resultsData?.steps) ? resultsData.steps : [],
+            } as ProjectRunBundle;
+          } catch {
+            return null;
+          }
+        })
+      );
+
+      const runs: ProjectRunBundle[] = runBundlesRaw
+        .filter((item): item is ProjectRunBundle => Boolean(item))
+        .filter((item) => !item.task_id || taskIds.has(item.task_id));
+
+      const runIds = new Set(runs.map((r) => String(r.run_id || "")).filter(Boolean));
+
+      const [gatesRes, allProjectEdgesRaw] = await Promise.all([
+        fetch(`${API_BASE}/api/nodes?node_type=gate&limit=500`),
+        Promise.all(
+          [...taskIds, ...Array.from(runIds)].map(async (nodeId) => {
+            const [sourceRes, targetRes] = await Promise.all([
+              fetch(`${API_BASE}/api/edges?source_node_id=${nodeId}&limit=500`),
+              fetch(`${API_BASE}/api/edges?target_node_id=${nodeId}&limit=500`),
+            ]);
+            const source = sourceRes.ok ? await sourceRes.json() : { edges: [] };
+            const target = targetRes.ok ? await targetRes.json() : { edges: [] };
+            return [...(source.edges || []), ...(target.edges || [])];
+          })
+        ),
+      ]);
+
+      const allProjectEdges = allProjectEdgesRaw.flat();
+      const artifactIds = new Set<string>();
+      for (const edge of allProjectEdges) {
+        const sourceId = String(edge?.source_node_id || "");
+        const targetId = String(edge?.target_node_id || "");
+        if (sourceId && !taskIds.has(sourceId) && !runIds.has(sourceId) && sourceId !== project.id) artifactIds.add(sourceId);
+        if (targetId && !taskIds.has(targetId) && !runIds.has(targetId) && targetId !== project.id) artifactIds.add(targetId);
+      }
+
+      for (const run of runs) {
+        if (run.plan_id) artifactIds.add(run.plan_id);
+        if (run.gate_id) artifactIds.add(run.gate_id);
+        if (run.run_id) artifactIds.add(run.run_id);
+      }
+
+      const artifactNodesRaw = await Promise.all(
+        Array.from(artifactIds).map(async (id) => {
+          try {
+            const res = await fetch(`${API_BASE}/api/nodes/${id}`);
+            if (!res.ok) return null;
+            return await res.json();
+          } catch {
+            return null;
+          }
+        })
+      );
+
+      const artifactNodes = artifactNodesRaw.filter((n): n is any => Boolean(n));
+      const artifacts = artifactNodes
+        .filter((node) => !["project", "phase", "task", "program", "mission"].includes(String(node.node_type || "")))
+        .map((node) => ({
+          id: String(node.id),
+          node_type: String(node.node_type || "unknown"),
+          title: String(node.title || node.id),
+          status: String(node.status || "unknown"),
+          description: node.description,
+          metadata: node.metadata,
+        }));
+
+      const gatesData = gatesRes.ok ? await gatesRes.json() : { nodes: [] };
+      const approvals = (Array.isArray(gatesData?.nodes) ? gatesData.nodes : [])
+        .filter((gate: any) => {
+          const taskId = String(gate?.metadata?.task_id || "");
+          const runId = String(gate?.metadata?.run_id || "");
+          return (taskId && taskIds.has(taskId)) || (runId && runIds.has(runId));
+        })
+        .map((gate: any) => ({
+          id: String(gate.id),
+          title: String(gate.title || "Approval Gate"),
+          status: String(gate.status || "unknown"),
+          step_order: typeof gate?.metadata?.step_order === "number" ? gate.metadata.step_order : null,
+          task_id: gate?.metadata?.task_id || null,
+          run_id: gate?.metadata?.run_id || null,
+        }));
+
+      const markdownRefs = new Set<string>();
+      collectMarkdownRefs(project, markdownRefs);
+      collectMarkdownRefs(taskRows, markdownRefs);
+      collectMarkdownRefs(runs, markdownRefs);
+      collectMarkdownRefs(artifacts, markdownRefs);
+
+      setDossierData({
+        project,
+        tasks: taskRows,
+        runs,
+        approvals,
+        artifacts,
+        markdown_refs: Array.from(markdownRefs).sort(),
+      });
+    } catch (err: any) {
+      setDossierError(err.message || "Failed to load project dossier");
+    } finally {
+      setDossierLoading(false);
+    }
+  }, [collectMarkdownRefs, extractTasksFromHierarchyTree]);
 
   useEffect(() => {
     fetchProjects();
@@ -390,7 +637,7 @@ export default function ProjectsSection() {
       if (!res.ok || data.ok === false) {
         throw new Error(data.error || "Failed to delete project");
       }
-      toast.success("Project deleted with associated work and artifacts");
+      toast.success("Project deleted with associated tasks and artifacts");
       setDeleteConfirmOpen(false);
       setDetailOpen(false);
       setSelectedProject(null);
@@ -405,9 +652,46 @@ export default function ProjectsSection() {
   // ── Stats ───────────────────────────────────────────────────────────
 
   const totalProjects = projects.length;
-  const activeProjects = projects.filter((p) => p.status === "active" || p.status === "in_progress").length;
+  const activeProjects = projects.filter((p) => isInProgressStatus(p.status)).length;
   const totalTasks = projects.reduce((s, p) => s + p.task_count, 0);
   const totalDone = projects.reduce((s, p) => s + p.tasks_done, 0);
+
+  const deriveProjectHealth = (project: ProjectWithStats) => {
+    if (project.task_count === 0) {
+      return {
+        label: "Setup needed",
+        tone: "amber",
+        reasons: ["No tasks have been created yet"],
+      };
+    }
+
+    const completionRate = project.tasks_done / project.task_count;
+    const hasNoActiveWork = project.tasks_in_progress === 0 && project.tasks_done < project.task_count;
+
+    if (completionRate >= 0.8) {
+      return {
+        label: "Healthy",
+        tone: "green",
+        reasons: ["Most tasks are complete"],
+      };
+    }
+
+    if (hasNoActiveWork && project.task_count >= 3) {
+      return {
+        label: "At risk",
+        tone: "red",
+        reasons: ["No active tasks right now", "Progress may be stalled"],
+      };
+    }
+
+    return {
+      label: "Watch",
+      tone: "amber",
+      reasons: ["Work is underway", "Monitor momentum this week"],
+    };
+  };
+
+  const formatDate = (value?: string) => (value ? new Date(value).toLocaleDateString() : "-");
 
   // ── Render ──────────────────────────────────────────────────────────
 
@@ -507,38 +791,17 @@ export default function ProjectsSection() {
                   ? Math.round((project.tasks_done / project.task_count) * 100)
                   : 0;
 
-              const isExpanded = expandedProjectId === project.id;
-              const details = expandedDetails[project.id];
-              const isLoadingDetails = loadingExpandedId === project.id;
+              const isSelectedProject = selectedProjectId === project.id;
+              const health = deriveProjectHealth(project);
 
               return (
                 <div
                   key={project.id}
-                  className="w-full text-left border border-border rounded-lg p-5 hover:border-blue-500/40 transition-all group bg-[var(--color-card)]"
+                  className={cn(
+                    "w-full text-left border border-border rounded-lg p-5 hover:border-blue-500/40 transition-all group bg-[var(--color-card)]",
+                    isSelectedProject && "ring-1 ring-primary border-primary/50"
+                  )}
                 >
-                  <div className="flex items-center justify-between gap-2 mb-3">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => toggleProjectExpanded(project.id)}
-                      className="h-7 px-2 text-[11px] text-[var(--color-text-secondary)] gap-1"
-                    >
-                      {isExpanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
-                      {isExpanded ? "Hide details" : "Show details"}
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        setSelectedProject(project);
-                        setDetailOpen(true);
-                      }}
-                      className="h-7 px-2 text-[11px]"
-                    >
-                      Open popup
-                    </Button>
-                  </div>
-
                   {/* Top row: category + status */}
                   <div className="flex items-center justify-between mb-3">
                     <div className="flex items-center gap-2">
@@ -554,20 +817,23 @@ export default function ProjectsSection() {
                     <StatusPill status={project.status} />
                   </div>
 
-                  {/* Title */}
-                  <h3 className="font-semibold text-[var(--color-text-primary)] group-hover:text-blue-400 transition-colors mb-1 line-clamp-1">
-                    {project.title}
-                  </h3>
-
-                  {/* Description */}
-                  {project.description && (
-                    <p className="text-xs text-[var(--color-text-secondary)] mb-3 line-clamp-2">
-                      {project.description}
-                    </p>
-                  )}
+                  {/* Clickable title area — opens report */}
+                  <button
+                    className="w-full text-left"
+                    onClick={() => onOpenReport?.(project.id)}
+                  >
+                    <h3 className="font-semibold text-[var(--color-text-primary)] group-hover:text-blue-400 transition-colors mb-1 line-clamp-1">
+                      {project.title}
+                    </h3>
+                    {project.description && (
+                      <p className="text-xs text-[var(--color-text-secondary)] mb-3 line-clamp-2">
+                        {project.description}
+                      </p>
+                    )}
+                  </button>
 
                   {/* Progress */}
-                  <div className="space-y-1.5">
+                  <div className="space-y-1.5 mb-3">
                     <div className="flex items-center justify-between text-xs text-[var(--color-text-secondary)]">
                       <span className="flex items-center gap-1">
                         <ListTodo className="w-3 h-3" />
@@ -578,73 +844,65 @@ export default function ProjectsSection() {
                     <Progress value={progress} className="h-1.5" />
                   </div>
 
-                  {/* Footer */}
-                  {project.created_at && (
-                    <div className="flex items-center gap-1 mt-3 text-[10px] text-[var(--color-text-secondary)]">
-                      <CalendarDays className="w-3 h-3" />
-                      {new Date(project.created_at).toLocaleDateString()}
-                    </div>
-                  )}
+                  {/* Health badge + date */}
+                  <div className="flex items-center justify-between text-[10px] text-[var(--color-text-secondary)]">
+                    <Badge
+                      variant="outline"
+                      className={cn(
+                        "text-[10px]",
+                        health.tone === "green" && "text-emerald-400 border-emerald-500/40",
+                        health.tone === "amber" && "text-amber-400 border-amber-500/40",
+                        health.tone === "red" && "text-red-400 border-red-500/40"
+                      )}
+                    >
+                      {health.label}
+                    </Badge>
+                    {project.created_at && (
+                      <span className="flex items-center gap-1">
+                        <CalendarDays className="w-3 h-3" />
+                        {new Date(project.created_at).toLocaleDateString()}
+                      </span>
+                    )}
+                  </div>
 
-                  {isExpanded && (
-                    <div className="mt-4 pt-4 border-t border-border space-y-3">
-                      <div className="rounded-md border border-border p-3 bg-[var(--color-background)]/40">
-                        <p className="text-[11px] uppercase tracking-wide text-[var(--color-text-secondary)] mb-1">Project Overview</p>
-                        <p className="text-xs text-[var(--color-text-primary)] line-clamp-3">
-                          {project.description || "No description provided."}
-                        </p>
-                      </div>
-
-                      <div className="rounded-md border border-border p-3 bg-[var(--color-background)]/40">
-                        <p className="text-[11px] uppercase tracking-wide text-[var(--color-text-secondary)] mb-2">Agents in Use</p>
-                        {isLoadingDetails ? (
-                          <div className="flex items-center gap-2 text-xs text-[var(--color-text-secondary)]">
-                            <Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading agents...
-                          </div>
-                        ) : details?.unique_agents?.length ? (
-                          <div className="flex flex-wrap gap-1.5">
-                            {details.unique_agents.map((agent) => (
-                              <Badge key={agent} variant="outline" className="text-[10px] gap-1">
-                                <Bot className="w-3 h-3" />
-                                {agent}
-                              </Badge>
-                            ))}
-                          </div>
-                        ) : (
-                          <p className="text-xs text-[var(--color-text-secondary)]">No assigned agents yet.</p>
-                        )}
-                      </div>
-
-                      <div className="rounded-md border border-border p-3 bg-[var(--color-background)]/40">
-                        <p className="text-[11px] uppercase tracking-wide text-[var(--color-text-secondary)] mb-2">Tasks</p>
-                        {isLoadingDetails ? (
-                          <div className="flex items-center gap-2 text-xs text-[var(--color-text-secondary)]">
-                            <Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading tasks...
-                          </div>
-                        ) : details?.tasks?.length ? (
-                          <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
-                            {details.tasks.map((task) => (
-                              <div key={task.id} className="rounded border border-border p-2">
-                                <div className="flex items-start justify-between gap-2">
-                                  <p className="text-xs font-medium text-[var(--color-text-primary)] line-clamp-1">{task.title}</p>
-                                  <StatusPill status={task.status} />
-                                </div>
-                                {task.agents.length > 0 && (
-                                  <div className="flex flex-wrap gap-1 mt-1.5">
-                                    {task.agents.map((agent) => (
-                                      <Badge key={`${task.id}-${agent}`} variant="outline" className="text-[10px]">{agent}</Badge>
-                                    ))}
-                                  </div>
-                                )}
-                              </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <p className="text-xs text-[var(--color-text-secondary)]">No tasks linked to this project.</p>
-                        )}
-                      </div>
-                    </div>
-                  )}
+                  {/* Minimal action row */}
+                  <div className="flex items-center gap-1 mt-3 pt-3 border-t border-border/50">
+                    {onOpenReport && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => onOpenReport(project.id)}
+                        className="h-7 px-2 text-[11px] gap-1 text-primary"
+                      >
+                        <FileText className="w-3.5 h-3.5" />
+                        Report
+                      </Button>
+                    )}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        onSelectProject?.(project.id);
+                        onNavigate?.("tasks");
+                      }}
+                      className="h-7 px-2 text-[11px] gap-1 text-[var(--color-text-secondary)]"
+                    >
+                      <ListTodo className="w-3.5 h-3.5" />
+                      Tasks
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        onSelectProject?.(project.id);
+                        onScheduleNow?.(project.id);
+                      }}
+                      className="h-7 px-2 text-[11px] gap-1 text-[var(--color-text-secondary)]"
+                    >
+                      <CalendarDays className="w-3.5 h-3.5" />
+                      Schedule
+                    </Button>
+                  </div>
                 </div>
               );
             })}
@@ -764,6 +1022,184 @@ export default function ProjectsSection() {
                 </Button>
               </DialogFooter>
             </>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={dossierOpen} onOpenChange={setDossierOpen}>
+        <DialogContent className="max-w-6xl max-h-[90vh] overflow-hidden">
+          <DialogDescription className="sr-only">
+            Complete project dossier including metadata, execution steps, approvals, logs, and artifact references.
+          </DialogDescription>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FileText className="w-5 h-5 text-primary" />
+              {dossierData?.project?.title || selectedProject?.title || "Project Dossier"}
+            </DialogTitle>
+          </DialogHeader>
+
+          {dossierLoading ? (
+            <div className="h-[55vh] flex items-center justify-center text-sm text-[var(--color-text-secondary)] gap-2">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              Loading full project dossier...
+            </div>
+          ) : dossierError ? (
+            <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              {dossierError}
+            </div>
+          ) : dossierData ? (
+            <ScrollArea className="h-[72vh] pr-2">
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+                  <StatCell label="Tasks" value={String(dossierData.tasks.length)} />
+                  <StatCell label="Runs" value={String(dossierData.runs.length)} />
+                  <StatCell label="Approvals" value={String(dossierData.approvals.length)} />
+                  <StatCell label="Artifacts" value={String(dossierData.artifacts.length)} />
+                  <StatCell label="Markdown Refs" value={String(dossierData.markdown_refs.length)} />
+                </div>
+
+                <div className="rounded-lg border border-border p-3 bg-[var(--color-card)] space-y-2">
+                  <p className="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">Project Metadata</p>
+                  <pre className="text-[11px] text-[var(--color-text-primary)] whitespace-pre-wrap break-words max-h-44 overflow-y-auto bg-[var(--color-background)] rounded border border-border p-2">
+                    {JSON.stringify(dossierData.project.metadata || {}, null, 2)}
+                  </pre>
+                </div>
+
+                <div className="rounded-lg border border-border p-3 bg-[var(--color-card)] space-y-2">
+                  <p className="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">Tasks & Status</p>
+                  {dossierData.tasks.length === 0 ? (
+                    <p className="text-xs text-[var(--color-text-secondary)]">No tasks linked to this project.</p>
+                  ) : (
+                    <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
+                      {dossierData.tasks.map((task) => (
+                        <div key={task.id} className="rounded border border-border p-2">
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="text-xs font-medium text-[var(--color-text-primary)]">{task.title}</p>
+                            <Badge variant="outline" className="text-[10px]">{taskStatusLabel(task.status)}</Badge>
+                          </div>
+                          <p className="text-[10px] text-[var(--color-text-secondary)] mt-1 font-mono">{task.id}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="rounded-lg border border-border p-3 bg-[var(--color-card)] space-y-2">
+                  <p className="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">Execution Console Output + Step Logs</p>
+                  {dossierData.runs.length === 0 ? (
+                    <p className="text-xs text-[var(--color-text-secondary)]">No task-intake sessions found on linked tasks yet.</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {dossierData.runs.map((run) => (
+                        <div key={run.session_id} className="rounded border border-border p-2 space-y-2 bg-[var(--color-background)]/60">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <Badge variant="outline" className="text-[10px]">session {run.session_id}</Badge>
+                            {run.run_id && <Badge variant="outline" className="text-[10px]">run {run.run_id}</Badge>}
+                            <Badge variant="outline" className="text-[10px]">stage {run.stage}</Badge>
+                            <span className="text-[10px] text-[var(--color-text-secondary)]">{run.task_title}</span>
+                          </div>
+                          {run.execution_steps.length === 0 ? (
+                            <p className="text-[11px] text-[var(--color-text-secondary)]">No persisted execution steps for this run yet.</p>
+                          ) : (
+                            <div className="space-y-1.5 max-h-64 overflow-y-auto pr-1">
+                              {run.execution_steps.map((step) => (
+                                <div key={`${run.session_id}-${step.step_order}`} className="rounded border border-border px-2 py-1.5">
+                                  <div className="flex items-center justify-between gap-2">
+                                    <p className="text-[11px] font-medium text-[var(--color-text-primary)]">[{step.step_order}] {step.action}</p>
+                                    <Badge variant="outline" className="text-[10px]">{step.success ? "ok" : "failed"}</Badge>
+                                  </div>
+                                  <p className="text-[10px] text-[var(--color-text-secondary)] mt-0.5">{step.source}{step.model ? ` • ${step.model}` : ""}</p>
+                                  <pre className="mt-1 text-[10px] text-[var(--color-text-primary)] whitespace-pre-wrap break-words max-h-40 overflow-y-auto bg-muted/20 border border-border rounded p-2">
+                                    {step.output || "(no output captured)"}
+                                  </pre>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="rounded-lg border border-border p-3 bg-[var(--color-card)] space-y-2">
+                  <p className="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">Approvals</p>
+                  {dossierData.approvals.length === 0 ? (
+                    <p className="text-xs text-[var(--color-text-secondary)]">No approval-gate records were found for this project.</p>
+                  ) : (
+                    <div className="space-y-1.5 max-h-44 overflow-y-auto pr-1">
+                      {dossierData.approvals.map((gate) => (
+                        <div key={gate.id} className="rounded border border-border p-2 flex items-center justify-between gap-2">
+                          <div>
+                            <p className="text-xs font-medium text-[var(--color-text-primary)]">{gate.title}</p>
+                            <p className="text-[10px] text-[var(--color-text-secondary)] font-mono">{gate.id}</p>
+                          </div>
+                          <div className="text-right space-y-1">
+                            <Badge variant="outline" className="text-[10px]">{gate.status}</Badge>
+                            {gate.step_order ? <p className="text-[10px] text-[var(--color-text-secondary)]">step {gate.step_order}</p> : null}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="rounded-lg border border-border p-3 bg-[var(--color-card)] space-y-2">
+                  <p className="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">Artifacts + Output References</p>
+                  {dossierData.artifacts.length === 0 ? (
+                    <p className="text-xs text-[var(--color-text-secondary)]">No non-hierarchy artifacts linked to project tasks yet.</p>
+                  ) : (
+                    <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                      {dossierData.artifacts.map((artifact) => (
+                        <div key={artifact.id} className="rounded border border-border p-2">
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="text-xs font-medium text-[var(--color-text-primary)]">{artifact.title}</p>
+                            <div className="flex items-center gap-1.5">
+                              <Badge variant="outline" className="text-[10px]">{artifact.node_type}</Badge>
+                              <Badge variant="outline" className="text-[10px]">{artifact.status}</Badge>
+                            </div>
+                          </div>
+                          <p className="text-[10px] text-[var(--color-text-secondary)] mt-1 font-mono">{artifact.id}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="rounded-lg border border-border p-3 bg-[var(--color-card)] space-y-2">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">Markdown Files Referenced</p>
+                    {dossierData.markdown_refs.length > 0 && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 px-2 text-[10px] gap-1"
+                        onClick={async () => {
+                          await navigator.clipboard.writeText(dossierData.markdown_refs.join("\n"));
+                          toast.success("Markdown references copied");
+                        }}
+                      >
+                        <Copy className="w-3 h-3" />
+                        Copy list
+                      </Button>
+                    )}
+                  </div>
+                  {dossierData.markdown_refs.length === 0 ? (
+                    <p className="text-xs text-[var(--color-text-secondary)]">No .md references detected yet.</p>
+                  ) : (
+                    <ul className="space-y-1 max-h-36 overflow-y-auto pr-1">
+                      {dossierData.markdown_refs.map((ref) => (
+                        <li key={ref} className="text-[11px] text-[var(--color-text-primary)] font-mono rounded border border-border px-2 py-1 break-all">
+                          {ref}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </div>
+            </ScrollArea>
+          ) : (
+            <div className="text-sm text-[var(--color-text-secondary)]">Open a project dossier from the project card.</div>
           )}
         </DialogContent>
       </Dialog>

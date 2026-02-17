@@ -17,6 +17,57 @@ import logger from '../logger';
 
 const router = express.Router();
 
+async function resolveAssignableAgent(agentIdRaw: string): Promise<{
+	agentNodeId: string;
+	openclawAgentId: string | null;
+}> {
+	const agentId = String(agentIdRaw || '').trim();
+	if (!agentId) throw new Error('agent_id is required');
+
+	const existingNode = await graphService.getNode(agentId);
+	if (existingNode) {
+		const ocId = String(existingNode.metadata?.openclaw_agent_id || '').trim();
+		return { agentNodeId: existingNode.id, openclawAgentId: ocId || null };
+	}
+
+	const openclawMatch = /^openclaw-(.+)$/.exec(agentId);
+	if (!openclawMatch) {
+		throw new Error(`Target node not found: ${agentId}`);
+	}
+
+	const openclawAgentId = openclawMatch[1].trim();
+	if (!openclawAgentId) {
+		throw new Error(`Invalid OpenClaw agent id: ${agentId}`);
+	}
+
+	const resources = await graphService.listNodes({ node_type: 'resource', limit: 500 });
+	const mapped = (resources || []).find((n: any) => {
+		const meta = n?.metadata || {};
+		if (meta.resource_type !== 'agent') return false;
+		return String(meta.openclaw_agent_id || '').trim() === openclawAgentId;
+	});
+
+	if (mapped) {
+		return { agentNodeId: mapped.id, openclawAgentId };
+	}
+
+	const created = await graphService.createNode({
+		node_type: 'resource',
+		title: `OpenClaw: ${openclawAgentId}`,
+		description: `OpenClaw agent binding for ${openclawAgentId}`,
+		status: 'active',
+		metadata: {
+			resource_type: 'agent',
+			agent_kind: 'openclaw',
+			openclaw_agent_id: openclawAgentId,
+		},
+		created_by: 'ui-user',
+		source: 'ui',
+	});
+
+	return { agentNodeId: created.id, openclawAgentId };
+}
+
 /**
  * @route GET /api/agent-ops/tasks/:agentId
  * @desc Get tasks assigned to a specific agent
@@ -69,19 +120,48 @@ router.post('/assign', async (req: Request, res: Response) => {
 			return res.status(404).json({ error: `Task not found: ${task_id}` });
 		}
 
-		// Create assigned_to edge (Task -> Agent)
-		const edge = await graphService.createEdge({
+		const resolved = await resolveAssignableAgent(agent_id);
+
+		let edgeId: string | null = null;
+		const existingEdges = await graphService.listEdges({
 			edge_type: 'assigned_to',
 			source_node_id: task_id,
-			target_node_id: agent_id,
-			created_by: 'ui-user',
+			target_node_id: resolved.agentNodeId,
+			limit: 1,
 		});
 
-		// Update task status to in_progress
-		await graphService.updateNode(task_id, { status: 'in_progress' }, 'ui-user');
+		if (existingEdges.length > 0) {
+			edgeId = existingEdges[0].id;
+		} else {
+			const edge = await graphService.createEdge({
+				edge_type: 'assigned_to',
+				source_node_id: task_id,
+				target_node_id: resolved.agentNodeId,
+				created_by: 'ui-user',
+			});
+			edgeId = edge.id;
+		}
 
-		logger.info(`Task ${task_id} assigned to agent ${agent_id}`);
-		res.json({ success: true, edge_id: edge.id });
+		const updatedTaskMetadata: Record<string, any> = {
+			...(task.metadata || {}),
+			assignee_type: 'agent',
+			assigned_agent_node_id: resolved.agentNodeId,
+			assigned_agent_id: resolved.openclawAgentId || resolved.agentNodeId,
+		};
+		if (resolved.openclawAgentId) {
+			updatedTaskMetadata.execution_agent_id = resolved.openclawAgentId;
+		}
+
+		// Update task status and assignee metadata
+		await graphService.updateNode(task_id, { status: 'in_progress', metadata: updatedTaskMetadata }, 'ui-user');
+
+		logger.info(`Task ${task_id} assigned to agent ${resolved.agentNodeId}${resolved.openclawAgentId ? ` (openclaw:${resolved.openclawAgentId})` : ''}`);
+		res.json({
+			success: true,
+			edge_id: edgeId,
+			agent_node_id: resolved.agentNodeId,
+			execution_agent_id: resolved.openclawAgentId,
+		});
 	} catch (error: any) {
 		logger.error('Error assigning task:', error);
 		res.status(500).json({ error: error.message });

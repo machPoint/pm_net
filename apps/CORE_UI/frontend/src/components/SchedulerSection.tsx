@@ -1,11 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { CalendarClock, RefreshCw, WandSparkles } from "lucide-react";
+import { CalendarClock, RefreshCw, WandSparkles, Plus, Repeat, Bot, X } from "lucide-react";
 import { Calendar } from "@/components/ui/calendar";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 
 type ProjectNode = { id: string; title: string; metadata?: Record<string, any> };
 
@@ -25,7 +26,20 @@ type ScheduledJob = {
   run_at: string;
   timezone: string;
   status: "scheduled" | "running" | "completed" | "failed" | "canceled";
+  recurrence_cron?: string | null;
+  agent_id?: string | null;
+  runtime?: string | null;
 };
+
+type AgentRuntime = { key: string; name: string; available: boolean };
+
+const CRON_PRESETS: { label: string; cron: string }[] = [
+  { label: "Every hour", cron: "0 * * * *" },
+  { label: "Every day at 9am", cron: "0 9 * * *" },
+  { label: "Every weekday at 9am", cron: "0 9 * * 1-5" },
+  { label: "Every Monday at 9am", cron: "0 9 * * 1" },
+  { label: "Every 1st of month", cron: "0 9 1 * *" },
+];
 
 const HIER_BASE = "/api/opal/proxy/api/hierarchy";
 const SCHED_BASE = "/api/opal/proxy/api/scheduler";
@@ -39,7 +53,17 @@ async function fetchJson<T = any>(url: string, options?: RequestInit): Promise<T
   return data as T;
 }
 
-export default function SchedulerSection() {
+export default function SchedulerSection({
+  selectedProjectId,
+  selectedProjectTitle,
+  onProjectChange,
+  autoScheduleSignal,
+}: {
+  selectedProjectId?: string;
+  selectedProjectTitle?: string;
+  onProjectChange?: (projectId: string) => void;
+  autoScheduleSignal?: number;
+}) {
   const [projects, setProjects] = useState<ProjectNode[]>([]);
   const [projectId, setProjectId] = useState<string>("");
   const [profile, setProfile] = useState<ScheduleProfile | null>(null);
@@ -49,6 +73,17 @@ export default function SchedulerSection() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // New job form
+  const [showNewJob, setShowNewJob] = useState(false);
+  const [newTitle, setNewTitle] = useState("");
+  const [newPrompt, setNewPrompt] = useState("");
+  const [newRunAt, setNewRunAt] = useState(new Date().toISOString().slice(0, 16));
+  const [newCron, setNewCron] = useState("");
+  const [newAgentId, setNewAgentId] = useState("");
+  const [newRuntime, setNewRuntime] = useState("");
+  const [runtimes, setRuntimes] = useState<AgentRuntime[]>([]);
+  const [creatingJob, setCreatingJob] = useState(false);
 
   const loadProjects = useCallback(async () => {
     const missionsRes = await fetchJson<{ ok: true; missions: ProjectNode[] }>(`${HIER_BASE}/missions`);
@@ -67,10 +102,18 @@ export default function SchedulerSection() {
 
     allProjects.sort((a, b) => a.title.localeCompare(b.title));
     setProjects(allProjects);
-    if (!projectId && allProjects.length > 0) {
-      setProjectId(allProjects[0].id);
+    const selectedExists = selectedProjectId && allProjects.some((p) => p.id === selectedProjectId);
+    if (selectedExists && selectedProjectId !== projectId) {
+      setProjectId(selectedProjectId);
+      return;
     }
-  }, [projectId]);
+
+    if (!projectId && allProjects.length > 0) {
+      const fallbackId = allProjects[0].id;
+      setProjectId(fallbackId);
+      onProjectChange?.(fallbackId);
+    }
+  }, [onProjectChange, projectId, selectedProjectId]);
 
   const loadSchedule = useCallback(async (id: string) => {
     setLoading(true);
@@ -91,7 +134,18 @@ export default function SchedulerSection() {
 
   useEffect(() => {
     loadProjects().catch((err) => setError(err.message || "Failed to load projects"));
+    // Load available runtimes
+    fetchJson<{ ok: true; runtimes: AgentRuntime[] }>(`${SCHED_BASE}/runtimes`)
+      .then((res) => setRuntimes(res.runtimes || []))
+      .catch(() => {});
   }, [loadProjects]);
+
+  useEffect(() => {
+    if (!selectedProjectId) return;
+    if (selectedProjectId !== projectId) {
+      setProjectId(selectedProjectId);
+    }
+  }, [projectId, selectedProjectId]);
 
   useEffect(() => {
     if (!projectId) return;
@@ -115,6 +169,15 @@ export default function SchedulerSection() {
   const selectedJobs = selectedKey ? jobsByDay.get(selectedKey) || [] : [];
   const highlightedDays = Array.from(jobsByDay.keys()).map((d) => new Date(`${d}T00:00:00Z`));
 
+  const schedulerStatusLabel = (status: ScheduledJob["status"]) => {
+    if (status === "scheduled") return "Scheduled";
+    if (status === "running") return "Running";
+    if (status === "completed") return "Completed";
+    if (status === "failed") return "Needs attention";
+    if (status === "canceled") return "Canceled";
+    return status;
+  };
+
   const saveProfile = async () => {
     if (!projectId || !profile) return;
     setSaving(true);
@@ -126,6 +189,7 @@ export default function SchedulerSection() {
         body: JSON.stringify(profile),
       });
       await loadSchedule(projectId);
+      toast.success("Scheduling preferences saved");
     } catch (err: any) {
       setError(err.message || "Failed to save profile");
     } finally {
@@ -144,6 +208,7 @@ export default function SchedulerSection() {
         body: JSON.stringify({ start_at: new Date(startAt).toISOString(), replace_existing: true }),
       });
       await loadSchedule(projectId);
+      toast.success("Schedule generated for the selected project");
     } catch (err: any) {
       setError(err.message || "Failed to generate schedule");
     } finally {
@@ -152,6 +217,7 @@ export default function SchedulerSection() {
   };
 
   const cancelJob = async (jobId: string) => {
+    if (!confirm("Cancel this scheduled item? You can undo right after canceling.")) return;
     try {
       await fetchJson(`${SCHED_BASE}/jobs/${jobId}/cancel`, {
         method: "POST",
@@ -159,8 +225,67 @@ export default function SchedulerSection() {
         body: JSON.stringify({ reason: "Canceled from scheduler UI" }),
       });
       await loadSchedule(projectId);
+      toast("Scheduled item canceled", {
+        action: {
+          label: "Undo",
+          onClick: async () => {
+            try {
+              await fetchJson(`${SCHED_BASE}/jobs/${jobId}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ status: "scheduled" }),
+              });
+              await loadSchedule(projectId);
+              toast.success("Cancellation undone");
+            } catch (undoErr: any) {
+              setError(undoErr.message || "Failed to undo cancellation");
+            }
+          },
+        },
+      });
     } catch (err: any) {
       setError(err.message || "Failed to cancel job");
+    }
+  };
+
+  useEffect(() => {
+    if (!autoScheduleSignal || !projectId) return;
+    generateSchedule().catch((err) => {
+      setError(err?.message || "Failed to generate schedule");
+    });
+  }, [autoScheduleSignal]);
+
+  const createStandaloneJob = async () => {
+    if (!newTitle.trim() || !newPrompt.trim()) {
+      setError("Title and prompt are required");
+      return;
+    }
+    setCreatingJob(true);
+    setError(null);
+    try {
+      await fetchJson(`${SCHED_BASE}/jobs`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: newTitle.trim(),
+          prompt: newPrompt.trim(),
+          run_at: new Date(newRunAt).toISOString(),
+          recurrence_cron: newCron || undefined,
+          project_id: projectId || undefined,
+          agent_id: newAgentId || undefined,
+          runtime: newRuntime || undefined,
+        }),
+      });
+      toast.success(`Job "${newTitle}" scheduled`);
+      setNewTitle("");
+      setNewPrompt("");
+      setNewCron("");
+      setShowNewJob(false);
+      if (projectId) await loadSchedule(projectId);
+    } catch (err: any) {
+      setError(err.message || "Failed to create job");
+    } finally {
+      setCreatingJob(false);
     }
   };
 
@@ -173,17 +298,122 @@ export default function SchedulerSection() {
             Project Scheduler
           </h2>
           <p className="text-xs text-[var(--color-text-secondary)] mt-1">
-            Generate project-specific execution schedules from task plans with calendar visibility.
+            Schedule one-time or recurring agent jobs with calendar visibility.
           </p>
         </div>
+        <Button onClick={() => setShowNewJob(!showNewJob)} variant={showNewJob ? "secondary" : "default"} className="gap-2">
+          {showNewJob ? <X className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
+          {showNewJob ? "Cancel" : "New Job"}
+        </Button>
       </div>
+
+      {showNewJob && (
+        <div className="p-4 border-b border-border bg-[var(--color-card)] space-y-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs text-[var(--color-text-secondary)]">Job Title</label>
+              <input
+                value={newTitle}
+                onChange={(e) => setNewTitle(e.target.value)}
+                placeholder="e.g. Daily social media post"
+                className="w-full mt-1 h-9 rounded-md border border-border bg-background px-2 text-sm"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-[var(--color-text-secondary)]">Run At</label>
+              <input
+                type="datetime-local"
+                value={newRunAt}
+                onChange={(e) => setNewRunAt(e.target.value)}
+                className="w-full mt-1 h-9 rounded-md border border-border bg-background px-2 text-sm"
+              />
+            </div>
+          </div>
+          <div>
+            <label className="text-xs text-[var(--color-text-secondary)]">Prompt / Instructions</label>
+            <textarea
+              value={newPrompt}
+              onChange={(e) => setNewPrompt(e.target.value)}
+              placeholder="What should the agent do?"
+              rows={3}
+              className="w-full mt-1 rounded-md border border-border bg-background px-2 py-1.5 text-sm resize-none"
+            />
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div>
+              <label className="text-xs text-[var(--color-text-secondary)] flex items-center gap-1">
+                <Repeat className="w-3 h-3" /> Recurrence (cron)
+              </label>
+              <div className="flex gap-1 mt-1">
+                <input
+                  value={newCron}
+                  onChange={(e) => setNewCron(e.target.value)}
+                  placeholder="e.g. 0 9 * * 1-5"
+                  className="flex-1 h-9 rounded-md border border-border bg-background px-2 text-sm font-mono"
+                />
+                <select
+                  value=""
+                  onChange={(e) => { if (e.target.value) setNewCron(e.target.value); }}
+                  className="h-9 rounded-md border border-border bg-background px-1 text-xs"
+                >
+                  <option value="">Presets</option>
+                  {CRON_PRESETS.map((p) => (
+                    <option key={p.cron} value={p.cron}>{p.label}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div>
+              <label className="text-xs text-[var(--color-text-secondary)] flex items-center gap-1">
+                <Bot className="w-3 h-3" /> Agent
+              </label>
+              <input
+                value={newAgentId}
+                onChange={(e) => setNewAgentId(e.target.value)}
+                placeholder="main"
+                className="w-full mt-1 h-9 rounded-md border border-border bg-background px-2 text-sm"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-[var(--color-text-secondary)]">Runtime</label>
+              <select
+                value={newRuntime}
+                onChange={(e) => setNewRuntime(e.target.value)}
+                className="w-full mt-1 h-9 rounded-md border border-border bg-background px-2 text-sm"
+              >
+                <option value="">Auto (fallback chain)</option>
+                {runtimes.map((rt) => (
+                  <option key={rt.key} value={rt.key} disabled={!rt.available}>
+                    {rt.name} {rt.available ? "" : "(unavailable)"}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button onClick={createStandaloneJob} disabled={creatingJob || !newTitle.trim() || !newPrompt.trim()} className="gap-2">
+              <Plus className="w-4 h-4" />
+              {creatingJob ? "Creating..." : "Create Job"}
+            </Button>
+            {newCron && (
+              <Badge variant="outline" className="text-xs gap-1">
+                <Repeat className="w-3 h-3" /> Recurring: {newCron}
+              </Badge>
+            )}
+          </div>
+        </div>
+      )}
 
       <div className="p-4 border-b border-border grid grid-cols-1 lg:grid-cols-6 gap-3 items-end">
         <div className="lg:col-span-2">
           <label className="text-xs text-[var(--color-text-secondary)]">Project</label>
           <select
             value={projectId}
-            onChange={(e) => setProjectId(e.target.value)}
+            onChange={(e) => {
+              const nextId = e.target.value;
+              setProjectId(nextId);
+              onProjectChange?.(nextId);
+            }}
             className="w-full mt-1 h-9 rounded-md border border-border bg-background px-2 text-sm"
           >
             {projects.map((p) => (
@@ -290,17 +520,32 @@ export default function SchedulerSection() {
           <h3 className="text-sm font-semibold mb-2">Jobs on {selectedKey || "-"}</h3>
           <div className="flex-1 overflow-y-auto space-y-2">
             {selectedJobs.length === 0 ? (
-              <div className="text-sm text-[var(--color-text-secondary)]">No jobs scheduled for this day.</div>
+              <div className="text-sm text-[var(--color-text-secondary)]">
+                No jobs scheduled for this day.
+                {selectedProjectId ? " Try Generate to create a plan for this project." : ""}
+              </div>
             ) : (
               selectedJobs.map((job) => (
                 <div key={job.id} className="rounded-lg border border-border p-2.5 bg-[var(--color-background)]">
                   <div className="flex items-center justify-between gap-2">
                     <div className="text-sm font-medium text-[var(--color-text-primary)]">{job.title}</div>
-                    <Badge variant="outline">{job.status}</Badge>
+                    <Badge variant="outline">{schedulerStatusLabel(job.status)}</Badge>
                   </div>
                   <div className="mt-1 text-xs text-[var(--color-text-secondary)] flex items-center justify-between">
                     <span>{new Date(job.run_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
-                    <span>Step #{job.step_order}</span>
+                    <div className="flex items-center gap-2">
+                      {job.recurrence_cron && (
+                        <Badge variant="outline" className="text-[10px] gap-0.5">
+                          <Repeat className="w-2.5 h-2.5" /> {job.recurrence_cron}
+                        </Badge>
+                      )}
+                      {job.agent_id && (
+                        <Badge variant="outline" className="text-[10px] gap-0.5">
+                          <Bot className="w-2.5 h-2.5" /> {job.agent_id}
+                        </Badge>
+                      )}
+                      {job.step_order > 0 && <span>Step #{job.step_order}</span>}
+                    </div>
                   </div>
                   {job.status === "scheduled" && (
                     <div className="mt-2">

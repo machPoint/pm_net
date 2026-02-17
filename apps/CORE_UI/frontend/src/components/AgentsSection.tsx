@@ -86,6 +86,19 @@ interface SpecializationSummary {
   summary?: string;
 }
 
+interface CreateAgentApiResponse {
+  ok?: boolean;
+  specialization?: {
+    filesUpdated?: unknown;
+    suggestedTools?: unknown;
+    suggestedSkills?: unknown;
+    aiApplied?: unknown;
+    fallbackApplied?: unknown;
+    warning?: unknown;
+    summary?: unknown;
+  };
+}
+
 const OPAL_BASE_URL = '/api/opal/proxy';
 
 export default function AgentsSection() {
@@ -391,6 +404,23 @@ export default function AgentsSection() {
     setNewAgentDescription("");
   };
 
+  const extractSpecializationSummary = (
+    payload: CreateAgentApiResponse | null | undefined,
+    agentId: string
+  ): SpecializationSummary => {
+    const spec = payload?.specialization;
+    return {
+      agentId,
+      filesUpdated: Array.isArray(spec?.filesUpdated) ? spec.filesUpdated.filter((v): v is string => typeof v === 'string') : [],
+      suggestedTools: Array.isArray(spec?.suggestedTools) ? spec.suggestedTools.filter((v): v is string => typeof v === 'string') : [],
+      suggestedSkills: Array.isArray(spec?.suggestedSkills) ? spec.suggestedSkills.filter((v): v is string => typeof v === 'string') : [],
+      aiApplied: !!spec?.aiApplied,
+      fallbackApplied: !!spec?.fallbackApplied,
+      warning: typeof spec?.warning === 'string' ? spec.warning : undefined,
+      summary: typeof spec?.summary === 'string' ? spec.summary : undefined,
+    };
+  };
+
   const handleDeleteAgent = async (agentId: string) => {
     try {
       if (agentId.startsWith('openclaw-')) {
@@ -451,18 +481,8 @@ export default function AgentsSection() {
         throw new Error(err.error || 'Failed to clone OpenClaw main agent');
       }
 
-      const createPayload = await ocRes.json().catch(() => ({}));
-      const spec = createPayload?.specialization;
-      const specializationSummary: SpecializationSummary = {
-        agentId: cloneId,
-        filesUpdated: Array.isArray(spec?.filesUpdated) ? spec.filesUpdated : [],
-        suggestedTools: Array.isArray(spec?.suggestedTools) ? spec.suggestedTools : [],
-        suggestedSkills: Array.isArray(spec?.suggestedSkills) ? spec.suggestedSkills : [],
-        aiApplied: !!spec?.aiApplied,
-        fallbackApplied: !!spec?.fallbackApplied,
-        warning: typeof spec?.warning === 'string' ? spec.warning : undefined,
-        summary: typeof spec?.summary === 'string' ? spec.summary : undefined,
-      };
+      const createPayload = await ocRes.json().catch(() => ({} as CreateAgentApiResponse));
+      const specializationSummary = extractSpecializationSummary(createPayload, cloneId);
       setLastSpecialization(specializationSummary);
 
       const refreshed = await fetchAgents();

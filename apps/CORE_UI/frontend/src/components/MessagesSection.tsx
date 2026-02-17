@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { toast } from "sonner";
 import { Bot, Inbox, Mail, RefreshCw } from "lucide-react";
 
 interface InboxMessage {
@@ -16,6 +17,7 @@ interface InboxMessage {
 }
 
 interface AgentChatMessage {
+  id?: string;
   role: "user" | "assistant" | "system";
   content: string;
   timestamp: string;
@@ -31,6 +33,7 @@ function formatTime(ts: string): string {
 export default function MessagesSection() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [messages, setMessages] = useState<InboxMessage[]>([]);
   const [selectedMessageId, setSelectedMessageId] = useState<string | null>(null);
@@ -68,7 +71,7 @@ export default function MessagesSection() {
         .filter((m) => m.role === "assistant")
         .forEach((m, idx) => {
           inboxMessages.push({
-            id: `${agentId}-${m.timestamp}-${idx}`,
+            id: m.id || `${agentId}-${m.timestamp}-${idx}`,
             agentId,
             content: m.content,
             timestamp: m.timestamp,
@@ -107,6 +110,29 @@ export default function MessagesSection() {
     };
   }, [fetchMessages]);
 
+  const deleteSelectedMessage = async () => {
+    if (!selectedMessage) return;
+    if (!confirm("Delete this message from the inbox?")) return;
+
+    try {
+      setSaving(true);
+      const res = await fetch(`/api/openclaw/agents/${encodeURIComponent(selectedMessage.agentId)}/chat`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messageId: selectedMessage.id }),
+      });
+      const data = await res.json();
+      if (!res.ok || data?.ok === false) throw new Error(data?.error || "Failed to delete message");
+      await fetchMessages();
+      toast.success("Message deleted");
+    } catch (err: any) {
+      setError(err.message || "Failed to delete message");
+      toast.error(err.message || "Failed to delete message");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const selectedMessage = useMemo(
     () => messages.find((m) => m.id === selectedMessageId) || null,
     [messages, selectedMessageId]
@@ -124,18 +150,18 @@ export default function MessagesSection() {
   };
 
   return (
-    <div className="h-full flex flex-col gap-4 p-6">
+    <div className="h-full flex flex-col gap-3 p-3 md:p-4">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-semibold tracking-tight text-foreground flex items-center gap-2">
+          <h2 className="text-xl font-semibold tracking-tight text-foreground flex items-center gap-2">
             <Mail className="h-5 w-5" />
             Messages
           </h2>
-          <p className="text-sm text-muted-foreground mt-1">
-            Major updates and outputs from your agents.
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Important project updates from agents.
           </p>
         </div>
-        <Button variant="outline" onClick={handleRefresh} disabled={refreshing || loading}>
+        <Button variant="outline" onClick={handleRefresh} disabled={refreshing || loading || saving}>
           <RefreshCw className={`h-4 w-4 mr-2 ${refreshing ? "animate-spin" : ""}`} />
           Refresh
         </Button>
@@ -146,9 +172,9 @@ export default function MessagesSection() {
         <Badge variant="outline">{new Set(messages.map((m) => m.agentId)).size} agents</Badge>
       </div>
 
-      <div className="flex-1 min-h-0 grid gap-4 md:grid-cols-[380px,1fr]">
+      <div className="flex-1 min-h-0 grid gap-3 md:grid-cols-[340px,minmax(0,1fr)]">
         <Card className="min-h-0 flex flex-col">
-          <CardHeader className="pb-2">
+          <CardHeader className="pb-1">
             <CardTitle className="text-base flex items-center gap-2">
               <Inbox className="h-4 w-4" />
               Inbox
@@ -190,7 +216,7 @@ export default function MessagesSection() {
         </Card>
 
         <Card className="min-h-0 flex flex-col">
-          <CardHeader className="pb-2">
+          <CardHeader className="pb-1">
             <CardTitle className="text-base">Message Detail</CardTitle>
           </CardHeader>
           <CardContent className="flex-1 min-h-0">
@@ -205,6 +231,15 @@ export default function MessagesSection() {
                     <Badge variant="outline">{selectedMessage.agentId}</Badge>
                     <span>{formatTime(selectedMessage.timestamp)}</span>
                     {selectedMessage.meta?.model && <span>Model: {selectedMessage.meta.model}</span>}
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      onClick={deleteSelectedMessage}
+                      disabled={saving}
+                      className="ml-auto"
+                    >
+                      Delete
+                    </Button>
                   </div>
                   <div className="rounded-lg border bg-card p-4">
                     <p className="whitespace-pre-wrap text-sm leading-6 text-foreground">{selectedMessage.content}</p>

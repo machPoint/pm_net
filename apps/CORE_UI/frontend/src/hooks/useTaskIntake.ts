@@ -311,13 +311,14 @@ export function useTaskIntake() {
 	}, [session, refreshState]);
 
 	// Stage 4b: Approve/Reject
-	const approvePlan = useCallback(async (approved: boolean, steps?: PlanStep[]) => {
+	const approvePlan = useCallback(async (approved: boolean, steps?: PlanStep[], executionAgentId?: string) => {
 		if (!session) return;
 		setLoading(true);
 		setError(null);
 		try {
-			const payload: { approved: boolean; steps?: PlanStep[] } = { approved };
+			const payload: { approved: boolean; steps?: PlanStep[]; execution_agent_id?: string } = { approved };
 			if (Array.isArray(steps) && steps.length > 0) payload.steps = steps;
+			if (executionAgentId?.trim()) payload.execution_agent_id = executionAgentId.trim();
 			const data = await api(`/sessions/${session.id}/approve`, payload);
 			setSession(data.session);
 			await refreshState(session.id);

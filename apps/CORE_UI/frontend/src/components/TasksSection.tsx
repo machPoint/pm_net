@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { canonicalTaskStatus, isDoneStatus, isInProgressStatus, taskStatusLabel } from "@/utils/workflow-status";
 
 const OPAL_BASE_URL = '/api/opal/proxy';
 
@@ -48,7 +49,15 @@ const KANBAN_COLUMNS = [
   { id: 'completed', label: 'Done', statuses: ['completed', 'done', 'approved'] },
 ];
 
-export default function TasksSection({ onNavigate }: { onNavigate?: (tab: string) => void }) {
+export default function TasksSection({
+  onNavigate,
+  selectedProjectId,
+  selectedProjectTitle,
+}: {
+  onNavigate?: (tab: string) => void;
+  selectedProjectId?: string;
+  selectedProjectTitle?: string;
+}) {
   const [tasks, setTasks] = useState<TaskNode[]>([]);
   const [assignees, setAssignees] = useState<Map<string, { name: string; type: string }>>(new Map());
   const [loading, setLoading] = useState(true);
@@ -61,17 +70,39 @@ export default function TasksSection({ onNavigate }: { onNavigate?: (tab: string
 
   useEffect(() => {
     fetchTasks();
-  }, []);
+  }, [selectedProjectId]);
+
+  const extractTasksFromHierarchyTree = (tree: any): any[] => {
+    if (!tree) return [];
+    const out: any[] = [];
+    const stack: any[] = [tree];
+    while (stack.length > 0) {
+      const current = stack.pop();
+      if (current?.node?.node_type === 'task') out.push(current.node);
+      if (Array.isArray(current?.children)) {
+        for (const child of current.children) stack.push(child);
+      }
+    }
+    return out;
+  };
 
   const fetchTasks = async () => {
     try {
       setLoading(true);
 
-      // Fetch task nodes from graph API
-      const nodesRes = await fetch(`${OPAL_BASE_URL}/api/nodes?node_type=task`);
-      if (!nodesRes.ok) throw new Error('Failed to fetch tasks');
-      const nodesData = await nodesRes.json();
-      const nodes = nodesData.nodes || nodesData || [];
+      // Fetch task nodes, optionally scoped to selected project hierarchy
+      let nodes: any[] = [];
+      if (selectedProjectId) {
+        const treeRes = await fetch(`${OPAL_BASE_URL}/api/hierarchy/tree/${selectedProjectId}?depth=4`);
+        if (!treeRes.ok) throw new Error('Failed to fetch project tasks');
+        const treeData = await treeRes.json();
+        nodes = extractTasksFromHierarchyTree(treeData?.node ? treeData : null);
+      } else {
+        const nodesRes = await fetch(`${OPAL_BASE_URL}/api/nodes?node_type=task`);
+        if (!nodesRes.ok) throw new Error('Failed to fetch tasks');
+        const nodesData = await nodesRes.json();
+        nodes = nodesData.nodes || nodesData || [];
+      }
 
       // Fetch edges to get assignments
       const edgesRes = await fetch(`${OPAL_BASE_URL}/api/edges`);
@@ -119,7 +150,7 @@ export default function TasksSection({ onNavigate }: { onNavigate?: (tab: string
             id: node.id,
             title: node.title,
             description: node.description || '',
-            status: node.status || metadata.status || 'backlog',
+            status: canonicalTaskStatus(node.status || metadata.status || 'backlog'),
             priority: metadata.priority || 'medium',
             dueDate: metadata.due_date,
             assignees: assignmentMap.get(node.id) || [],
@@ -130,7 +161,7 @@ export default function TasksSection({ onNavigate }: { onNavigate?: (tab: string
       setTasks(taskList);
     } catch (err: any) {
       console.error('Error fetching tasks:', err);
-      toast.error('Failed to load tasks');
+      toast.error(selectedProjectId ? 'Failed to load project tasks' : 'Failed to load tasks');
     } finally {
       setLoading(false);
     }
@@ -138,7 +169,11 @@ export default function TasksSection({ onNavigate }: { onNavigate?: (tab: string
 
   const handleDeleteTask = async (taskId: string, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
-    if (!confirm('Delete this task and its associated nodes?')) return;
+    const taskToDelete = tasks.find((task) => task.id === taskId);
+    const confirmed = confirm(
+      `Delete "${taskToDelete?.title || "this task"}" and its related records?\n\nThis action cannot be undone.`
+    );
+    if (!confirmed) return;
     try {
       const res = await fetch(`${OPAL_BASE_URL}/api/hierarchy/work-packages/${taskId}`, {
         method: 'DELETE',
@@ -151,10 +186,10 @@ export default function TasksSection({ onNavigate }: { onNavigate?: (tab: string
       if (!res.ok) throw new Error('Failed to delete');
       setTasks(prev => prev.filter(t => t.id !== taskId));
       setSelectedTask(null);
-      toast.success('Task deleted');
+      toast.success(`Task removed: ${taskToDelete?.title || taskId}`);
       fetchTasks();
     } catch (err: any) {
-      toast.error(`Delete failed: ${err.message}`);
+      toast.error(`Could not remove task: ${err.message}`);
     }
   };
 
@@ -167,16 +202,16 @@ export default function TasksSection({ onNavigate }: { onNavigate?: (tab: string
   });
 
   const getStatusColor = (status: string) => {
-    if (['completed', 'done', 'approved'].includes(status)) return "text-green-500";
-    if (['in_progress', 'in-progress'].includes(status)) return "text-blue-500";
-    if (['review', 'pending'].includes(status)) return "text-yellow-500";
+    if (isDoneStatus(status)) return "text-green-500";
+    if (isInProgressStatus(status)) return "text-blue-500";
+    if (canonicalTaskStatus(status) === 'review') return "text-yellow-500";
     return "text-muted-foreground";
   };
 
   const getStatusIcon = (status: string) => {
-    if (['completed', 'done', 'approved'].includes(status)) return CheckCircle2;
-    if (['in_progress', 'in-progress'].includes(status)) return Clock;
-    if (['review', 'pending'].includes(status)) return AlertCircle;
+    if (isDoneStatus(status)) return CheckCircle2;
+    if (isInProgressStatus(status)) return Clock;
+    if (canonicalTaskStatus(status) === 'review') return AlertCircle;
     return Circle;
   };
 
@@ -190,7 +225,7 @@ export default function TasksSection({ onNavigate }: { onNavigate?: (tab: string
   };
 
   const getTasksForColumn = (column: typeof KANBAN_COLUMNS[0]) => {
-    return filteredTasks.filter(task => column.statuses.includes(task.status.toLowerCase()));
+    return filteredTasks.filter(task => column.statuses.includes(canonicalTaskStatus(task.status)));
   };
 
   // Task Card Component
@@ -267,7 +302,7 @@ export default function TasksSection({ onNavigate }: { onNavigate?: (tab: string
     return (
       <div className="h-full flex items-center justify-center">
         <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
-        <span className="ml-2 text-muted-foreground">Loading tasks...</span>
+        <span className="ml-2 text-muted-foreground">{selectedProjectId ? 'Loading project tasks...' : 'Loading tasks...'}</span>
       </div>
     );
   }
@@ -279,7 +314,14 @@ export default function TasksSection({ onNavigate }: { onNavigate?: (tab: string
         <div className="flex items-center gap-4">
           <h2 className="text-xl font-semibold">Tasks</h2>
           <Badge variant="secondary">{tasks.length} total</Badge>
+          {selectedProjectId && <Badge variant="outline">Project scoped</Badge>}
         </div>
+
+        {selectedProjectId && (
+          <p className="text-xs text-muted-foreground hidden lg:block">
+            Viewing: {selectedProjectTitle || selectedProjectId}
+          </p>
+        )}
 
         <div className="flex items-center gap-2">
           {/* Search */}
@@ -420,8 +462,8 @@ export default function TasksSection({ onNavigate }: { onNavigate?: (tab: string
                       ))}
                     </div>
 
-                    <Badge variant="outline" className="capitalize">
-                      {task.status.replace('_', ' ')}
+                    <Badge variant="outline">
+                      {taskStatusLabel(task.status)}
                     </Badge>
 
                     <button
@@ -439,10 +481,25 @@ export default function TasksSection({ onNavigate }: { onNavigate?: (tab: string
             {filteredTasks.length === 0 && (
               <div className="flex flex-col items-center justify-center py-16">
                 <div className="text-4xl mb-4">📋</div>
-                <h3 className="text-lg font-medium mb-2">No tasks found</h3>
-                <p className="text-muted-foreground text-sm">
-                  Create a task to give your agents something to work on
+                <h3 className="text-lg font-medium mb-2">
+                  {selectedProjectId ? "No tasks yet for this project" : "No tasks found"}
+                </h3>
+                <p className="text-muted-foreground text-sm text-center">
+                  {selectedProjectId
+                    ? "Start by creating your first task for this project."
+                    : "Create a task to give your team and agents something to work on."}
                 </p>
+                <div className="mt-4 flex items-center gap-2">
+                  <Button size="sm" onClick={() => setShowCreateDialog(true)}>
+                    <Plus className="w-4 h-4 mr-1" />
+                    Create Task
+                  </Button>
+                  {selectedProjectId && (
+                    <Button size="sm" variant="outline" onClick={() => onNavigate?.('projects')}>
+                      View Project
+                    </Button>
+                  )}
+                </div>
               </div>
             )}
           </div>

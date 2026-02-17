@@ -89,6 +89,7 @@ export interface UpdateNodeInput {
 	title?: string;
 	description?: string;
 	status?: string;
+	node_type?: string;
 	metadata?: Record<string, any>;
 	change_reason?: string;
 }
@@ -267,6 +268,7 @@ export async function updateNode(
 	if (input.title !== undefined) updates.title = input.title;
 	if (input.description !== undefined) updates.description = input.description;
 	if (input.status !== undefined) updates.status = input.status;
+	if (input.node_type !== undefined) (updates as any).node_type = input.node_type;
 	if (input.metadata !== undefined) updates.metadata = input.metadata;
 
 	// Update node

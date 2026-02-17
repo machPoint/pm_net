@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Loader2, Play, RefreshCw, TerminalSquare, Wrench, Bot, Clock3, CheckCircle2, AlertCircle, Shield, XCircle } from "lucide-react";
+import { Loader2, Play, RefreshCw, TerminalSquare, Wrench, Bot, Clock3, CheckCircle2, AlertCircle, Shield, XCircle, HeartPulse, RotateCcw } from "lucide-react";
 import { cn } from "@/lib/utils";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -48,6 +48,14 @@ interface ActivityLogItem {
   metadata?: Record<string, any>;
 }
 
+interface ReactivationStatus {
+  can_reactivate: boolean;
+  next_step_order: number | null;
+  pending_gate_id: string | null;
+  pending_gate_step_order: number | null;
+  message: string;
+}
+
 const API_BASE = "/api/opal/proxy/api/task-intake";
 const ACTIVE_SESSION_KEY = "pmnet_active_intake_session_id";
 
@@ -70,6 +78,7 @@ export default function ExecutionConsoleSection() {
   const [autoStartPending, setAutoStartPending] = useState(false);
   const [pendingGate, setPendingGate] = useState<{ gateNodeId: string; stepOrder: number; action: string } | null>(null);
   const [gateResolving, setGateResolving] = useState(false);
+  const [reactivation, setReactivation] = useState<ReactivationStatus | null>(null);
 
   const activityEndRef = useRef<HTMLDivElement>(null);
   const outputEndRef = useRef<HTMLDivElement>(null);
@@ -109,6 +118,23 @@ export default function ExecutionConsoleSection() {
       }
       return next;
     });
+  }, []);
+
+  const fetchReactivationStatus = useCallback(async (id: string) => {
+    try {
+      const res = await fetch(`${API_BASE}/sessions/${id}/reactivation-status`);
+      const data = await res.json();
+      if (!res.ok || data?.ok === false) return;
+      setReactivation({
+        can_reactivate: Boolean(data.can_reactivate),
+        next_step_order: typeof data.next_step_order === "number" ? data.next_step_order : null,
+        pending_gate_id: data.pending_gate_id || null,
+        pending_gate_step_order: typeof data.pending_gate_step_order === "number" ? data.pending_gate_step_order : null,
+        message: String(data.message || ""),
+      });
+    } catch {
+      // no-op
+    }
   }, []);
 
   const hydrateExecutionResults = useCallback(async (id: string) => {
@@ -206,10 +232,14 @@ export default function ExecutionConsoleSection() {
       const task = data.task || null;
       const plan = data.plan || null;
       const planSteps: PlanStep[] = Array.isArray(plan?.metadata?.steps) ? plan.metadata.steps : [];
+      const executionAgentId =
+        String(task?.metadata?.execution_agent_id || task?.metadata?.assigned_agent_id || "").trim() ||
+        data.session.agent_id ||
+        "main";
 
       setSessionId(data.session.id);
       setTaskTitle(task?.title || "Untitled Project");
-      setAgentId(data.session.agent_id || "main");
+      setAgentId(executionAgentId);
       setRunId(data.session.run_id || "");
       setSteps(planSteps);
       setStepLogs(
@@ -233,6 +263,7 @@ export default function ExecutionConsoleSection() {
       }
 
       await hydrateExecutionResults(data.session.id);
+      await fetchReactivationStatus(data.session.id);
 
       // If session is approved but not yet executed, flag for auto-start
       if (data.session.stage === "execute" && !data.session.run_id && planSteps.length > 0) {
@@ -251,7 +282,7 @@ export default function ExecutionConsoleSection() {
     } finally {
       setLoading(false);
     }
-  }, [appendActivity, hydrateExecutionResults]);
+  }, [appendActivity, fetchReactivationStatus, hydrateExecutionResults]);
 
   const loadLatestSession = useCallback(async () => {
     setLoading(true);
@@ -369,9 +400,10 @@ export default function ExecutionConsoleSection() {
     if (!sessionId) return;
     const timer = window.setInterval(() => {
       hydrateExecutionResults(sessionId);
+      fetchReactivationStatus(sessionId);
     }, 4000);
     return () => window.clearInterval(timer);
-  }, [hydrateExecutionResults, sessionId]);
+  }, [fetchReactivationStatus, hydrateExecutionResults, sessionId]);
 
   const handleStreamEvent = useCallback((eventName: string, payload: any) => {
     if (!payload) return;
@@ -386,6 +418,23 @@ export default function ExecutionConsoleSection() {
         timestamp: payload.started_at || new Date().toISOString(),
         type: "run_started",
         summary: `Run started for ${payload.project?.title || "task"}`,
+        metadata: payload,
+      });
+      return;
+    }
+
+    if (eventName === "run_paused") {
+      setReactivation({
+        can_reactivate: true,
+        next_step_order: typeof payload.next_step_order === "number" ? payload.next_step_order : null,
+        pending_gate_id: payload.gate_node_id || null,
+        pending_gate_step_order: typeof payload.step_order === "number" ? payload.step_order : null,
+        message: payload.message || "Execution paused. Reactivate to continue.",
+      });
+      appendActivity({
+        timestamp: payload.timestamp || new Date().toISOString(),
+        type: "run_paused",
+        summary: payload.message || "Execution paused",
         metadata: payload,
       });
       return;
@@ -488,6 +537,7 @@ export default function ExecutionConsoleSection() {
     if (eventName === "run_completed") {
       setRunCompletedAt(payload.finished_at || new Date().toISOString());
       setRunDurationMs(payload.duration_ms || null);
+      setReactivation(null);
       appendActivity({
         timestamp: payload.finished_at || new Date().toISOString(),
         type: "run_completed",
@@ -575,7 +625,7 @@ export default function ExecutionConsoleSection() {
     }
   }, [pendingGate]);
 
-  const startExecution = useCallback(async () => {
+  const startExecution = useCallback(async (continueFromStepOrder?: number | null) => {
     if (!sessionId) {
       setError("No active session. Start from Project Intake.");
       return;
@@ -592,7 +642,13 @@ export default function ExecutionConsoleSection() {
       const res = await fetch(`${API_BASE}/sessions/${sessionId}/execute-stream`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ steps }),
+        body: JSON.stringify({
+          steps,
+          continue_from_step_order:
+            typeof continueFromStepOrder === "number" && continueFromStepOrder > 0
+              ? continueFromStepOrder
+              : undefined,
+        }),
       });
 
       if (!res.ok || !res.body) {
@@ -664,6 +720,39 @@ export default function ExecutionConsoleSection() {
     }
   }, [appendActivity, handleStreamEvent, sessionId, steps]);
 
+  const reactivateExecution = useCallback(async () => {
+    if (!sessionId) return;
+    setError(null);
+    try {
+      const res = await fetch(`${API_BASE}/sessions/${sessionId}/reactivation-status`);
+      const data = await res.json();
+      if (!res.ok || data?.ok === false) throw new Error(data?.error || "Failed to inspect execution state");
+
+      if (!data.can_reactivate) {
+        setReactivation({
+          can_reactivate: false,
+          next_step_order: null,
+          pending_gate_id: data.pending_gate_id || null,
+          pending_gate_step_order: typeof data.pending_gate_step_order === "number" ? data.pending_gate_step_order : null,
+          message: data.message || "Cannot reactivate yet",
+        });
+        return;
+      }
+
+      setReactivation({
+        can_reactivate: true,
+        next_step_order: typeof data.next_step_order === "number" ? data.next_step_order : null,
+        pending_gate_id: null,
+        pending_gate_step_order: null,
+        message: data.message || "Reactivating execution",
+      });
+
+      await startExecution(typeof data.next_step_order === "number" ? data.next_step_order : undefined);
+    } catch (err: any) {
+      setError(err.message || "Failed to reactivate execution");
+    }
+  }, [sessionId, startExecution]);
+
   // Auto-start execution for freshly approved sessions
   useEffect(() => {
     if (autoStartPending && sessionId && steps.length > 0 && !executing) {
@@ -685,6 +774,95 @@ export default function ExecutionConsoleSection() {
   const sortedLogs = useMemo(() => {
     return Object.values(stepLogs).sort((a, b) => a.order - b.order);
   }, [stepLogs]);
+
+  const reactivationEvents = useMemo(() => {
+    return activityFeed
+      .filter((item) => item.type === "run_paused" || item.type === "gate_waiting" || item.type === "gate_resolved")
+      .slice(-6)
+      .reverse();
+  }, [activityFeed]);
+
+  const runHealth = useMemo(() => {
+    if (executing) return { label: "Active", tone: "text-blue-400 border-blue-400/40" };
+    if (pendingGate) return { label: "Waiting Approval", tone: "text-amber-400 border-amber-400/40" };
+    if (reactivation?.can_reactivate) return { label: "Needs Reactivation", tone: "text-orange-400 border-orange-400/40" };
+    if (runCompletedAt) return { label: "Completed", tone: "text-primary border-primary/40" };
+    return { label: "Idle", tone: "text-[var(--color-text-secondary)] border-border" };
+  }, [executing, pendingGate, reactivation?.can_reactivate, runCompletedAt]);
+
+  const operationsSnapshot = useMemo(() => {
+    const lastEventAt = activityFeed.length > 0 ? activityFeed[activityFeed.length - 1]?.timestamp : null;
+    const stateLabel = executing
+      ? "running"
+      : pendingGate
+      ? "waiting_approval"
+      : reactivation?.can_reactivate
+      ? "paused_reactivate"
+      : runCompletedAt
+      ? "completed"
+      : sessionId
+      ? "ready"
+      : "idle";
+
+    if (error) {
+      return {
+        healthLabel: "degraded",
+        healthTone: "text-destructive border-destructive/40",
+        stateLabel,
+        restartLabel: reactivation?.can_reactivate ? "resume" : "restart",
+        lastEventAt,
+      };
+    }
+
+    if (executing) {
+      return {
+        healthLabel: "healthy",
+        healthTone: "text-blue-400 border-blue-400/40",
+        stateLabel,
+        restartLabel: "running",
+        lastEventAt,
+      };
+    }
+
+    if (pendingGate || reactivation?.can_reactivate) {
+      return {
+        healthLabel: "attention",
+        healthTone: "text-amber-400 border-amber-400/40",
+        stateLabel,
+        restartLabel: reactivation?.can_reactivate ? "resume" : "blocked",
+        lastEventAt,
+      };
+    }
+
+    return {
+      healthLabel: sessionId ? "healthy" : "offline",
+      healthTone: sessionId ? "text-primary border-primary/40" : "text-[var(--color-text-secondary)] border-border",
+      stateLabel,
+      restartLabel: sessionId ? "ready" : "n/a",
+      lastEventAt,
+    };
+  }, [activityFeed, error, executing, pendingGate, reactivation?.can_reactivate, runCompletedAt, sessionId]);
+
+  const restartExecution = useCallback(async () => {
+    if (executing || loading) return;
+    setError(null);
+    appendActivity({
+      timestamp: new Date().toISOString(),
+      type: "restart_requested",
+      summary: reactivation?.can_reactivate ? "Resume requested from paused run" : "Full restart requested from step 1",
+      metadata: {
+        session_id: sessionId,
+        mode: reactivation?.can_reactivate ? "resume" : "restart",
+      },
+    });
+
+    if (reactivation?.can_reactivate) {
+      await reactivateExecution();
+      return;
+    }
+
+    await startExecution(1);
+  }, [appendActivity, executing, loading, reactivateExecution, reactivation?.can_reactivate, sessionId, startExecution]);
 
   const scrollToStep = useCallback((order: number) => {
     setSelectedStepOrder(order);
@@ -715,7 +893,7 @@ export default function ExecutionConsoleSection() {
             {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
             Reload Session
           </Button>
-          <Button onClick={startExecution} disabled={executing || loading || steps.length === 0} className="gap-2">
+          <Button onClick={() => startExecution()} disabled={executing || loading || steps.length === 0} className="gap-2">
             {executing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
             {executing ? "Running..." : "Run in Console"}
           </Button>
@@ -725,6 +903,31 @@ export default function ExecutionConsoleSection() {
       {error && (
         <div className="mx-6 mt-4 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
           {error}
+        </div>
+      )}
+
+      {reactivation && (
+        <div className="mx-6 mt-4 rounded-lg border border-blue-500/40 bg-blue-500/10 px-4 py-3 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <AlertCircle className="w-5 h-5 text-blue-400 flex-shrink-0" />
+            <div>
+              <p className="text-sm font-medium text-[var(--color-text-primary)]">Execution Reactivation</p>
+              <p className="text-xs text-[var(--color-text-secondary)]">
+                {reactivation.message}
+                {reactivation.next_step_order ? ` (next step: ${reactivation.next_step_order})` : ""}
+              </p>
+            </div>
+          </div>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={reactivateExecution}
+            disabled={executing || loading || !reactivation.can_reactivate}
+            className="gap-1.5"
+          >
+            {executing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />}
+            Reactivate Agent
+          </Button>
         </div>
       )}
 
@@ -768,6 +971,91 @@ export default function ExecutionConsoleSection() {
         <Metric label="Agent" value={agentId || "-"} mono />
         <Metric label="Tool Calls" value={String(Object.values(stepLogs).reduce((acc, s) => acc + (s.tool_calls?.length || 0), 0))} />
         <Metric label="Duration" value={runDurationMs ? `${(runDurationMs / 1000).toFixed(1)}s` : "-"} />
+      </div>
+
+      <div className="px-6 pb-4 grid grid-cols-1 lg:grid-cols-4 gap-3 border-b border-border">
+        <div className="rounded-lg border border-border bg-[var(--color-background)]/70 p-3 space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-[var(--color-text-primary)]">Run Health</span>
+            <Badge variant="outline" className={cn("h-5", runHealth.tone)}>{runHealth.label}</Badge>
+          </div>
+          <div className="text-[11px] text-[var(--color-text-secondary)] space-y-1">
+            <p>Started: {runStartedAt ? new Date(runStartedAt).toLocaleString() : "-"}</p>
+            <p>Completed: {runCompletedAt ? new Date(runCompletedAt).toLocaleString() : "-"}</p>
+            <p>Progress: {totals.completed}/{steps.length || 0} steps done</p>
+          </div>
+        </div>
+
+        <div className="rounded-lg border border-border bg-[var(--color-background)]/70 p-3 space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-[var(--color-text-primary)]">Reactivation Timeline</span>
+            <Badge variant="outline" className="h-5">{reactivationEvents.length}</Badge>
+          </div>
+          <div className="space-y-1.5 max-h-24 overflow-y-auto pr-1">
+            {reactivationEvents.length === 0 ? (
+              <p className="text-[11px] text-[var(--color-text-secondary)]">No pauses or gate events yet.</p>
+            ) : (
+              reactivationEvents.map((evt) => (
+                <div key={evt.id} className="text-[11px] rounded border border-border px-2 py-1 bg-muted/20">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-medium text-[var(--color-text-primary)]">{evt.type}</span>
+                    <span className="text-[10px] text-[var(--color-text-secondary)]">{new Date(evt.timestamp).toLocaleTimeString()}</span>
+                  </div>
+                  <p className="text-[10px] text-[var(--color-text-secondary)] mt-0.5 line-clamp-1">{evt.summary}</p>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+
+        <div className="rounded-lg border border-border bg-[var(--color-background)]/70 p-3 space-y-2">
+          <div className="flex items-center gap-2">
+            <Bot className="w-3.5 h-3.5 text-primary" />
+            <span className="text-xs font-semibold text-[var(--color-text-primary)]">Continuity Checkpoint</span>
+          </div>
+          <p className="text-[11px] text-[var(--color-text-secondary)] leading-relaxed">
+            Agents are instructed to preserve progress/evidence/next-action heartbeat checkpoints across long approval waits.
+          </p>
+          <div className="flex items-center justify-between gap-2">
+            <Badge variant="outline" className="h-5">heartbeat.md discipline: on</Badge>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={reactivateExecution}
+              disabled={executing || loading || !reactivation?.can_reactivate}
+              className="h-7 px-2 text-[10px]"
+            >
+              Reactivate
+            </Button>
+          </div>
+        </div>
+
+        <div className="rounded-lg border border-border bg-[var(--color-background)]/70 p-3 space-y-2">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <HeartPulse className="w-3.5 h-3.5 text-primary" />
+              <span className="text-xs font-semibold text-[var(--color-text-primary)]">Operations Snapshot</span>
+            </div>
+            <Badge variant="outline" className={cn("h-5", operationsSnapshot.healthTone)}>{operationsSnapshot.healthLabel}</Badge>
+          </div>
+          <ul className="text-[11px] text-[var(--color-text-secondary)] space-y-1">
+            <li>State: <span className="font-mono text-[var(--color-text-primary)]">{operationsSnapshot.stateLabel}</span></li>
+            <li>Restart: <span className="font-mono text-[var(--color-text-primary)]">{operationsSnapshot.restartLabel}</span></li>
+            <li>
+              Last Event: {operationsSnapshot.lastEventAt ? new Date(operationsSnapshot.lastEventAt).toLocaleTimeString() : "-"}
+            </li>
+          </ul>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={restartExecution}
+            disabled={loading || executing || steps.length === 0 || !sessionId}
+            className="h-7 px-2 text-[10px] gap-1.5"
+          >
+            {executing ? <Loader2 className="w-3 h-3 animate-spin" /> : <RotateCcw className="w-3 h-3" />}
+            {reactivation?.can_reactivate ? "Resume Agent" : "Restart Run"}
+          </Button>
+        </div>
       </div>
 
       <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-5 gap-4 p-4">

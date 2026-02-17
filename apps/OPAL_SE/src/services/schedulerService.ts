@@ -3,6 +3,7 @@ import db from '../config/database';
 import * as graphService from './graphService';
 import * as hierarchyService from './hierarchyService';
 import { eventBus } from './eventBus';
+import { dispatch as agentDispatch } from './agentDispatcher';
 import logger from '../logger';
 
 export type ScheduledJobStatus = 'scheduled' | 'running' | 'completed' | 'failed' | 'canceled';
@@ -37,6 +38,10 @@ export interface ScheduledJob {
 	updated_at: string;
 	executed_at?: string | null;
 	canceled_at?: string | null;
+	/** Agent identity to dispatch to (e.g. 'main', 'research-agent') */
+	agent_id?: string | null;
+	/** Preferred agent runtime key (e.g. 'openclaw', 'http', 'llm') */
+	runtime?: string | null;
 }
 
 export interface GenerateScheduleInput {
@@ -133,7 +138,19 @@ async function ensureTables() {
 			table.string('updated_at').notNullable();
 			table.string('executed_at');
 			table.string('canceled_at');
+			table.string('agent_id', 128);
+			table.string('runtime', 64);
 		});
+	} else {
+		// Migrate existing tables — add new columns if missing
+		const cols = await db.raw("PRAGMA table_info('scheduled_jobs')");
+		const colNames = (Array.isArray(cols) ? cols : []).map((c: any) => c.name);
+		if (!colNames.includes('agent_id')) {
+			await db.schema.alterTable('scheduled_jobs', (table) => { table.string('agent_id', 128); });
+		}
+		if (!colNames.includes('runtime')) {
+			await db.schema.alterTable('scheduled_jobs', (table) => { table.string('runtime', 64); });
+		}
 	}
 
 	const hasRuns = await db.schema.hasTable('schedule_generation_runs');
@@ -383,6 +400,155 @@ export async function cancelJob(jobId: string, reason = 'Canceled by user') {
 	return { id: jobId, status: 'canceled' as ScheduledJobStatus };
 }
 
+// ============================================================================
+// Lightweight cron next-occurrence parser (5-field: min hour dom month dow)
+// ============================================================================
+
+function parseCronField(field: string, min: number, max: number): number[] {
+	if (field === '*') return Array.from({ length: max - min + 1 }, (_, i) => i + min);
+
+	const values = new Set<number>();
+	for (const part of field.split(',')) {
+		const stepMatch = part.match(/^(.+)\/([0-9]+)$/);
+		const step = stepMatch ? parseInt(stepMatch[2], 10) : 1;
+		const range = stepMatch ? stepMatch[1] : part;
+
+		if (range === '*') {
+			for (let i = min; i <= max; i += step) values.add(i);
+		} else if (range.includes('-')) {
+			const [lo, hi] = range.split('-').map(Number);
+			for (let i = lo; i <= hi; i += step) values.add(i);
+		} else {
+			values.add(parseInt(range, 10));
+		}
+	}
+	return Array.from(values).filter(v => v >= min && v <= max).sort((a, b) => a - b);
+}
+
+/**
+ * Compute the next occurrence of a 5-field cron expression after `after`.
+ * Returns null if no valid next time is found within 366 days.
+ */
+export function cronNextOccurrence(cron: string, after: Date): Date | null {
+	const parts = cron.trim().split(/\s+/);
+	if (parts.length !== 5) return null;
+
+	const minutes = parseCronField(parts[0], 0, 59);
+	const hours = parseCronField(parts[1], 0, 23);
+	const doms = parseCronField(parts[2], 1, 31);
+	const months = parseCronField(parts[3], 1, 12);
+	const dows = parseCronField(parts[4], 0, 6); // 0=Sun
+
+	const cursor = new Date(after);
+	cursor.setSeconds(0, 0);
+	cursor.setMinutes(cursor.getMinutes() + 1); // always at least 1 min in the future
+
+	const maxDate = new Date(after);
+	maxDate.setDate(maxDate.getDate() + 366);
+
+	while (cursor <= maxDate) {
+		if (!months.includes(cursor.getMonth() + 1)) {
+			cursor.setMonth(cursor.getMonth() + 1, 1);
+			cursor.setHours(0, 0, 0, 0);
+			continue;
+		}
+		if (!doms.includes(cursor.getDate()) || !dows.includes(cursor.getDay())) {
+			cursor.setDate(cursor.getDate() + 1);
+			cursor.setHours(0, 0, 0, 0);
+			continue;
+		}
+		if (!hours.includes(cursor.getHours())) {
+			cursor.setHours(cursor.getHours() + 1, 0, 0, 0);
+			continue;
+		}
+		if (!minutes.includes(cursor.getMinutes())) {
+			cursor.setMinutes(cursor.getMinutes() + 1, 0, 0);
+			continue;
+		}
+		return new Date(cursor);
+	}
+	return null;
+}
+
+// ============================================================================
+// Create standalone scheduled job
+// ============================================================================
+
+export interface CreateJobInput {
+	title: string;
+	/** The prompt / instruction to execute */
+	prompt: string;
+	/** ISO datetime to run at */
+	run_at: string;
+	/** Optional 5-field cron for recurrence */
+	recurrence_cron?: string;
+	/** Link to a project (optional) */
+	project_id?: string;
+	/** Link to a task (optional) */
+	task_id?: string;
+	/** Agent identity */
+	agent_id?: string;
+	/** Preferred runtime */
+	runtime?: string;
+	created_by?: string;
+	metadata?: Record<string, any>;
+}
+
+export async function createJob(input: CreateJobInput): Promise<ScheduledJob> {
+	await ensureTables();
+	const now = new Date().toISOString();
+	const job: ScheduledJob = {
+		id: uuid(),
+		project_id: input.project_id || '',
+		task_id: input.task_id || '',
+		step_order: 0,
+		title: input.title,
+		payload: {
+			prompt: input.prompt,
+			...(input.metadata || {}),
+		},
+		run_at: input.run_at,
+		timezone: 'UTC',
+		status: 'scheduled',
+		recurrence_cron: input.recurrence_cron || null,
+		depends_on: [],
+		attempt_count: 0,
+		last_error: null,
+		created_by: input.created_by || 'user',
+		created_at: now,
+		updated_at: now,
+		executed_at: null,
+		canceled_at: null,
+		agent_id: input.agent_id || null,
+		runtime: input.runtime || null,
+	};
+
+	await db('scheduled_jobs').insert({
+		...job,
+		payload: JSON.stringify(job.payload),
+		depends_on: JSON.stringify(job.depends_on || []),
+	});
+
+	logger.info(`[scheduler] Created job ${job.id}: "${job.title}" run_at=${job.run_at} cron=${job.recurrence_cron || 'none'}`);
+	return job;
+}
+
+// ============================================================================
+// List all jobs (not project-scoped)
+// ============================================================================
+
+export async function listAllJobs(opts?: { status?: string; limit?: number }) {
+	await ensureTables();
+	let query = db('scheduled_jobs').orderBy('run_at', 'asc');
+	if (opts?.status) query = query.where('status', opts.status);
+	const rows = await query.limit(opts?.limit || 500);
+	return rows.map(mapScheduledJobRow);
+}
+
+// ============================================================================
+// Dispatch due jobs — actually execute through agent dispatcher
+// ============================================================================
+
 export async function dispatchDueJobs(limit = 20) {
 	await ensureTables();
 	const now = new Date().toISOString();
@@ -401,6 +567,19 @@ export async function dispatchDueJobs(limit = 20) {
 			await db('scheduled_jobs').where({ id: row.id }).update({ status: 'running', updated_at: runningAt });
 
 			const payload = parseJSON<Record<string, any>>(row.payload, {});
+
+			// Build the prompt from payload
+			const prompt = payload.prompt
+				|| (payload.step
+					? [
+						`Execute this step for task "${payload.task_title || row.title}":`,
+						`Action: ${payload.step.action || 'Execute'}`,
+						payload.step.tool ? `Tool: ${payload.step.tool}` : '',
+						payload.step.expected_outcome ? `Expected outcome: ${payload.step.expected_outcome}` : '',
+					].filter(Boolean).join('\n')
+					: `Execute scheduled job: ${row.title}`);
+
+			// Emit "running" event
 			eventBus.emit({
 				id: uuid(),
 				event_type: 'updated',
@@ -413,18 +592,65 @@ export async function dispatchDueJobs(limit = 20) {
 					project_id: row.project_id,
 					task_id: row.task_id,
 					step_order: row.step_order,
-					payload,
 				},
 			});
 
+			// Dispatch through the agent-agnostic layer
+			const result = await agentDispatch({
+				title: row.title,
+				prompt,
+				agent_id: row.agent_id || undefined,
+				runtime: row.runtime || undefined,
+				caller: 'scheduler',
+				metadata: {
+					scheduled_job_id: row.id,
+					project_id: row.project_id,
+					task_id: row.task_id,
+				},
+			}, { log_to_graph: true });
+
+			const finishedAt = new Date().toISOString();
 			await db('scheduled_jobs').where({ id: row.id }).update({
-				status: 'completed',
-				executed_at: new Date().toISOString(),
-				updated_at: new Date().toISOString(),
+				status: result.success ? 'completed' : 'failed',
+				executed_at: finishedAt,
+				updated_at: finishedAt,
 				attempt_count: Number(row.attempt_count || 0) + 1,
-				last_error: null,
+				last_error: result.success ? null : result.output.substring(0, 500),
 			});
-			completed += 1;
+
+			// Handle recurrence — schedule the next occurrence
+			if (result.success && row.recurrence_cron) {
+				const nextRun = cronNextOccurrence(row.recurrence_cron, new Date());
+				if (nextRun) {
+					const nextId = uuid();
+					await db('scheduled_jobs').insert({
+						id: nextId,
+						project_id: row.project_id,
+						task_id: row.task_id,
+						step_order: row.step_order,
+						title: row.title,
+						payload: row.payload, // already JSON string from DB
+						run_at: nextRun.toISOString(),
+						timezone: row.timezone,
+						status: 'scheduled',
+						recurrence_cron: row.recurrence_cron,
+						depends_on: row.depends_on,
+						attempt_count: 0,
+						last_error: null,
+						created_by: row.created_by,
+						created_at: finishedAt,
+						updated_at: finishedAt,
+						executed_at: null,
+						canceled_at: null,
+						agent_id: row.agent_id,
+						runtime: row.runtime,
+					});
+					logger.info(`[scheduler] Recurring job ${row.id} → next occurrence ${nextId} at ${nextRun.toISOString()}`);
+				}
+			}
+
+			if (result.success) completed += 1;
+			else failed += 1;
 		} catch (err: any) {
 			await db('scheduled_jobs').where({ id: row.id }).update({
 				status: 'failed',

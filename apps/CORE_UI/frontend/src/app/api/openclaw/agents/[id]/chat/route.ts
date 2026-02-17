@@ -16,11 +16,111 @@ function chatHistoryPath(agentId: string): string {
   return path.join(OPENCLAW_HOME, "agents", agentId, "pmnet-chat-history.json");
 }
 
+/**
+ * PUT /api/openclaw/agents/[id]/chat
+ * Add a manual message to an agent's PM inbox history.
+ *
+ * Body: { content: string, role?: "assistant"|"system"|"user", meta?: object }
+ */
+export async function PUT(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params;
+  try {
+    const body = await req.json();
+    const content = String(body?.content || "").trim();
+    const role = (body?.role || "assistant") as ChatMessage["role"];
+
+    if (!content) {
+      return NextResponse.json({ ok: false, error: "content is required" }, { status: 400 });
+    }
+
+    const allowedRoles: ChatMessage["role"][] = ["assistant", "system", "user"];
+    if (!allowedRoles.includes(role)) {
+      return NextResponse.json({ ok: false, error: "invalid role" }, { status: 400 });
+    }
+
+    const history = await loadHistory(id);
+    const newMessage: ChatMessage = {
+      id: createMessageId(),
+      role,
+      content,
+      timestamp: new Date().toISOString(),
+      meta: {
+        source: "pm-net-manual",
+        ...(body?.meta || {}),
+      },
+    };
+
+    history.push(newMessage);
+    await saveHistory(id, history);
+    return NextResponse.json({ ok: true, agentId: id, message: newMessage });
+  } catch (err: any) {
+    return NextResponse.json({ ok: false, error: err.message || "Failed to add message" }, { status: 500 });
+  }
+}
+
+/**
+ * PATCH /api/openclaw/agents/[id]/chat
+ * Update a single message content in agent history.
+ *
+ * Body: { messageId: string, content: string }
+ */
+export async function PATCH(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params;
+  try {
+    const body = await req.json();
+    const messageId = String(body?.messageId || "").trim();
+    const content = String(body?.content || "").trim();
+
+    if (!messageId || !content) {
+      return NextResponse.json({ ok: false, error: "messageId and content are required" }, { status: 400 });
+    }
+
+    const history = await loadHistory(id);
+    const idx = history.findIndex((m) => m.id === messageId);
+    if (idx < 0) {
+      return NextResponse.json({ ok: false, error: "message not found" }, { status: 404 });
+    }
+
+    history[idx] = {
+      ...history[idx],
+      content,
+      meta: {
+        ...(history[idx].meta || {}),
+        edited: true,
+        edited_at: new Date().toISOString(),
+      },
+    };
+
+    await saveHistory(id, history);
+    return NextResponse.json({ ok: true, agentId: id, message: history[idx] });
+  } catch (err: any) {
+    return NextResponse.json({ ok: false, error: err.message || "Failed to update message" }, { status: 500 });
+  }
+}
+
 interface ChatMessage {
+  id?: string;
   role: "user" | "assistant" | "system";
   content: string;
   timestamp: string;
   meta?: Record<string, any>;
+}
+
+function createMessageId(): string {
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function normalizeHistory(messages: ChatMessage[]): ChatMessage[] {
+  return messages.map((m, idx) => ({
+    ...m,
+    id: m.id || `${m.role}-${m.timestamp || "no-ts"}-${idx}`,
+  }));
 }
 
 async function loadHistory(agentId: string): Promise<ChatMessage[]> {
@@ -28,7 +128,8 @@ async function loadHistory(agentId: string): Promise<ChatMessage[]> {
   if (!existsSync(p)) return [];
   try {
     const raw = await readFile(p, "utf-8");
-    return JSON.parse(raw);
+    const parsed = JSON.parse(raw) as ChatMessage[];
+    return normalizeHistory(parsed);
   } catch {
     return [];
   }
@@ -140,12 +241,14 @@ export async function POST(
     const now = new Date().toISOString();
 
     history.push({
+      id: createMessageId(),
       role: "user",
       content: message,
       timestamp: now,
     });
 
     history.push({
+      id: createMessageId(),
       role: "assistant",
       content: replyMarkdown || replyText || "(empty response)",
       timestamp: new Date().toISOString(),
@@ -174,14 +277,35 @@ export async function POST(
  * Clear chat history for an agent
  */
 export async function DELETE(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
+  let body: any = null;
+  try {
+    body = await req.json();
+  } catch {
+    body = null;
+  }
+
+  const messageId = String(body?.messageId || "").trim();
+
+  if (messageId) {
+    const history = await loadHistory(id);
+    const next = history.filter((m) => m.id !== messageId);
+    const deleted = next.length !== history.length;
+    if (!deleted) {
+      return NextResponse.json({ ok: false, error: "message not found" }, { status: 404 });
+    }
+    await saveHistory(id, next);
+    return NextResponse.json({ ok: true, agentId: id, deleted: true, messageId });
+  }
+
   const p = chatHistoryPath(id);
   if (existsSync(p)) {
     const { unlink } = await import("fs/promises");
     await unlink(p);
   }
+
   return NextResponse.json({ ok: true, agentId: id, cleared: true });
 }
